@@ -6,7 +6,9 @@ import base64
 import hashlib
 import html
 from html.parser import HTMLParser
+import json
 import os
+import re
 import time
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
@@ -78,9 +80,13 @@ class EdcApiClient:
             response = await self._session.get(
                 f"{AUTHORITY_URL}/protocol/openid-connect/auth?{urlencode(params)}"
             )
+            if response.status >= 400:
+                raise EdcApiError(f"Přihlašovací stránka EDC vrátila HTTP {response.status}.")
+            response_text = await response.text()
             parser = _LoginFormParser()
-            parser.feed(await response.text())
-            if not parser.action:
+            parser.feed(response_text)
+            login_action = parser.action or _extract_keycloak_value(response_text, "loginAction")
+            if not login_action:
                 raise EdcAuthenticationError("Přihlašovací formulář EDC nebyl nalezen.")
             form = parser.fields | {
                 "username": self._username,
@@ -88,14 +94,23 @@ class EdcApiClient:
                 "credentialId": "",
             }
             login_response = await self._session.post(
-                urljoin(str(response.url), parser.action), data=form, allow_redirects=False
+                urljoin(str(response.url), login_action), data=form, allow_redirects=False
             )
             location = login_response.headers.get("Location", "")
             for _ in range(5):
                 if "code=" in location:
                     break
                 if login_response.status not in (301, 302, 303, 307, 308) or not location:
-                    raise EdcAuthenticationError("Neplatné jméno nebo heslo EDC.")
+                    login_error = _extract_keycloak_error(await login_response.text())
+                    if login_error and _is_invalid_credentials_error(login_error):
+                        raise EdcAuthenticationError(login_error)
+                    if login_response.status >= 400:
+                        raise EdcApiError(
+                            f"Přihlášení EDC vrátilo HTTP {login_response.status}."
+                        )
+                    raise EdcApiError(
+                        login_error or "EDC přihlášení nedokončilo přesměrováním."
+                    )
                 login_response = await self._session.get(
                     urljoin(str(login_response.url), location), allow_redirects=False
                 )
@@ -199,3 +214,33 @@ class EdcApiClient:
 
 def _base64url(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
+
+
+def _extract_keycloak_value(page: str, name: str) -> str | None:
+    """Extract a JSON string property embedded in the Keycloakify kcContext."""
+    match = re.search(
+        rf'"{re.escape(name)}"\s*:\s*("(?:\\.|[^"\\])*")',
+        page,
+    )
+    if match is None:
+        return None
+    try:
+        return html.unescape(str(json.loads(match.group(1))))
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def _extract_keycloak_error(page: str) -> str | None:
+    """Return the Keycloakify error summary, if the response contains one."""
+    message = re.search(r'"message"\s*:\s*\{(.*?)\}', page, re.DOTALL)
+    if message is None or not re.search(r'"type"\s*:\s*"error"', message.group(1)):
+        return None
+    return _extract_keycloak_value(message.group(1), "summary")
+
+
+def _is_invalid_credentials_error(message: str) -> bool:
+    normalized = message.casefold()
+    return (
+        "neplatné jméno nebo heslo" in normalized
+        or "invalid username or password" in normalized
+    )
