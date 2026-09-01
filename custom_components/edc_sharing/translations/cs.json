@@ -1,0 +1,42 @@
+{
+  "title": "EDC sdílení elektřiny",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Přihlášení k portálu EDC",
+        "description": "Zadejte přístupové údaje a cenu, za kterou prodáváte jednu kWh sdílené elektřiny.",
+        "data": { "username": "E-mail", "password": "Heslo", "sale_price": "Prodejní cena (Kč/kWh)" }
+      },
+      "group": { "title": "Výběr skupiny sdílení", "data": { "sse_id": "Skupina sdílení" } },
+      "reauth_confirm": {
+        "title": "Opětovné přihlášení k EDC",
+        "description": "Uložené přihlašovací údaje již EDC nepřijímá. Zadejte nové heslo.",
+        "data": { "password": "Heslo" }
+      }
+    },
+    "error": { "cannot_connect": "K portálu EDC se nelze připojit.", "invalid_auth": "Neplatný e-mail nebo heslo.", "no_groups": "Účet nemá dostupnou skupinu sdílení." },
+    "abort": {
+      "already_configured": "Tento účet EDC je již nastaven.",
+      "reauth_successful": "Přihlašovací údaje EDC byly úspěšně aktualizovány."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nastavení EDC",
+        "description": "Vyberte skupinu a nastavte prodejní cenu použitou pro výpočet zisku z výroby.",
+        "data": { "sse_id": "Skupina sdílení", "sale_price": "Prodejní cena (Kč/kWh)" }
+      }
+    },
+    "abort": { "cannot_connect": "K portálu EDC se nelze připojit.", "invalid_auth": "Přihlášení EDC již není platné." }
+  },
+  "entity": { "sensor": {
+    "shared_today": { "name": "Nasdíleno dnes" }, "consumption_today": { "name": "Spotřeba dnes" },
+    "grid_today": { "name": "Dokup ze sítě dnes" }, "unused_today": { "name": "Nevyužitý přetok dnes" },
+    "coverage_today": { "name": "Pokrytí sdílením dnes" }, "revenue_today": { "name": "Tržba dnes" },
+    "shared_month": { "name": "Nasdíleno tento měsíc" }, "consumption_month": { "name": "Spotřeba tento měsíc" },
+    "grid_month": { "name": "Dokup ze sítě tento měsíc" }, "overflow_month": { "name": "Přetok výrobny tento měsíc" },
+    "unused_month": { "name": "Nevyužitý přetok tento měsíc" }, "coverage_month": { "name": "Pokrytí sdílením tento měsíc" },
+    "production_profit_month": { "name": "Zisk z výroby tento měsíc" }, "sale_price": { "name": "Prodejní cena elektřiny" }
+  }}
+}

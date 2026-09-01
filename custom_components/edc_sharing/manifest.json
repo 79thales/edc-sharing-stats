@@ -1,0 +1,12 @@
+{
+  "domain": "edc_sharing",
+  "name": "EDC Sharing Stats",
+  "codeowners": ["@79thales"],
+  "config_flow": true,
+  "documentation": "https://github.com/79thales/edc-sharing-stats",
+  "issue_tracker": "https://github.com/79thales/edc-sharing-stats/issues",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "version": "0.1.0"
+}
