@@ -1,5 +1,13 @@
 # Přehled změn
 
+## 0.1.9 – 2026-09-02
+
+- přidány ručně spustitelné denní, týdenní, měsíční a roční reporty přes tlačítkové entity,
+- souhrnné tlačítko spojí všechny čtyři periody do jediného e-mailu,
+- report lze automaticky odesílat na jednu nebo více vybraných e-mailových `notify` entit,
+- denní report používá poslední dostupný den EDC, týdenní poslední uzavřený týden, měsíční poslední uzavřený měsíc a roční poslední uzavřený rok,
+- čas odesílání a den měsíčních/ročních reportů lze nastavit v možnostech integrace.
+
 ## 0.1.8 – 2026-09-02
 
 - přidána samostatná diagnostická entita pro každý sdílející a cílový EAN; počet EANů není omezený a entity lze v Home Assistantu přejmenovat,

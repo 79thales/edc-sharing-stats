@@ -7,9 +7,18 @@ DOMAIN = "edc_sharing"
 CONF_SSE_ID = "sse_id"
 CONF_SSE_NAME = "sse_name"
 CONF_SALE_PRICE = "sale_price"
+CONF_REPORT_TARGETS = "report_targets"
+CONF_DAILY_REPORT = "daily_report"
+CONF_WEEKLY_REPORT = "weekly_report"
+CONF_MONTHLY_REPORT = "monthly_report"
+CONF_YEARLY_REPORT = "yearly_report"
+CONF_REPORT_TIME = "report_time"
+CONF_REPORT_DAY = "report_day"
 
 DEFAULT_SALE_PRICE = 2.0
 DEFAULT_SCAN_INTERVAL = timedelta(hours=1)
+DEFAULT_REPORT_TIME = "07:30:00"
+DEFAULT_REPORT_DAY = 5
 
 API_BASE_URL = "https://api.portal.edc-cr.cz/api/v0"
 AUTHORITY_URL = "https://sso.portal.edc-cr.cz/auth/realms/edc"

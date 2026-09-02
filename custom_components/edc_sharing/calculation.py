@@ -69,6 +69,19 @@ class SharingStatistics:
     sale_price: Decimal
 
 
+@dataclass(frozen=True, slots=True)
+class PeriodSummary:
+    """Aggregate sharing values for an arbitrary report period."""
+
+    consumption: Decimal
+    grid_purchase: Decimal
+    shared: Decimal
+    producer_overflow: Decimal
+    unused_overflow: Decimal
+    coverage: Decimal
+    revenue: Decimal
+
+
 def _decimal(value: Any) -> Decimal:
     if value is None:
         return ZERO
@@ -94,6 +107,21 @@ def profile_date_ranges(
         ranges.append((chunk_from, chunk_to))
         chunk_from = chunk_to
     return tuple(ranges)
+
+
+def completed_report_range(
+    period: str, today: date
+) -> tuple[date, date]:
+    """Return a half-open range for the previous completed report period."""
+    if period == "weekly":
+        end = today - timedelta(days=today.weekday())
+        return end - timedelta(days=7), end
+    if period == "monthly":
+        end = today.replace(day=1)
+        return (end - timedelta(days=1)).replace(day=1), end
+    if period == "yearly":
+        return date(today.year - 1, 1, 1), date(today.year, 1, 1)
+    raise ValueError(f"Unsupported report period: {period}")
 
 
 def _profile_layout(
@@ -283,6 +311,23 @@ def calculate_statistics(
         month_revenue=month_shared * sale_price,
         today_revenue=today_row.shared * sale_price,
         sale_price=sale_price,
+    )
+
+
+def calculate_period_summary(
+    days: tuple[DailySharing, ...], sale_price: Decimal
+) -> PeriodSummary:
+    """Sum daily rows for an arbitrary report period."""
+    consumption = sum((row.consumption for row in days), ZERO)
+    shared = sum((row.shared for row in days), ZERO)
+    return PeriodSummary(
+        consumption=consumption,
+        grid_purchase=sum((row.grid_purchase for row in days), ZERO),
+        shared=shared,
+        producer_overflow=sum((row.producer_overflow for row in days), ZERO),
+        unused_overflow=sum((row.unused_overflow for row in days), ZERO),
+        coverage=shared / consumption * Decimal("100") if consumption else ZERO,
+        revenue=shared * sale_price,
     )
 
 

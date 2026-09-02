@@ -16,7 +16,9 @@ Vlastní integrace pro Home Assistant, která načítá vyhodnocení skupiny sd�
 - hodinová i denní historie vypočtená ze zdrojových intervalů EDC,
 - hodinová aktualizace a podpora dlouhodobých statistik Home Assistantu,
 - opětovné zadání hesla, pokud EDC uložené údaje odmítne,
-- samostatné diagnostické entity pro všechny sdílející i cílové EANy ve skupině.
+- samostatné diagnostické entity pro všechny sdílející i cílové EANy ve skupině,
+- ruční i automatické denní, týdenní, měsíční a roční reporty na jednu nebo více e-mailových adres,
+- souhrnný report se všemi čtyřmi obdobími v jediném e-mailu.
 
 > [!IMPORTANT]
 > Výpočet označený jako zisk neodečítá investiční ani provozní náklady. Jde o hodnotu skutečně nasdílené energie při nastavené ceně.
@@ -45,6 +47,12 @@ Průvodce vyžaduje:
 Skupinu a cenu lze později změnit přes **Nastavení → Zařízení a služby → EDC Sharing Stats → Nastavit**. Přístupový token zůstává pouze v paměti; po restartu se integrace přihlásí znovu uloženými přístupovými údaji.
 
 Pokud účet obsahuje více skupin sdílení, lze integraci přidat opakovaně a při každém nastavení vybrat jinou skupinu podle názvu vráceného EDC. Každý nalezený sdílející a cílový EAN má vlastní diagnostickou entitu se stavem obsahujícím celé číslo EAN. Entit může být na obou stranách libovolný počet a jejich zobrazované názvy lze běžně změnit v nastavení entity Home Assistantu.
+
+## E-mailové reporty
+
+Nejdříve v Home Assistantu nastavte integraci **SMTP** a přidejte jednoho nebo více příjemců. Každá adresa se objeví jako samostatná `notify` entita. Potom otevřete **Nastavení → Zařízení a služby → EDC Sharing Stats → Nastavit**, vyberte požadované příjemce a zapněte denní, týdenní, měsíční nebo roční plán. Výchozí čas je 07:30, týdenní report se odesílá každé pondělí a měsíční/roční report pátý den měsíce, aby měl portál EDC čas zveřejnit uzavřená data.
+
+Reporty lze odeslat i ručně pomocí tlačítek **Odeslat denní report**, **Odeslat týdenní report**, **Odeslat měsíční report** a **Odeslat roční report** na zařízení integrace. Denní report obsahuje poslední den dostupný v EDC, týdenní předchozí uzavřený týden od pondělí do neděle, měsíční předchozí uzavřený kalendářní měsíc a roční předchozí uzavřený kalendářní rok. Tlačítko **Odeslat souhrnný report** spojí všechny čtyři části do jediného e-mailu. Každý report uvádí skupinu, všechny sdílející a cílové EANy, spotřebu, nasdílenou elektřinu, dokup ze sítě, přetok výrobny, nevyužitý přetok, pokrytí a hodnotu sdílení.
 
 ## Vytvářené senzory
 

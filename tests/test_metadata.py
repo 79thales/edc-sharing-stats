@@ -22,13 +22,18 @@ class TranslationMetadataTest(unittest.TestCase):
             (COMPONENT_ROOT / "translations" / "cs.json").read_text(encoding="utf-8")
         )
 
+        self.assertEqual(source["entity"], english["entity"])
+        self.assertEqual(
+            set(source["entity"]["button"]), set(czech["entity"]["button"])
+        )
         source_entities = source["entity"]["sensor"]
-        self.assertEqual(source_entities, english["entity"]["sensor"])
         self.assertEqual(set(source_entities), set(czech["entity"]["sensor"]))
         for translations in (english, czech):
             names = [item["name"] for item in translations["entity"]["sensor"].values()]
             self.assertEqual(len(names), 16)
             self.assertEqual(len(names), len(set(names)))
+
+        self.assertEqual(len(source["entity"]["button"]), 5)
 
 
 class BrandMetadataTest(unittest.TestCase):

@@ -24,14 +24,32 @@
     "step": {
       "init": {
         "title": "Nastavení EDC",
-        "description": "Vyberte skupinu a nastavte prodejní cenu použitou pro výpočet zisku z výroby.",
-        "data": { "sse_id": "Skupina sdílení", "sale_price": "Prodejní cena (Kč/kWh)" }
+        "description": "Vyberte skupinu, prodejní cenu, příjemce reportů a plán automatického odesílání. Týdenní, měsíční a roční report se odesílá za poslední uzavřené kalendářní období.",
+        "data": {
+          "sse_id": "Skupina sdílení",
+          "sale_price": "Prodejní cena (Kč/kWh)",
+          "report_targets": "Příjemci e-mailových oznámení",
+          "daily_report": "Odesílat denní report",
+          "weekly_report": "Odesílat týdenní report",
+          "monthly_report": "Odesílat měsíční report",
+          "yearly_report": "Odesílat roční report",
+          "report_time": "Čas odesílání reportů",
+          "report_day": "Den v měsíci pro měsíční a roční report"
+        }
       }
     },
     "error": { "already_configured": "Tato skupina sdílení je již nastavená." },
     "abort": { "cannot_connect": "K portálu EDC se nelze připojit.", "invalid_auth": "Přihlášení EDC již není platné." }
   },
-  "entity": { "sensor": {
+  "entity": {
+    "button": {
+      "send_daily_report": { "name": "Odeslat denní report" },
+      "send_weekly_report": { "name": "Odeslat týdenní report" },
+      "send_monthly_report": { "name": "Odeslat měsíční report" },
+      "send_yearly_report": { "name": "Odeslat roční report" },
+      "send_summary_report": { "name": "Odeslat souhrnný report" }
+    },
+    "sensor": {
     "shared_today": { "name": "Nasdíleno – poslední dostupný den" }, "consumption_today": { "name": "Spotřeba – poslední dostupný den" },
     "grid_today": { "name": "Dokup ze sítě – poslední dostupný den" }, "unused_today": { "name": "Nevyužitý přetok – poslední dostupný den" },
     "coverage_today": { "name": "Pokrytí sdílením – poslední dostupný den" }, "revenue_today": { "name": "Tržba – poslední dostupný den" },
@@ -40,5 +58,6 @@
     "unused_month": { "name": "Nevyužitý přetok tento měsíc" }, "coverage_month": { "name": "Pokrytí sdílením tento měsíc" },
     "production_profit_month": { "name": "Zisk z výroby tento měsíc" }, "sale_price": { "name": "Prodejní cena elektřiny" },
     "sharing_ean": { "name": "Sdílející EAN {ean}" }, "target_ean": { "name": "Cílový EAN {ean}" }
-  }}
+    }
+  }
 }

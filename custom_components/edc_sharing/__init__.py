@@ -12,6 +12,9 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import EdcApiClient
 from .const import CONF_SSE_ID, config_entry_unique_id
 from .coordinator import EdcSharingCoordinator
+from .report import EdcReportManager
+
+PLATFORMS = (Platform.SENSOR, Platform.BUTTON)
 
 
 @dataclass(slots=True)
@@ -20,6 +23,7 @@ class EdcRuntimeData:
 
     api: EdcApiClient
     coordinator: EdcSharingCoordinator
+    reporter: EdcReportManager
 
 
 type EdcConfigEntry = ConfigEntry[EdcRuntimeData]
@@ -47,16 +51,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: EdcConfigEntry) -> bool:
     )
     coordinator = EdcSharingCoordinator(hass, entry, api)
     await coordinator.async_config_entry_first_refresh()
-    entry.runtime_data = EdcRuntimeData(api, coordinator)
-    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
+    reporter = EdcReportManager(hass, entry, coordinator)
+    entry.runtime_data = EdcRuntimeData(api, coordinator, reporter)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     coordinator.async_enable_history_import()
+    reporter.async_start()
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: EdcConfigEntry) -> bool:
     """Unload the integration."""
-    return await hass.config_entries.async_unload_platforms(entry, [Platform.SENSOR])
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
 async def _async_reload_entry(hass: HomeAssistant, entry: EdcConfigEntry) -> None:

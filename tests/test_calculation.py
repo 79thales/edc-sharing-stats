@@ -57,6 +57,21 @@ class CalculationTests(unittest.TestCase):
             ),
         )
 
+    def test_completed_report_ranges(self) -> None:
+        today = date(2026, 9, 2)
+        self.assertEqual(
+            calculation.completed_report_range("weekly", today),
+            (date(2026, 8, 24), date(2026, 8, 31)),
+        )
+        self.assertEqual(
+            calculation.completed_report_range("monthly", today),
+            (date(2026, 8, 1), date(2026, 9, 1)),
+        )
+        self.assertEqual(
+            calculation.completed_report_range("yearly", today),
+            (date(2025, 1, 1), date(2026, 1, 1)),
+        )
+
     def test_daily_monthly_and_profit(self) -> None:
         response = {
             "valueColumns": [
@@ -86,6 +101,30 @@ class CalculationTests(unittest.TestCase):
                 Decimal("2"),
                 date(2026, 9, 1),
             )
+
+    def test_period_summary_sums_arbitrary_period(self) -> None:
+        days = (
+            calculation.DailySharing(
+                date(2026, 8, 1),
+                Decimal("10"), Decimal("6"), Decimal("4"), Decimal("9"),
+                Decimal("4"), Decimal("5"), Decimal("40"), Decimal("0"),
+            ),
+            calculation.DailySharing(
+                date(2026, 8, 2),
+                Decimal("20"), Decimal("12"), Decimal("8"), Decimal("15"),
+                Decimal("8"), Decimal("7"), Decimal("40"), Decimal("0"),
+            ),
+        )
+
+        summary = calculation.calculate_period_summary(days, Decimal("2.50"))
+
+        self.assertEqual(summary.consumption, Decimal("30"))
+        self.assertEqual(summary.shared, Decimal("12"))
+        self.assertEqual(summary.grid_purchase, Decimal("18"))
+        self.assertEqual(summary.producer_overflow, Decimal("24"))
+        self.assertEqual(summary.unused_overflow, Decimal("12"))
+        self.assertEqual(summary.coverage, Decimal("40"))
+        self.assertEqual(summary.revenue, Decimal("30.00"))
 
     def test_real_edc_sign_convention(self) -> None:
         """Producer values are positive and consumer values negative in EDC."""

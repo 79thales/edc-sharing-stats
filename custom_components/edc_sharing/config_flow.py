@@ -17,8 +17,17 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import EdcApiClient, EdcApiError, EdcAuthenticationError
 from .const import (
     CONF_SALE_PRICE,
+    CONF_DAILY_REPORT,
+    CONF_WEEKLY_REPORT,
+    CONF_MONTHLY_REPORT,
+    CONF_REPORT_DAY,
+    CONF_REPORT_TARGETS,
+    CONF_REPORT_TIME,
     CONF_SSE_ID,
     CONF_SSE_NAME,
+    CONF_YEARLY_REPORT,
+    DEFAULT_REPORT_DAY,
+    DEFAULT_REPORT_TIME,
     DEFAULT_SALE_PRICE,
     DOMAIN,
     config_entry_unique_id,
@@ -186,12 +195,24 @@ class EdcSharingOptionsFlow(OptionsFlow):
                     self._entry, data=new_data, unique_id=unique_id
                 )
                 return self.async_create_entry(
-                    data={CONF_SALE_PRICE: user_input[CONF_SALE_PRICE]}
+                    data={
+                        CONF_SALE_PRICE: user_input[CONF_SALE_PRICE],
+                        CONF_REPORT_TARGETS: user_input.get(
+                            CONF_REPORT_TARGETS, []
+                        ),
+                        CONF_DAILY_REPORT: user_input[CONF_DAILY_REPORT],
+                        CONF_WEEKLY_REPORT: user_input[CONF_WEEKLY_REPORT],
+                        CONF_MONTHLY_REPORT: user_input[CONF_MONTHLY_REPORT],
+                        CONF_YEARLY_REPORT: user_input[CONF_YEARLY_REPORT],
+                        CONF_REPORT_TIME: user_input[CONF_REPORT_TIME],
+                        CONF_REPORT_DAY: int(user_input[CONF_REPORT_DAY]),
+                    }
                 )
 
         current_price = self._entry.options.get(
             CONF_SALE_PRICE, self._entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE)
         )
+        current_targets = self._entry.options.get(CONF_REPORT_TARGETS, [])
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
@@ -202,6 +223,48 @@ class EdcSharingOptionsFlow(OptionsFlow):
                 ),
                 vol.Required(CONF_SALE_PRICE, default=float(Decimal(str(current_price)))): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=0, max=100, step=0.01, mode=selector.NumberSelectorMode.BOX)
+                ),
+                vol.Optional(
+                    CONF_REPORT_TARGETS, default=current_targets
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="notify", multiple=True)
+                ),
+                vol.Required(
+                    CONF_DAILY_REPORT,
+                    default=bool(self._entry.options.get(CONF_DAILY_REPORT, False)),
+                ): selector.BooleanSelector(),
+                vol.Required(
+                    CONF_WEEKLY_REPORT,
+                    default=bool(self._entry.options.get(CONF_WEEKLY_REPORT, False)),
+                ): selector.BooleanSelector(),
+                vol.Required(
+                    CONF_MONTHLY_REPORT,
+                    default=bool(self._entry.options.get(CONF_MONTHLY_REPORT, False)),
+                ): selector.BooleanSelector(),
+                vol.Required(
+                    CONF_YEARLY_REPORT,
+                    default=bool(self._entry.options.get(CONF_YEARLY_REPORT, False)),
+                ): selector.BooleanSelector(),
+                vol.Required(
+                    CONF_REPORT_TIME,
+                    default=str(
+                        self._entry.options.get(
+                            CONF_REPORT_TIME, DEFAULT_REPORT_TIME
+                        )
+                    ),
+                ): selector.TimeSelector(),
+                vol.Required(
+                    CONF_REPORT_DAY,
+                    default=int(
+                        self._entry.options.get(CONF_REPORT_DAY, DEFAULT_REPORT_DAY)
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=1,
+                        max=28,
+                        step=1,
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
                 ),
             }),
             errors=errors,

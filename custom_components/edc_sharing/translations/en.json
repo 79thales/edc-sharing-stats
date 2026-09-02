@@ -35,10 +35,17 @@
     "step": {
       "init": {
         "title": "EDC settings",
-        "description": "Select a group and set the sale price used to calculate production profit.",
+        "description": "Select a group, sale price, report recipients, and automatic email schedule. Weekly, monthly, and yearly reports are sent for the last completed calendar period.",
         "data": {
           "sse_id": "Sharing group",
-          "sale_price": "Sale price (CZK/kWh)"
+          "sale_price": "Sale price (CZK/kWh)",
+          "report_targets": "Email notification recipients",
+          "daily_report": "Send a daily report",
+          "weekly_report": "Send a weekly report",
+          "monthly_report": "Send a monthly report",
+          "yearly_report": "Send a yearly report",
+          "report_time": "Report time",
+          "report_day": "Day of month for monthly/yearly reports"
         }
       }
     },
@@ -51,6 +58,13 @@
     }
   },
   "entity": {
+    "button": {
+      "send_daily_report": { "name": "Send daily report" },
+      "send_weekly_report": { "name": "Send weekly report" },
+      "send_monthly_report": { "name": "Send monthly report" },
+      "send_yearly_report": { "name": "Send yearly report" },
+      "send_summary_report": { "name": "Send summary report" }
+    },
     "sensor": {
       "shared_today": { "name": "Shared – latest available day" },
       "consumption_today": { "name": "Consumption – latest available day" },
