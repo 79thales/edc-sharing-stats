@@ -71,6 +71,7 @@ class EdcApiClient:
             "redirect_uri": REDIRECT_URI,
             "response_type": "code",
             "scope": "openid",
+            "prompt": "login",
             "code_challenge": challenge,
             "code_challenge_method": "S256",
             "state": state,
@@ -78,8 +79,16 @@ class EdcApiClient:
         }
         try:
             response = await self._session.get(
-                f"{AUTHORITY_URL}/protocol/openid-connect/auth?{urlencode(params)}"
+                f"{AUTHORITY_URL}/protocol/openid-connect/auth?{urlencode(params)}",
+                allow_redirects=False,
             )
+            response, location = await self._async_follow_login_redirects(response)
+            redirect_query = parse_qs(urlparse(location).query)
+            code = redirect_query.get("code", [None])[0]
+            if code:
+                self._validate_authorization_redirect(redirect_query, state)
+                await self._async_exchange_code(code, verifier)
+                return
             if response.status >= 400:
                 raise EdcApiError(f"Přihlašovací stránka EDC vrátila HTTP {response.status}.")
             response_text = await response.text()
@@ -87,7 +96,9 @@ class EdcApiClient:
             parser.feed(response_text)
             login_action = parser.action or _extract_keycloak_value(response_text, "loginAction")
             if not login_action:
-                raise EdcAuthenticationError("Přihlašovací formulář EDC nebyl nalezen.")
+                raise EdcApiError(
+                    "Přihlašovací stránka EDC neobsahuje adresu loginAction."
+                )
             form = parser.fields | {
                 "username": self._username,
                 "password": self._password,
@@ -96,48 +107,64 @@ class EdcApiClient:
             login_response = await self._session.post(
                 urljoin(str(response.url), login_action), data=form, allow_redirects=False
             )
-            location = login_response.headers.get("Location", "")
-            for _ in range(5):
-                if "code=" in location:
-                    break
-                if login_response.status not in (301, 302, 303, 307, 308) or not location:
-                    login_error = _extract_keycloak_error(await login_response.text())
-                    if login_error and _is_invalid_credentials_error(login_error):
-                        raise EdcAuthenticationError(login_error)
-                    if login_response.status >= 400:
-                        raise EdcApiError(
-                            f"Přihlášení EDC vrátilo HTTP {login_response.status}."
-                        )
-                    raise EdcApiError(
-                        login_error or "EDC přihlášení nedokončilo přesměrováním."
-                    )
-                login_response = await self._session.get(
-                    urljoin(str(login_response.url), location), allow_redirects=False
-                )
-                location = login_response.headers.get("Location", "")
+            login_response, location = await self._async_follow_login_redirects(login_response)
             redirect_query = parse_qs(urlparse(location).query)
-            if redirect_query.get("state", [None])[0] != state:
-                raise EdcAuthenticationError("EDC vrátilo neplatný stav přihlášení.")
             code = redirect_query.get("code", [None])[0]
             if not code:
-                raise EdcAuthenticationError("EDC nevrátilo autorizační kód.")
-            token_response = await self._session.post(
-                f"{AUTHORITY_URL}/protocol/openid-connect/token",
-                data={
-                    "client_id": CLIENT_ID,
-                    "redirect_uri": REDIRECT_URI,
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "code_verifier": verifier,
-                },
-            )
-            if token_response.status != 200:
-                raise EdcAuthenticationError("Přihlášení EDC se nepodařilo dokončit.")
-            self._store_tokens(await token_response.json())
+                login_error = _extract_keycloak_error(await login_response.text())
+                if login_error and _is_invalid_credentials_error(login_error):
+                    raise EdcAuthenticationError(login_error)
+                if login_response.status >= 400:
+                    raise EdcApiError(
+                        f"Přihlášení EDC vrátilo HTTP {login_response.status}."
+                    )
+                raise EdcApiError(
+                    login_error or "EDC přihlášení nedokončilo přesměrováním."
+                )
+            self._validate_authorization_redirect(redirect_query, state)
+            await self._async_exchange_code(code, verifier)
         except EdcApiError:
             raise
         except (ClientError, TimeoutError, ValueError) as err:
             raise EdcApiError(f"Spojení s EDC selhalo: {err}") from err
+
+    async def _async_follow_login_redirects(
+        self, response: Any
+    ) -> tuple[Any, str]:
+        """Follow Keycloak redirects while preserving the authorization callback."""
+        location = response.headers.get("Location", "")
+        for _ in range(5):
+            if parse_qs(urlparse(location).query).get("code"):
+                break
+            if response.status not in (301, 302, 303, 307, 308) or not location:
+                break
+            response = await self._session.get(
+                urljoin(str(response.url), location), allow_redirects=False
+            )
+            location = response.headers.get("Location", "")
+        return response, location
+
+    @staticmethod
+    def _validate_authorization_redirect(
+        redirect_query: dict[str, list[str]], expected_state: str
+    ) -> None:
+        if redirect_query.get("state", [None])[0] != expected_state:
+            raise EdcAuthenticationError("EDC vrátilo neplatný stav přihlášení.")
+
+    async def _async_exchange_code(self, code: str, verifier: str) -> None:
+        token_response = await self._session.post(
+            f"{AUTHORITY_URL}/protocol/openid-connect/token",
+            data={
+                "client_id": CLIENT_ID,
+                "redirect_uri": REDIRECT_URI,
+                "grant_type": "authorization_code",
+                "code": code,
+                "code_verifier": verifier,
+            },
+        )
+        if token_response.status != 200:
+            raise EdcAuthenticationError("Přihlášení EDC se nepodařilo dokončit.")
+        self._store_tokens(await token_response.json())
 
     async def async_get_groups(self) -> list[dict[str, Any]]:
         data = await self._request("GET", "/profiles-data/get-sse")

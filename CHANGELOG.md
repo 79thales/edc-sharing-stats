@@ -1,5 +1,12 @@
 # Přehled změn
 
+## 0.1.2 – 2026-09-02
+
+- opraveno přihlášení při již existující relaci EDC v Home Assistantu,
+- EDC je výslovně požádáno o nové ověření uloženými přihlašovacími údaji,
+- autorizační kód se zachytí před automatickým přesměrováním na portál,
+- chybějící `loginAction` se správně hlásí jako technická chyba místo neplatných údajů.
+
 ## 0.1.1 – 2026-09-01
 
 - opraveno přihlášení po přechodu EDC na JavaScriptem vykreslovanou přihlašovací stránku Keycloakify,
