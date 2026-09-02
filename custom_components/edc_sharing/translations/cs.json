@@ -31,9 +31,9 @@
     "abort": { "cannot_connect": "K portálu EDC se nelze připojit.", "invalid_auth": "Přihlášení EDC již není platné." }
   },
   "entity": { "sensor": {
-    "shared_today": { "name": "Nasdíleno dnes" }, "consumption_today": { "name": "Spotřeba dnes" },
-    "grid_today": { "name": "Dokup ze sítě dnes" }, "unused_today": { "name": "Nevyužitý přetok dnes" },
-    "coverage_today": { "name": "Pokrytí sdílením dnes" }, "revenue_today": { "name": "Tržba dnes" },
+    "shared_today": { "name": "Nasdíleno – poslední dostupný den" }, "consumption_today": { "name": "Spotřeba – poslední dostupný den" },
+    "grid_today": { "name": "Dokup ze sítě – poslední dostupný den" }, "unused_today": { "name": "Nevyužitý přetok – poslední dostupný den" },
+    "coverage_today": { "name": "Pokrytí sdílením – poslední dostupný den" }, "revenue_today": { "name": "Tržba – poslední dostupný den" },
     "shared_month": { "name": "Nasdíleno tento měsíc" }, "consumption_month": { "name": "Spotřeba tento měsíc" },
     "grid_month": { "name": "Dokup ze sítě tento měsíc" }, "overflow_month": { "name": "Přetok výrobny tento měsíc" },
     "unused_month": { "name": "Nevyužitý přetok tento měsíc" }, "coverage_month": { "name": "Pokrytí sdílením tento měsíc" },

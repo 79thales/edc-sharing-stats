@@ -51,6 +51,8 @@ class CalculationTests(unittest.TestCase):
         }
         result = calculation.calculate_profile(response, Decimal("2.20"), date(2026, 9, 1))
         self.assertEqual(result.today.shared, Decimal("6"))
+        self.assertEqual(result.latest.shared, Decimal("6"))
+        self.assertEqual(result.latest_day, date(2026, 9, 1))
         self.assertEqual(result.today.coverage, Decimal("75"))
         self.assertEqual(result.month_shared, Decimal("6"))
         self.assertEqual(result.month_revenue, Decimal("13.20"))
@@ -84,6 +86,25 @@ class CalculationTests(unittest.TestCase):
         self.assertEqual(result.today.unused_overflow, Decimal("7.43"))
         self.assertEqual(result.today.consistency_difference, Decimal("0.00"))
         self.assertEqual(result.today_revenue, Decimal("10.5380"))
+
+    def test_latest_available_day_is_used_when_today_is_delayed(self) -> None:
+        response = {
+            "valueColumns": [
+                {"ean": "111", "type": "D", "dir": "IN"},
+                {"ean": "111", "type": "D", "dir": "OUT"},
+                {"ean": "222", "type": "O", "dir": "IN"},
+                {"ean": "222", "type": "O", "dir": "OUT"},
+            ],
+            "content": [
+                {"date": "2026-09-01", "values": [{"v": 10}, {"v": 4}, {"v": -8}, {"v": -2}]},
+            ],
+        }
+
+        result = calculation.calculate_profile(response, Decimal("2"), date(2026, 9, 2))
+
+        self.assertEqual(result.today.shared, Decimal("0"))
+        self.assertEqual(result.latest.shared, Decimal("6"))
+        self.assertEqual(result.latest_day, date(2026, 9, 1))
 
 
 if __name__ == "__main__":

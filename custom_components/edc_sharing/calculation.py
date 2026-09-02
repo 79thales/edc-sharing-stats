@@ -33,6 +33,8 @@ class SharingStatistics:
 
     days: tuple[DailySharing, ...]
     today: DailySharing
+    latest: DailySharing
+    latest_day: date | None
     month_consumption: Decimal
     month_grid_purchase: Decimal
     month_shared: Decimal
@@ -134,6 +136,9 @@ def calculate_statistics(
     daily = sorted(days, key=lambda row: row.day)
     empty_today = DailySharing(today, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO)
     today_row = next((row for row in daily if row.day == today), empty_today)
+    available_rows = [row for row in daily if row.day <= today]
+    latest_row = available_rows[-1] if available_rows else empty_today
+    latest_day = latest_row.day if available_rows else None
     month_rows = [row for row in daily if row.day.year == today.year and row.day.month == today.month]
     month_consumption = sum((row.consumption for row in month_rows), ZERO)
     month_shared = sum((row.shared for row in month_rows), ZERO)
@@ -141,6 +146,8 @@ def calculate_statistics(
     return SharingStatistics(
         days=tuple(daily),
         today=today_row,
+        latest=latest_row,
+        latest_day=latest_day,
         month_consumption=month_consumption,
         month_grid_purchase=sum((row.grid_purchase for row in month_rows), ZERO),
         month_shared=month_shared,

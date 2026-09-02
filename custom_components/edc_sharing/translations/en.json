@@ -49,12 +49,12 @@
   },
   "entity": {
     "sensor": {
-      "shared_today": { "name": "Shared today" },
-      "consumption_today": { "name": "Consumption today" },
-      "grid_today": { "name": "Grid purchase today" },
-      "unused_today": { "name": "Unused surplus today" },
-      "coverage_today": { "name": "Sharing coverage today" },
-      "revenue_today": { "name": "Revenue today" },
+      "shared_today": { "name": "Shared – latest available day" },
+      "consumption_today": { "name": "Consumption – latest available day" },
+      "grid_today": { "name": "Grid purchase – latest available day" },
+      "unused_today": { "name": "Unused surplus – latest available day" },
+      "coverage_today": { "name": "Sharing coverage – latest available day" },
+      "revenue_today": { "name": "Revenue – latest available day" },
       "shared_month": { "name": "Shared this month" },
       "consumption_month": { "name": "Consumption this month" },
       "grid_month": { "name": "Grid purchase this month" },

@@ -35,18 +35,30 @@ ENERGY_TOTAL = dict(
     suggested_display_precision=2,
 )
 
+
+def _latest_attributes(statistics: SharingStatistics) -> dict[str, Any]:
+    """Describe which delayed EDC day is represented by the current value."""
+    return {
+        "data_date": statistics.latest_day.isoformat()
+        if statistics.latest_day is not None
+        else None
+    }
+
+
 SENSORS: tuple[EdcSensorDescription, ...] = (
-    EdcSensorDescription(key="shared_today", translation_key="shared_today", value_fn=lambda x: x.today.shared, **ENERGY_TOTAL),
-    EdcSensorDescription(key="consumption_today", translation_key="consumption_today", value_fn=lambda x: x.today.consumption, **ENERGY_TOTAL),
-    EdcSensorDescription(key="grid_today", translation_key="grid_today", value_fn=lambda x: x.today.grid_purchase, **ENERGY_TOTAL),
-    EdcSensorDescription(key="unused_today", translation_key="unused_today", value_fn=lambda x: x.today.unused_overflow, **ENERGY_TOTAL),
+    EdcSensorDescription(key="shared_today", translation_key="shared_today", value_fn=lambda x: x.latest.shared, attributes_fn=_latest_attributes, **ENERGY_TOTAL),
+    EdcSensorDescription(key="consumption_today", translation_key="consumption_today", value_fn=lambda x: x.latest.consumption, attributes_fn=_latest_attributes, **ENERGY_TOTAL),
+    EdcSensorDescription(key="grid_today", translation_key="grid_today", value_fn=lambda x: x.latest.grid_purchase, attributes_fn=_latest_attributes, **ENERGY_TOTAL),
+    EdcSensorDescription(key="unused_today", translation_key="unused_today", value_fn=lambda x: x.latest.unused_overflow, attributes_fn=_latest_attributes, **ENERGY_TOTAL),
     EdcSensorDescription(
-        key="coverage_today", translation_key="coverage_today", value_fn=lambda x: x.today.coverage,
+        key="coverage_today", translation_key="coverage_today", value_fn=lambda x: x.latest.coverage,
         native_unit_of_measurement=PERCENTAGE, state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1,
+        attributes_fn=_latest_attributes,
     ),
     EdcSensorDescription(
-        key="revenue_today", translation_key="revenue_today", value_fn=lambda x: x.today_revenue,
+        key="revenue_today", translation_key="revenue_today", value_fn=lambda x: x.latest.shared * x.sale_price,
         device_class=SensorDeviceClass.MONETARY, native_unit_of_measurement="CZK", state_class=SensorStateClass.TOTAL, suggested_display_precision=2,
+        attributes_fn=_latest_attributes,
     ),
     EdcSensorDescription(key="shared_month", translation_key="shared_month", value_fn=lambda x: x.month_shared, **ENERGY_TOTAL),
     EdcSensorDescription(key="consumption_month", translation_key="consumption_month", value_fn=lambda x: x.month_consumption, **ENERGY_TOTAL),

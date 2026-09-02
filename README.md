@@ -8,7 +8,7 @@ Vlastní integrace pro Home Assistant, která načítá vyhodnocení skupiny sd�
 
 - přihlášení k EDC přes uživatelské rozhraní Home Assistantu,
 - automatické načtení a výběr skupiny sdílení,
-- denní a měsíční hodnoty sdílení, spotřeby, dokupu a přetoků,
+- hodnoty za poslední dostupný den a za aktuální měsíc pro sdílení, spotřebu, dokup a přetoky,
 - procentuální pokrytí spotřeby sdílenou elektřinou,
 - nastavitelná prodejní cena v Kč/kWh,
 - výpočet tržby/zisku z výroby jako `nasdílené kWh × prodejní cena`,
@@ -44,11 +44,11 @@ Skupinu a cenu lze později změnit přes **Nastavení → Zařízení a služby
 
 ## Vytvářené senzory
 
-- nasdíleno, spotřeba, dokup, nevyužitý přetok, pokrytí a tržba za dnešek,
+- nasdíleno, spotřeba, dokup, nevyužitý přetok, pokrytí a tržba za poslední den dostupný v EDC,
 - nasdíleno, spotřeba, dokup, přetok výrobny, nevyužitý přetok, pokrytí a hodnota výroby za aktuální měsíc,
 - nastavená prodejní cena.
 
-Integrace vytváří celkem 14 senzorů. Nejde o duplicity: šest patří dnešku, sedm aktuálnímu měsíci a jeden představuje nastavenou prodejní cenu. Každý senzor má vlastní jedinečný identifikátor a lokalizovaný název.
+Integrace vytváří celkem 14 senzorů. Nejde o duplicity: šest patří poslednímu dni dostupnému v EDC, sedm aktuálnímu měsíci a jeden představuje nastavenou prodejní cenu. Každý senzor má vlastní jedinečný identifikátor a lokalizovaný název. U šesti denních senzorů atribut `data_date` uvádí skutečné datum měření; EDC obvykle zveřejňuje vyhodnocení se zpožděním, takže nemusí jít o dnešní datum.
 
 ## Historie a dlouhodobé statistiky
 

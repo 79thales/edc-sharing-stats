@@ -1,5 +1,11 @@
 # Přehled změn
 
+## 0.1.6 – 2026-09-02
+
+- senzory původně označené „dnes“ nyní zobrazují poslední den, pro který už EDC zveřejnilo vyhodnocení,
+- datum zdrojových dat je dostupné v atributu `data_date`,
+- názvy těchto senzorů v češtině i angličtině jasně uvádějí, že jde o poslední dostupný den.
+
 ## 0.1.5 – 2026-09-02
 
 - příprava repozitáře pro zařazení do výchozího katalogu HACS,
