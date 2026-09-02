@@ -20,6 +20,22 @@ SPEC.loader.exec_module(calculation)
 
 
 class CalculationTests(unittest.TestCase):
+    def test_two_month_range_is_split_at_31_days(self) -> None:
+        self.assertEqual(
+            calculation.two_calendar_month_start(date(2026, 9, 2)),
+            date(2026, 8, 1),
+        )
+        self.assertEqual(
+            calculation.profile_date_ranges(date(2026, 8, 1), date(2026, 9, 3)),
+            (
+                (date(2026, 8, 1), date(2026, 9, 1)),
+                (date(2026, 9, 1), date(2026, 9, 3)),
+            ),
+        )
+
+    def test_empty_profile_is_a_valid_partial_result(self) -> None:
+        self.assertEqual(calculation.parse_daily_profile({"content": []}), ())
+
     def test_daily_monthly_and_profit(self) -> None:
         response = {
             "valueColumns": [

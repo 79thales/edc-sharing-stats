@@ -1,5 +1,12 @@
 # Přehled změn
 
+## 0.1.4 – 2026-09-02
+
+- automatické stažení denních výsledků za předchozí a aktuální kalendářní měsíc,
+- rozdělení požadavků do limitu EDC nejvýše 31 dní a sloučení výsledků bez duplicit,
+- bezpečný idempotentní import šesti denních řad do dlouhodobých statistik Home Assistantu,
+- průběžné doplnění nově uzavřených dnů a oprav EDC jednou denně.
+
 ## 0.1.3 – 2026-09-02
 
 - přidána vlastní ikona integrace pro Home Assistant 2026.3 a novější,

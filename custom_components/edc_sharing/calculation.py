@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
 
 ZERO = Decimal("0")
+MAX_PROFILE_DAYS = 31
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,12 +50,35 @@ def _decimal(value: Any) -> Decimal:
     return Decimal(str(value))
 
 
-def calculate_profile(response: dict[str, Any], sale_price: Decimal, today: date) -> SharingStatistics:
-    """Calculate sharing from the standard profile overview response."""
+def two_calendar_month_start(today: date) -> date:
+    """Return the first day of the previous calendar month."""
+    current_month = today.replace(day=1)
+    return (current_month - timedelta(days=1)).replace(day=1)
+
+
+def profile_date_ranges(
+    date_from: date, date_to: date
+) -> tuple[tuple[date, date], ...]:
+    """Split a half-open date interval into EDC-compatible requests."""
+    if date_to <= date_from:
+        return ()
+    ranges: list[tuple[date, date]] = []
+    chunk_from = date_from
+    while chunk_from < date_to:
+        chunk_to = min(chunk_from + timedelta(days=MAX_PROFILE_DAYS), date_to)
+        ranges.append((chunk_from, chunk_to))
+        chunk_from = chunk_to
+    return tuple(ranges)
+
+
+def parse_daily_profile(response: dict[str, Any]) -> tuple[DailySharing, ...]:
+    """Parse daily rows from one standard profile overview response."""
     columns = response.get("valueColumns") or []
     content = response.get("content") or []
-    if not columns or not content:
-        raise ValueError("EDC nevrátilo profilová data.")
+    if not content:
+        return ()
+    if not columns:
+        raise ValueError("EDC nevrátilo popis profilových dat.")
 
     producers: dict[str, dict[str, int]] = {}
     consumers: dict[str, dict[str, int]] = {}
@@ -100,7 +124,14 @@ def calculate_profile(response: dict[str, Any], sale_price: Decimal, today: date
             )
         )
 
-    daily.sort(key=lambda row: row.day)
+    return tuple(sorted(daily, key=lambda row: row.day))
+
+
+def calculate_statistics(
+    days: tuple[DailySharing, ...], sale_price: Decimal, today: date
+) -> SharingStatistics:
+    """Calculate current values from already parsed daily rows."""
+    daily = sorted(days, key=lambda row: row.day)
     empty_today = DailySharing(today, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO)
     today_row = next((row for row in daily if row.day == today), empty_today)
     month_rows = [row for row in daily if row.day.year == today.year and row.day.month == today.month]
@@ -120,3 +151,8 @@ def calculate_profile(response: dict[str, Any], sale_price: Decimal, today: date
         today_revenue=today_row.shared * sale_price,
         sale_price=sale_price,
     )
+
+
+def calculate_profile(response: dict[str, Any], sale_price: Decimal, today: date) -> SharingStatistics:
+    """Calculate sharing from one standard profile overview response."""
+    return calculate_statistics(parse_daily_profile(response), sale_price, today)

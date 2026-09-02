@@ -35,6 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EdcConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = EdcRuntimeData(api, coordinator)
     await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
+    coordinator.async_enable_history_import()
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True
 
