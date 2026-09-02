@@ -27,7 +27,7 @@
       "no_groups": "The account has no available sharing group."
     },
     "abort": {
-      "already_configured": "This EDC account is already configured.",
+      "already_configured": "This EDC sharing group is already configured.",
       "reauth_successful": "The EDC credentials were updated successfully."
     }
   },
@@ -41,6 +41,9 @@
           "sale_price": "Sale price (CZK/kWh)"
         }
       }
+    },
+    "error": {
+      "already_configured": "This sharing group is already configured."
     },
     "abort": {
       "cannot_connect": "Unable to connect to the EDC portal.",
@@ -62,7 +65,9 @@
       "unused_month": { "name": "Unused surplus this month" },
       "coverage_month": { "name": "Sharing coverage this month" },
       "production_profit_month": { "name": "Production profit this month" },
-      "sale_price": { "name": "Electricity sale price" }
+      "sale_price": { "name": "Electricity sale price" },
+      "sharing_ean": { "name": "Sharing EAN {ean}" },
+      "target_ean": { "name": "Target EAN {ean}" }
     }
   }
 }

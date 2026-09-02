@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import EdcApiClient
+from .const import CONF_SSE_ID, config_entry_unique_id
 from .coordinator import EdcSharingCoordinator
 
 
@@ -22,6 +23,19 @@ class EdcRuntimeData:
 
 
 type EdcConfigEntry = ConfigEntry[EdcRuntimeData]
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Make config entries unique per account and sharing group."""
+    if entry.version == 1:
+        hass.config_entries.async_update_entry(
+            entry,
+            unique_id=config_entry_unique_id(
+                entry.data[CONF_USERNAME], entry.data[CONF_SSE_ID]
+            ),
+            version=2,
+        )
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: EdcConfigEntry) -> bool:

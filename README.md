@@ -15,7 +15,8 @@ Vlastní integrace pro Home Assistant, která načítá vyhodnocení skupiny sd�
 - automatické stažení profilových dat za předchozí a aktuální kalendářní měsíc,
 - hodinová i denní historie vypočtená ze zdrojových intervalů EDC,
 - hodinová aktualizace a podpora dlouhodobých statistik Home Assistantu,
-- opětovné zadání hesla, pokud EDC uložené údaje odmítne.
+- opětovné zadání hesla, pokud EDC uložené údaje odmítne,
+- samostatné diagnostické entity pro všechny sdílející i cílové EANy ve skupině.
 
 > [!IMPORTANT]
 > Výpočet označený jako zisk neodečítá investiční ani provozní náklady. Jde o hodnotu skutečně nasdílené energie při nastavené ceně.
@@ -42,6 +43,8 @@ Průvodce vyžaduje:
 - prodejní cenu elektřiny v Kč/kWh.
 
 Skupinu a cenu lze později změnit přes **Nastavení → Zařízení a služby → EDC Sharing Stats → Nastavit**. Přístupový token zůstává pouze v paměti; po restartu se integrace přihlásí znovu uloženými přístupovými údaji.
+
+Pokud účet obsahuje více skupin sdílení, lze integraci přidat opakovaně a při každém nastavení vybrat jinou skupinu podle názvu vráceného EDC. Každý nalezený sdílející a cílový EAN má vlastní diagnostickou entitu se stavem obsahujícím celé číslo EAN. Entit může být na obou stranách libovolný počet a jejich zobrazované názvy lze běžně změnit v nastavení entity Home Assistantu.
 
 ## Vytvářené senzory
 

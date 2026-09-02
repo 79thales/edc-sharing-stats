@@ -21,13 +21,14 @@ from .const import (
     CONF_SSE_NAME,
     DEFAULT_SALE_PRICE,
     DOMAIN,
+    config_entry_unique_id,
 )
 
 
 class EdcSharingConfigFlow(ConfigFlow, domain=DOMAIN):
     """Configure an EDC account and sharing group."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self) -> None:
         self._credentials: dict[str, Any] = {}
@@ -58,8 +59,6 @@ class EdcSharingConfigFlow(ConfigFlow, domain=DOMAIN):
                     errors["base"] = "no_groups"
                 else:
                     self._credentials = dict(user_input)
-                    await self.async_set_unique_id(user_input[CONF_USERNAME].strip().lower())
-                    self._abort_if_unique_id_configured()
                     return await self.async_step_group()
 
         schema = vol.Schema({
@@ -78,6 +77,10 @@ class EdcSharingConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_group(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
             sse_id = str(user_input[CONF_SSE_ID])
+            await self.async_set_unique_id(
+                config_entry_unique_id(self._credentials[CONF_USERNAME], sse_id)
+            )
+            self._abort_if_unique_id_configured()
             data = self._credentials | {
                 CONF_SSE_ID: sse_id,
                 CONF_SSE_NAME: self._groups[sse_id],
@@ -164,9 +167,27 @@ class EdcSharingOptionsFlow(OptionsFlow):
 
         if user_input is not None:
             sse_id = str(user_input[CONF_SSE_ID])
-            new_data = self._entry.data | {CONF_SSE_ID: sse_id, CONF_SSE_NAME: choices[sse_id]}
-            self.hass.config_entries.async_update_entry(self._entry, data=new_data)
-            return self.async_create_entry(data={CONF_SALE_PRICE: user_input[CONF_SALE_PRICE]})
+            unique_id = config_entry_unique_id(
+                self._entry.data[CONF_USERNAME], sse_id
+            )
+            duplicate = any(
+                entry.entry_id != self._entry.entry_id
+                and entry.unique_id == unique_id
+                for entry in self.hass.config_entries.async_entries(DOMAIN)
+            )
+            if duplicate:
+                errors[CONF_SSE_ID] = "already_configured"
+            else:
+                new_data = self._entry.data | {
+                    CONF_SSE_ID: sse_id,
+                    CONF_SSE_NAME: choices[sse_id],
+                }
+                self.hass.config_entries.async_update_entry(
+                    self._entry, data=new_data, unique_id=unique_id
+                )
+                return self.async_create_entry(
+                    data={CONF_SALE_PRICE: user_input[CONF_SALE_PRICE]}
+                )
 
         current_price = self._entry.options.get(
             CONF_SALE_PRICE, self._entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE)

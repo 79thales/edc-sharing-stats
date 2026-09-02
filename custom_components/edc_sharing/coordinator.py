@@ -15,9 +15,11 @@ from homeassistant.util import dt as dt_util
 from .api import EdcApiClient, EdcApiError, EdcAuthenticationError
 from .calculation import (
     DailySharing,
+    EanInfo,
     HourlySharing,
     SharingStatistics,
     calculate_statistics,
+    extract_eans,
     parse_daily_profile,
     parse_hourly_profile,
     profile_date_ranges,
@@ -50,6 +52,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             update_interval=DEFAULT_SCAN_INTERVAL,
         )
         self.api = api
+        self.eans: tuple[EanInfo, ...] = ()
         self._days: dict[date, DailySharing] = {}
         self._hours: dict[datetime, HourlySharing] = {}
         self._history_refresh_date: date | None = None
@@ -69,6 +72,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         try:
             fetched: dict[date, DailySharing] = {}
             fetched_hours: dict[datetime, HourlySharing] = {}
+            fetched_eans: set[EanInfo] = set()
             for chunk_from, chunk_to in profile_date_ranges(date_from, date_to):
                 local_from = datetime.combine(chunk_from, time.min, tzinfo=now.tzinfo)
                 local_to = datetime.combine(chunk_to, time.min, tzinfo=now.tzinfo)
@@ -91,6 +95,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                         if date_from <= row.start.date() < date_to
                     }
                 )
+                fetched_eans.update(extract_eans(raw))
 
             if full_history_refresh:
                 self._days = {
@@ -104,6 +109,10 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 self._history_refresh_date = today
             self._days.update(fetched)
             self._hours.update(fetched_hours)
+            if fetched_eans:
+                self.eans = tuple(
+                    sorted(fetched_eans, key=lambda item: (item.role, item.ean))
+                )
             price = Decimal(str(self.config_entry.options.get(
                 CONF_SALE_PRICE,
                 self.config_entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE),

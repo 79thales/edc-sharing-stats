@@ -16,7 +16,7 @@
     },
     "error": { "cannot_connect": "K portálu EDC se nelze připojit.", "invalid_auth": "Neplatný e-mail nebo heslo.", "no_groups": "Účet nemá dostupnou skupinu sdílení." },
     "abort": {
-      "already_configured": "Tento účet EDC je již nastaven.",
+      "already_configured": "Tato skupina sdílení EDC je již nastavená.",
       "reauth_successful": "Přihlašovací údaje EDC byly úspěšně aktualizovány."
     }
   },
@@ -28,6 +28,7 @@
         "data": { "sse_id": "Skupina sdílení", "sale_price": "Prodejní cena (Kč/kWh)" }
       }
     },
+    "error": { "already_configured": "Tato skupina sdílení je již nastavená." },
     "abort": { "cannot_connect": "K portálu EDC se nelze připojit.", "invalid_auth": "Přihlášení EDC již není platné." }
   },
   "entity": { "sensor": {
@@ -37,6 +38,7 @@
     "shared_month": { "name": "Nasdíleno tento měsíc" }, "consumption_month": { "name": "Spotřeba tento měsíc" },
     "grid_month": { "name": "Dokup ze sítě tento měsíc" }, "overflow_month": { "name": "Přetok výrobny tento měsíc" },
     "unused_month": { "name": "Nevyužitý přetok tento měsíc" }, "coverage_month": { "name": "Pokrytí sdílením tento měsíc" },
-    "production_profit_month": { "name": "Zisk z výroby tento měsíc" }, "sale_price": { "name": "Prodejní cena elektřiny" }
+    "production_profit_month": { "name": "Zisk z výroby tento měsíc" }, "sale_price": { "name": "Prodejní cena elektřiny" },
+    "sharing_ean": { "name": "Sdílející EAN {ean}" }, "target_ean": { "name": "Cílový EAN {ean}" }
   }}
 }

@@ -8,8 +8,8 @@ from decimal import Decimal
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
-from homeassistant.const import PERCENTAGE, Platform, UnitOfEnergy
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EntityCategory, PERCENTAGE, Platform, UnitOfEnergy
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -17,7 +17,7 @@ from homeassistant.helpers.translation import async_get_translations
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import EdcConfigEntry
-from .calculation import SharingStatistics
+from .calculation import EanInfo, SharingStatistics
 from .const import CONF_SSE_ID, CONF_SSE_NAME, DOMAIN
 from .coordinator import EdcSharingCoordinator
 
@@ -97,7 +97,25 @@ async def async_setup_entry(
 ) -> None:
     """Set up all EDC sensors."""
     await _async_refresh_existing_entity_names(hass, entry)
-    async_add_entities(EdcSharingSensor(entry, description) for description in SENSORS)
+    async_add_entities([EdcSharingSensor(entry, description) for description in SENSORS])
+    known_eans: set[tuple[str, str]] = set()
+
+    @callback
+    def async_add_new_eans() -> None:
+        new_eans = [
+            ean_info
+            for ean_info in entry.runtime_data.coordinator.eans
+            if (ean_info.role, ean_info.ean) not in known_eans
+        ]
+        if not new_eans:
+            return
+        known_eans.update((item.role, item.ean) for item in new_eans)
+        async_add_entities([EdcEanSensor(entry, item) for item in new_eans])
+
+    async_add_new_eans()
+    entry.async_on_unload(
+        entry.runtime_data.coordinator.async_add_listener(async_add_new_eans)
+    )
 
 
 async def _async_refresh_existing_entity_names(
@@ -164,3 +182,47 @@ class EdcSharingSensor(CoordinatorEntity[EdcSharingCoordinator], SensorEntity):
                 }
             )
         return attributes or None
+
+
+class EdcEanSensor(CoordinatorEntity[EdcSharingCoordinator], SensorEntity):
+    """Diagnostic entity representing one EAN in the sharing group."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+
+    def __init__(self, entry: EdcConfigEntry, ean_info: EanInfo) -> None:
+        super().__init__(entry.runtime_data.coordinator)
+        self._ean_info = ean_info
+        self._attr_unique_id = (
+            f"{entry.data[CONF_SSE_ID]}_{ean_info.role}_ean_{ean_info.ean}"
+        )
+        self._attr_translation_key = f"{ean_info.role}_ean"
+        self._attr_translation_placeholders = {"ean": ean_info.ean}
+        self._attr_icon = (
+            "mdi:transmission-tower-export"
+            if ean_info.role == "sharing"
+            else "mdi:transmission-tower-import"
+        )
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(entry.data[CONF_SSE_ID]))},
+            name=str(entry.data[CONF_SSE_NAME]),
+            manufacturer="Elektroenergetické datové centrum, a. s.",
+            model="Skupina sdílení elektřiny",
+            configuration_url="https://portal.edc-cr.cz/sprava-dat/zobrazeni-dat",
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return the complete EAN without numeric conversion."""
+        return self._ean_info.ean
+
+    @property
+    def available(self) -> bool:
+        """Mark an EAN unavailable if EDC removes it from the group."""
+        return super().available and self._ean_info in self.coordinator.eans
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        """Expose a stable machine-readable role."""
+        return {"role": self._ean_info.role}

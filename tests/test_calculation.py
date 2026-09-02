@@ -36,6 +36,27 @@ class CalculationTests(unittest.TestCase):
     def test_empty_profile_is_a_valid_partial_result(self) -> None:
         self.assertEqual(calculation.parse_daily_profile({"content": []}), ())
 
+    def test_extracts_multiple_sharing_and_target_eans(self) -> None:
+        response = {
+            "valueColumns": [
+                {"ean": "producer-1", "type": "D", "dir": "IN"},
+                {"ean": "producer-1", "type": "D", "dir": "OUT"},
+                {"ean": "producer-2", "type": "D", "dir": "IN"},
+                {"ean": "consumer-1", "type": "O", "dir": "IN"},
+                {"ean": "consumer-2", "type": "O", "dir": "OUT"},
+            ]
+        }
+
+        self.assertEqual(
+            calculation.extract_eans(response),
+            (
+                calculation.EanInfo("producer-1", "sharing"),
+                calculation.EanInfo("producer-2", "sharing"),
+                calculation.EanInfo("consumer-1", "target"),
+                calculation.EanInfo("consumer-2", "target"),
+            ),
+        )
+
     def test_daily_monthly_and_profit(self) -> None:
         response = {
             "valueColumns": [

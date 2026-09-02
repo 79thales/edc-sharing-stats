@@ -5,11 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 
 ZERO = Decimal("0")
 MAX_PROFILE_DAYS = 31
+
+
+@dataclass(frozen=True, slots=True)
+class EanInfo:
+    """One EAN participating in an EDC sharing group."""
+
+    ean: str
+    role: Literal["sharing", "target"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +124,21 @@ def _profile_layout(
     if not producers or not consumers:
         raise ValueError("V odpovědi EDC nebyl rozpoznán výrobní a odběrný EAN.")
     return columns, content, producers, consumers
+
+
+def extract_eans(response: dict[str, Any]) -> tuple[EanInfo, ...]:
+    """Return every distinct sharing and target EAN in an EDC profile."""
+    found: set[EanInfo] = set()
+    for column in response.get("valueColumns") or []:
+        ean = str(column.get("ean") or "").strip()
+        role = str(column.get("type") or "").upper()
+        if not ean:
+            continue
+        if role == "D":
+            found.add(EanInfo(ean, "sharing"))
+        elif role == "O":
+            found.add(EanInfo(ean, "target"))
+    return tuple(sorted(found, key=lambda item: (item.role, item.ean)))
 
 
 def _add_values(

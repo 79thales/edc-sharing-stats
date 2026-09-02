@@ -1,5 +1,11 @@
 # Přehled změn
 
+## 0.1.8 – 2026-09-02
+
+- přidána samostatná diagnostická entita pro každý sdílející a cílový EAN; počet EANů není omezený a entity lze v Home Assistantu přejmenovat,
+- jeden účet EDC nyní může mít současně nastaveno více skupin sdílení,
+- výběr skupiny nadále používá názvy skupin poskytnuté portálem EDC.
+
 ## 0.1.7 – 2026-09-02
 
 - opraveno zpracování odpovědi EDC obsahující více 15minutových řádků pro stejný den; denní hodnoty jsou nyní součtem všech intervalů,
