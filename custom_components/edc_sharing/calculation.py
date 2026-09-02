@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -17,6 +17,21 @@ class DailySharing:
     """Calculated values for one day."""
 
     day: date
+    consumption: Decimal
+    grid_purchase: Decimal
+    shared: Decimal
+    producer_overflow: Decimal
+    used_overflow: Decimal
+    unused_overflow: Decimal
+    coverage: Decimal
+    consistency_difference: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class HourlySharing:
+    """Calculated values for one clock hour."""
+
+    start: datetime
     consumption: Decimal
     grid_purchase: Decimal
     shared: Decimal
@@ -73,12 +88,19 @@ def profile_date_ranges(
     return tuple(ranges)
 
 
-def parse_daily_profile(response: dict[str, Any]) -> tuple[DailySharing, ...]:
-    """Parse daily rows from one standard profile overview response."""
+def _profile_layout(
+    response: dict[str, Any],
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    dict[str, dict[str, int]],
+    dict[str, dict[str, int]],
+]:
+    """Return content and the producer/consumer column mappings."""
     columns = response.get("valueColumns") or []
     content = response.get("content") or []
     if not content:
-        return ()
+        return columns, content, {}, {}
     if not columns:
         raise ValueError("EDC nevrátilo popis profilových dat.")
 
@@ -93,40 +115,121 @@ def parse_daily_profile(response: dict[str, Any]) -> tuple[DailySharing, ...]:
             target.setdefault(ean, {})[direction] = index
     if not producers or not consumers:
         raise ValueError("V odpovědi EDC nebyl rozpoznán výrobní a odběrný EAN.")
+    return columns, content, producers, consumers
 
-    daily: list[DailySharing] = []
+
+def _add_values(
+    target: list[Decimal], values: list[Any], column_count: int
+) -> None:
+    """Add one EDC interval to an aggregate value vector."""
+    for index, raw in enumerate(values[:column_count]):
+        target[index] += _decimal(raw.get("v") if isinstance(raw, dict) else raw)
+
+
+def _sharing_values(
+    values: list[Decimal],
+    producers: dict[str, dict[str, int]],
+    consumers: dict[str, dict[str, int]],
+) -> tuple[Decimal, Decimal, Decimal, Decimal, Decimal, Decimal, Decimal, Decimal]:
+    """Calculate sharing values from aggregated EDC value columns."""
+    def value(index: int | None) -> Decimal:
+        if index is None or index >= len(values):
+            return ZERO
+        return values[index]
+
+    producer_in = sum((value(pair.get("IN")) for pair in producers.values()), ZERO)
+    producer_out = sum((value(pair.get("OUT")) for pair in producers.values()), ZERO)
+    consumer_in = sum((abs(value(pair.get("IN"))) for pair in consumers.values()), ZERO)
+    consumer_out = sum((abs(value(pair.get("OUT"))) for pair in consumers.values()), ZERO)
+    shared_consumer = consumer_in - consumer_out
+    shared_producer = producer_in - producer_out
+    coverage = shared_consumer / consumer_in * Decimal("100") if consumer_in else ZERO
+    return (
+        consumer_in,
+        consumer_out,
+        shared_consumer,
+        producer_in,
+        shared_producer,
+        producer_out,
+        coverage,
+        abs(shared_consumer - shared_producer),
+    )
+
+
+def parse_daily_profile(response: dict[str, Any]) -> tuple[DailySharing, ...]:
+    """Aggregate standard profile rows into calendar days."""
+    columns, content, producers, consumers = _profile_layout(response)
+    if not content:
+        return ()
+
+    # The overview endpoint may return quarter-hour rows even when DAILY is
+    # requested. Aggregate every value column by calendar day before deriving
+    # sharing totals; otherwise the coordinator would retain only the final
+    # interval of each day.
+    values_by_day: dict[date, list[Decimal]] = {}
     for item in content:
         item_date = date.fromisoformat(str(item["date"])[:10])
         values = item.get("values") or []
+        totals = values_by_day.setdefault(item_date, [ZERO] * len(columns))
+        _add_values(totals, values, len(columns))
 
-        def value(index: int | None) -> Decimal:
-            if index is None or index >= len(values):
-                return ZERO
-            raw = values[index]
-            return _decimal(raw.get("v") if isinstance(raw, dict) else raw)
-
-        producer_in = sum((value(pair.get("IN")) for pair in producers.values()), ZERO)
-        producer_out = sum((value(pair.get("OUT")) for pair in producers.values()), ZERO)
-        consumer_in = sum((abs(value(pair.get("IN"))) for pair in consumers.values()), ZERO)
-        consumer_out = sum((abs(value(pair.get("OUT"))) for pair in consumers.values()), ZERO)
-        shared_consumer = consumer_in - consumer_out
-        shared_producer = producer_in - producer_out
-        coverage = shared_consumer / consumer_in * Decimal("100") if consumer_in else ZERO
+    daily: list[DailySharing] = []
+    for item_date in sorted(values_by_day):
+        values = _sharing_values(values_by_day[item_date], producers, consumers)
         daily.append(
             DailySharing(
                 day=item_date,
-                consumption=consumer_in,
-                grid_purchase=consumer_out,
-                shared=shared_consumer,
-                producer_overflow=producer_in,
-                used_overflow=shared_producer,
-                unused_overflow=producer_out,
-                coverage=coverage,
-                consistency_difference=abs(shared_consumer - shared_producer),
+                consumption=values[0],
+                grid_purchase=values[1],
+                shared=values[2],
+                producer_overflow=values[3],
+                used_overflow=values[4],
+                unused_overflow=values[5],
+                coverage=values[6],
+                consistency_difference=values[7],
             )
         )
 
-    return tuple(sorted(daily, key=lambda row: row.day))
+    return tuple(daily)
+
+
+def parse_hourly_profile(response: dict[str, Any]) -> tuple[HourlySharing, ...]:
+    """Aggregate quarter-hour standard profile rows into clock hours."""
+    columns, content, producers, consumers = _profile_layout(response)
+    if not content:
+        return ()
+
+    values_by_hour: dict[datetime, list[Decimal]] = {}
+    for item in content:
+        start_text = str(item.get("start") or "")
+        hour_text = start_text.partition(":")[0]
+        if not hour_text.isdigit():
+            continue
+        hour = int(hour_text)
+        if not 0 <= hour <= 23:
+            continue
+        item_date = date.fromisoformat(str(item["date"])[:10])
+        hour_start = datetime.combine(item_date, datetime.min.time()).replace(hour=hour)
+        totals = values_by_hour.setdefault(hour_start, [ZERO] * len(columns))
+        _add_values(totals, item.get("values") or [], len(columns))
+
+    hourly: list[HourlySharing] = []
+    for hour_start in sorted(values_by_hour):
+        values = _sharing_values(values_by_hour[hour_start], producers, consumers)
+        hourly.append(
+            HourlySharing(
+                start=hour_start,
+                consumption=values[0],
+                grid_purchase=values[1],
+                shared=values[2],
+                producer_overflow=values[3],
+                used_overflow=values[4],
+                unused_overflow=values[5],
+                coverage=values[6],
+                consistency_difference=values[7],
+            )
+        )
+    return tuple(hourly)
 
 
 def calculate_statistics(

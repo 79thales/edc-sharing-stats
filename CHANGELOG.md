@@ -1,5 +1,11 @@
 # Přehled změn
 
+## 0.1.7 – 2026-09-02
+
+- opraveno zpracování odpovědi EDC obsahující více 15minutových řádků pro stejný den; denní hodnoty jsou nyní součtem všech intervalů,
+- přidána hodinová agregace spotřeby, sdílení, dokupu, nevyužitého přetoku, pokrytí a tržby,
+- stávající denní statistiky a senzory zůstávají beze změny.
+
 ## 0.1.6 – 2026-09-02
 
 - senzory původně označené „dnes“ nyní zobrazují poslední den, pro který už EDC zveřejnilo vyhodnocení,

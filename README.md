@@ -12,7 +12,8 @@ Vlastní integrace pro Home Assistant, která načítá vyhodnocení skupiny sd�
 - procentuální pokrytí spotřeby sdílenou elektřinou,
 - nastavitelná prodejní cena v Kč/kWh,
 - výpočet tržby/zisku z výroby jako `nasdílené kWh × prodejní cena`,
-- automatické stažení denní historie za předchozí a aktuální kalendářní měsíc,
+- automatické stažení profilových dat za předchozí a aktuální kalendářní měsíc,
+- hodinová i denní historie vypočtená ze zdrojových intervalů EDC,
 - hodinová aktualizace a podpora dlouhodobých statistik Home Assistantu,
 - opětovné zadání hesla, pokud EDC uložené údaje odmítne.
 
@@ -50,15 +51,17 @@ Skupinu a cenu lze později změnit přes **Nastavení → Zařízení a služby
 
 Integrace vytváří celkem 14 senzorů. Nejde o duplicity: šest patří poslednímu dni dostupnému v EDC, sedm aktuálnímu měsíci a jeden představuje nastavenou prodejní cenu. Každý senzor má vlastní jedinečný identifikátor a lokalizovaný název. U šesti denních senzorů atribut `data_date` uvádí skutečné datum měření; EDC obvykle zveřejňuje vyhodnocení se zpožděním, takže nemusí jít o dnešní datum.
 
+Stejných šest senzorů uvádí v atributech také `daily_statistic_id` a `hourly_statistic_id`. Uživatel tak může přesné identifikátory své skupiny rovnou zkopírovat do karty **Graf statistik**, aniž by ručně hledal interní číslo skupiny.
+
 ## Historie a dlouhodobé statistiky
 
-Při načtení integrace se automaticky stáhnou uzavřené dny od prvního dne předchozího kalendářního měsíce do včerejška. EDC povoluje v přehledu nejvýše 31 dní, proto integrace delší období sama rozdělí na několik požadavků a výsledky sloučí bez duplicit. Jednou denně historii znovu načte, takže doplní nově uzavřený den i případné opravy na straně EDC.
+Při načtení integrace se automaticky stáhnou profilová data od prvního dne předchozího kalendářního měsíce do současnosti. EDC povoluje v přehledu nejvýše 31 dní, proto integrace delší období sama rozdělí na několik požadavků a výsledky sloučí bez duplicit. Zdrojové intervaly se sečtou po jednotlivých hodinách i kalendářních dnech. Jednou denně se celé období znovu načte, takže se doplní nově uzavřené intervaly i případné opravy na straně EDC.
 
-Starší denní hodnoty se zapisují podporovaným API jako externí dlouhodobé statistiky. Nevytvářejí falešné zpětně datované změny stavů v databázi Recorderu. Statistiky mají identifikátory ve tvaru `edc_sharing:<ID skupiny>_shared_daily`, `consumption_daily`, `grid_daily`, `unused_daily`, `coverage_daily` a `revenue_daily`. Lze je vybrat v panelu Historie nebo v kartě **Graf statistik**; zobrazovaným typem je `mean` (každý den obsahuje jedinou denní hodnotu).
+Historické hodnoty se zapisují podporovaným API jako externí dlouhodobé statistiky. Nevytvářejí falešné zpětně datované změny stavů v databázi Recorderu. Denní řady mají identifikátory ve tvaru `edc_sharing:<ID skupiny>_shared_daily`, `consumption_daily`, `grid_daily`, `unused_daily`, `coverage_daily` a `revenue_daily`. Stejné názvy s koncovkou `_hourly` obsahují hodinové hodnoty. Lze je vybrat v panelu Historie nebo v kartě **Graf statistik**; zobrazovaným typem je `mean`.
 
 Běžné senzory se nadále obnovují jednou za hodinu a Home Assistant jejich stavy ukládá od okamžiku instalace. Energetické senzory mají třídu stavu `total` a podporují také standardní dlouhodobé statistiky.
 
-Aktuální verze používá denní vyhodnocení EDC. Čtvrthodinové a skutečné hodinové profily zatím nejsou vystavené jako samostatné senzory.
+Zdrojové intervaly EDC se uchovávají v dlouhodobých statistikách jako hodinové a denní součty. Samostatné čtvrthodinové řady se nevytvářejí, aby zbytečně nezvětšovaly databázi Recorderu.
 
 ## Omezení a bezpečnost
 

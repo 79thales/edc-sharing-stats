@@ -80,6 +80,15 @@ SENSORS: tuple[EdcSensorDescription, ...] = (
     ),
 )
 
+HISTORY_KEYS: dict[str, str] = {
+    "shared_today": "shared",
+    "consumption_today": "consumption",
+    "grid_today": "grid",
+    "unused_today": "unused",
+    "coverage_today": "coverage",
+    "revenue_today": "revenue",
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -140,6 +149,18 @@ class EdcSharingSensor(CoordinatorEntity[EdcSharingCoordinator], SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        if self.entity_description.attributes_fn is None:
-            return None
-        return self.entity_description.attributes_fn(self.coordinator.data)
+        attributes = (
+            self.entity_description.attributes_fn(self.coordinator.data)
+            if self.entity_description.attributes_fn is not None
+            else {}
+        )
+        history_key = HISTORY_KEYS.get(self.entity_description.key)
+        if history_key is not None:
+            sse_id = self.coordinator.config_entry.data[CONF_SSE_ID]
+            attributes.update(
+                {
+                    "daily_statistic_id": f"{DOMAIN}:{sse_id}_{history_key}_daily",
+                    "hourly_statistic_id": f"{DOMAIN}:{sse_id}_{history_key}_hourly",
+                }
+            )
+        return attributes or None

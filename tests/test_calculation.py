@@ -87,6 +87,64 @@ class CalculationTests(unittest.TestCase):
         self.assertEqual(result.today.consistency_difference, Decimal("0.00"))
         self.assertEqual(result.today_revenue, Decimal("10.5380"))
 
+    def test_quarter_hour_rows_are_aggregated_into_one_day(self) -> None:
+        """The EDC overview may return multiple intervals for one DAILY request."""
+        response = {
+            "valueColumns": [
+                {"ean": "producer", "type": "D", "dir": "IN"},
+                {"ean": "producer", "type": "D", "dir": "OUT"},
+                {"ean": "consumer", "type": "O", "dir": "IN"},
+                {"ean": "consumer", "type": "O", "dir": "OUT"},
+            ],
+            "content": [
+                {
+                    "date": "2026-08-04T00:00:00",
+                    "start": "00:00:00",
+                    "values": [{"v": 0.01}, {"v": 0}, {"v": -0.04}, {"v": -0.03}],
+                },
+                {
+                    "date": "2026-08-04T00:00:00",
+                    "start": "00:15:00",
+                    "values": [{"v": 0.01}, {"v": 0}, {"v": -0.05}, {"v": -0.04}],
+                },
+                {
+                    "date": "2026-08-04T00:00:00",
+                    "start": "00:45:00",
+                    "values": [{"v": 0.02}, {"v": 0.01}, {"v": -0.01}, {"v": 0}],
+                },
+                {
+                    "date": "2026-08-04T00:00:00",
+                    "start": "01:00:00",
+                    "values": [{"v": 0.02}, {"v": 0}, {"v": -0.04}, {"v": -0.02}],
+                },
+            ],
+        }
+
+        rows = calculation.parse_daily_profile(response)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].producer_overflow, Decimal("0.06"))
+        self.assertEqual(rows[0].unused_overflow, Decimal("0.01"))
+        self.assertEqual(rows[0].consumption, Decimal("0.14"))
+        self.assertEqual(rows[0].grid_purchase, Decimal("0.09"))
+        self.assertEqual(rows[0].shared, Decimal("0.05"))
+        self.assertEqual(
+            rows[0].coverage, Decimal("0.05") / Decimal("0.14") * Decimal("100")
+        )
+        self.assertEqual(rows[0].consistency_difference, Decimal("0.00"))
+
+        hours = calculation.parse_hourly_profile(response)
+
+        self.assertEqual(len(hours), 2)
+        self.assertEqual(hours[0].start.isoformat(), "2026-08-04T00:00:00")
+        self.assertEqual(hours[0].shared, Decimal("0.03"))
+        self.assertEqual(hours[0].consumption, Decimal("0.10"))
+        self.assertEqual(hours[0].grid_purchase, Decimal("0.07"))
+        self.assertEqual(hours[1].start.isoformat(), "2026-08-04T01:00:00")
+        self.assertEqual(hours[1].shared, Decimal("0.02"))
+        self.assertEqual(hours[1].consumption, Decimal("0.04"))
+        self.assertEqual(hours[1].grid_purchase, Decimal("0.02"))
+
     def test_latest_available_day_is_used_when_today_is_delayed(self) -> None:
         response = {
             "valueColumns": [
