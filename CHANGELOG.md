@@ -1,5 +1,11 @@
 # Přehled změn
 
+## 0.1.3 – 2026-09-02
+
+- přidána vlastní ikona integrace pro Home Assistant 2026.3 a novější,
+- doplněn anglický runtime překlad, aby se místo obecných názvů `Energy` a `Monetary balance` zobrazovaly jednoznačné názvy senzorů,
+- dokumentováno chování historie a vysvětlen počet vytvářených senzorů.
+
 ## 0.1.2 – 2026-09-02
 
 - opraveno přihlášení při již existující relaci EDC v Home Assistantu,

@@ -1,0 +1,68 @@
+{
+  "title": "EDC electricity sharing",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sign in to the EDC portal",
+        "description": "Enter your credentials and the price received for one kWh of shared electricity.",
+        "data": {
+          "username": "Email",
+          "password": "Password",
+          "sale_price": "Sale price (CZK/kWh)"
+        }
+      },
+      "group": {
+        "title": "Select a sharing group",
+        "data": { "sse_id": "Sharing group" }
+      },
+      "reauth_confirm": {
+        "title": "Sign in to EDC again",
+        "description": "The saved EDC credentials are no longer accepted. Enter the new password.",
+        "data": { "password": "Password" }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the EDC portal.",
+      "invalid_auth": "Invalid email or password.",
+      "no_groups": "The account has no available sharing group."
+    },
+    "abort": {
+      "already_configured": "This EDC account is already configured.",
+      "reauth_successful": "The EDC credentials were updated successfully."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "EDC settings",
+        "description": "Select a group and set the sale price used to calculate production profit.",
+        "data": {
+          "sse_id": "Sharing group",
+          "sale_price": "Sale price (CZK/kWh)"
+        }
+      }
+    },
+    "abort": {
+      "cannot_connect": "Unable to connect to the EDC portal.",
+      "invalid_auth": "The EDC credentials are no longer valid."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "shared_today": { "name": "Shared today" },
+      "consumption_today": { "name": "Consumption today" },
+      "grid_today": { "name": "Grid purchase today" },
+      "unused_today": { "name": "Unused surplus today" },
+      "coverage_today": { "name": "Sharing coverage today" },
+      "revenue_today": { "name": "Revenue today" },
+      "shared_month": { "name": "Shared this month" },
+      "consumption_month": { "name": "Consumption this month" },
+      "grid_month": { "name": "Grid purchase this month" },
+      "overflow_month": { "name": "Production surplus this month" },
+      "unused_month": { "name": "Unused surplus this month" },
+      "coverage_month": { "name": "Sharing coverage this month" },
+      "production_profit_month": { "name": "Production profit this month" },
+      "sale_price": { "name": "Electricity sale price" }
+    }
+  }
+}

@@ -45,6 +45,12 @@ Skupinu a cenu lze později změnit přes **Nastavení → Zařízení a služby
 - nasdíleno, spotřeba, dokup, přetok výrobny, nevyužitý přetok, pokrytí a hodnota výroby za aktuální měsíc,
 - nastavená prodejní cena.
 
+Integrace vytváří celkem 14 senzorů. Nejde o duplicity: šest patří dnešku, sedm aktuálnímu měsíci a jeden představuje nastavenou prodejní cenu. Každý senzor má vlastní jedinečný identifikátor a lokalizovaný název.
+
+## Historie a dlouhodobé statistiky
+
+Home Assistant začne stavy ukládat do Historie automaticky po přidání integrace. Starší hodnoty z doby před instalací se do běžné Historie zpětně nedoplní. Energetické senzory mají nastavenou třídu stavu `total`, takže jsou připravené také pro dlouhodobé statistiky. Integrace data obnovuje jednou za hodinu; pokud se hodnota nezmění, Home Assistant nevytváří zbytečný nový záznam.
+
 Aktuální verze používá denní vyhodnocení EDC. Čtvrthodinové a skutečné hodinové profily zatím nejsou vystavené jako samostatné senzory.
 
 ## Omezení a bezpečnost

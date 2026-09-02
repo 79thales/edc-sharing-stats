@@ -8,10 +8,12 @@ from decimal import Decimal
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
-from homeassistant.const import PERCENTAGE, UnitOfEnergy
+from homeassistant.const import PERCENTAGE, Platform, UnitOfEnergy
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.translation import async_get_translations
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import EdcConfigEntry
@@ -73,7 +75,34 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up all EDC sensors."""
+    await _async_refresh_existing_entity_names(hass, entry)
     async_add_entities(EdcSharingSensor(entry, description) for description in SENSORS)
+
+
+async def _async_refresh_existing_entity_names(
+    hass: HomeAssistant, entry: EdcConfigEntry
+) -> None:
+    """Replace generic legacy names without touching user customizations."""
+    translations = await async_get_translations(
+        hass, hass.config.language, "entity", {DOMAIN}
+    )
+    registry = er.async_get(hass)
+    for description in SENSORS:
+        entity_id = registry.async_get_entity_id(
+            Platform.SENSOR,
+            DOMAIN,
+            f"{entry.data[CONF_SSE_ID]}_{description.key}",
+        )
+        if entity_id is None:
+            continue
+        registry_entry = registry.async_get(entity_id)
+        if registry_entry is None or registry_entry.name is not None:
+            continue
+        name = translations.get(
+            f"component.{DOMAIN}.entity.sensor.{description.translation_key}.name"
+        )
+        if name and registry_entry.original_name != name:
+            registry.async_update_entity(entity_id, original_name=name)
 
 
 class EdcSharingSensor(CoordinatorEntity[EdcSharingCoordinator], SensorEntity):
