@@ -1,5 +1,11 @@
 # Přehled změn
 
+## 0.1.5 – 2026-09-02
+
+- příprava repozitáře pro zařazení do výchozího katalogu HACS,
+- validace HACS nyní probíhá bez ignorovaných kontrol,
+- přidáno přímé tlačítko pro otevření repozitáře v HACS.
+
 ## 0.1.4 – 2026-09-02
 
 - automatické stažení denních výsledků za předchozí a aktuální kalendářní měsíc,
