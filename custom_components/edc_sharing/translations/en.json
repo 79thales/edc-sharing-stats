@@ -35,7 +35,7 @@
     "step": {
       "init": {
         "title": "EDC settings",
-        "description": "Select a group, sale price, report recipients, and automatic email schedule. Weekly, monthly, and yearly reports are sent for the last completed calendar period.",
+        "description": "Select a group, sale price, report recipients, and automatic email schedule. You can enable multiple report types at the same time. Weekly, monthly, and yearly reports are sent for the last completed calendar period.",
         "data": {
           "sse_id": "Sharing group",
           "sale_price": "Sale price (CZK/kWh)",
@@ -45,12 +45,14 @@
           "weekly_report": "Send a weekly report",
           "monthly_report": "Send a monthly report",
           "yearly_report": "Send a yearly report",
+          "summary_report": "Send a daily summary report (all periods in one email)",
           "report_time": "Report time",
           "report_day": "Day of month for monthly/yearly reports"
         },
         "data_description": {
           "report_targets": "First go to Settings > Devices & services > Add integration and set up SMTP. Add the first recipient during setup; add more addresses later with Add recipient on the SMTP integration. Then select the resulting notify entities here.",
-          "report_language": "Select the language used for email subjects and report contents."
+          "report_language": "Select the language used for email subjects and report contents.",
+          "summary_report": "Sends one email containing the daily, weekly, monthly, and yearly sections every day at report time. It can be enabled together with any separate reports."
         }
       }
     },

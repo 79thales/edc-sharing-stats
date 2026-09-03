@@ -1,5 +1,10 @@
 # Přehled změn
 
+## 0.1.12 – 2026-09-03
+
+- souhrnný report se všemi čtyřmi obdobími lze nově naplánovat na každý den v nastavený čas,
+- souhrnný report lze zapnout současně s libovolnou kombinací samostatného denního, týdenního, měsíčního a ročního exportu.
+
 ## 0.1.11 – 2026-09-03
 
 - přidáno tlačítko pro okamžitý pokus o načtení dat z EDC,

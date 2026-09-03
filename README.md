@@ -60,7 +60,7 @@ Pokud účet obsahuje více skupin sdílení, lze integraci přidat opakovaně a
 4. Během nastavení zadejte první cílovou e-mailovou adresu.
 5. Další adresy přidáte přes **Nastavení → Zařízení a služby → SMTP → Přidat příjemce**.
 
-Každá cílová adresa vytvoří samostatnou `notify` entitu. Potom otevřete **Nastavení → Zařízení a služby → EDC Sharing Stats → Nastavit**, v poli **Příjemci e-mailových oznámení** vyberte jednu nebo více těchto entit, zvolte **češtinu nebo angličtinu** pro předmět i obsah zprávy a zapněte denní, týdenní, měsíční nebo roční plán. Výchozí čas je 07:30, týdenní report se odesílá každé pondělí a měsíční/roční report pátý den měsíce, aby měl portál EDC čas zveřejnit uzavřená data.
+Každá cílová adresa vytvoří samostatnou `notify` entitu. Potom otevřete **Nastavení → Zařízení a služby → EDC Sharing Stats → Nastavit**, v poli **Příjemci e-mailových oznámení** vyberte jednu nebo více těchto entit, zvolte **češtinu nebo angličtinu** pro předmět i obsah zprávy a zapněte požadované exporty. Lze současně vybrat libovolnou kombinaci denního, týdenního, měsíčního, ročního a souhrnného reportu. Souhrnný report spojí všechna čtyři období do jednoho e-mailu a odesílá se každý den v nastavený čas. Ostatní zapnuté reporty odcházejí jako samostatné e-maily. Výchozí čas je 07:30, týdenní report se odesílá každé pondělí a měsíční/roční report pátý den měsíce, aby měl portál EDC čas zveřejnit uzavřená data.
 
 Nastavení SMTP lze před reporty ověřit přes **Nastavení → Vývojářské nástroje → Akce → `notify.send_message`**. Jako cíl vyberte vytvořenou `notify` entitu a odešlete zkušební zprávu.
 

@@ -26,6 +26,7 @@ from .const import (
     CONF_REPORT_TIME,
     CONF_SSE_ID,
     CONF_SSE_NAME,
+    CONF_SUMMARY_REPORT,
     CONF_YEARLY_REPORT,
     DEFAULT_REPORT_DAY,
     DEFAULT_REPORT_TIME,
@@ -205,6 +206,7 @@ class EdcSharingOptionsFlow(OptionsFlow):
                         CONF_WEEKLY_REPORT: user_input[CONF_WEEKLY_REPORT],
                         CONF_MONTHLY_REPORT: user_input[CONF_MONTHLY_REPORT],
                         CONF_YEARLY_REPORT: user_input[CONF_YEARLY_REPORT],
+                        CONF_SUMMARY_REPORT: user_input[CONF_SUMMARY_REPORT],
                         CONF_REPORT_TIME: user_input[CONF_REPORT_TIME],
                         CONF_REPORT_DAY: int(user_input[CONF_REPORT_DAY]),
                         CONF_REPORT_LANGUAGE: user_input[CONF_REPORT_LANGUAGE],
@@ -263,6 +265,12 @@ class EdcSharingOptionsFlow(OptionsFlow):
                 vol.Required(
                     CONF_YEARLY_REPORT,
                     default=bool(self._entry.options.get(CONF_YEARLY_REPORT, False)),
+                ): selector.BooleanSelector(),
+                vol.Required(
+                    CONF_SUMMARY_REPORT,
+                    default=bool(
+                        self._entry.options.get(CONF_SUMMARY_REPORT, False)
+                    ),
                 ): selector.BooleanSelector(),
                 vol.Required(
                     CONF_REPORT_TIME,

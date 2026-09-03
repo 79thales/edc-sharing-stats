@@ -33,6 +33,7 @@ from .const import (
     CONF_SALE_PRICE,
     CONF_SSE_ID,
     CONF_SSE_NAME,
+    CONF_SUMMARY_REPORT,
     CONF_YEARLY_REPORT,
     DEFAULT_REPORT_DAY,
     DEFAULT_REPORT_TIME,
@@ -112,6 +113,8 @@ class EdcReportManager:
         if not self.targets:
             return
         periods: list[ReportPeriod] = []
+        if self.entry.options.get(CONF_SUMMARY_REPORT, False):
+            periods.append(ReportPeriod.SUMMARY)
         if self.entry.options.get(CONF_DAILY_REPORT, False):
             periods.append(ReportPeriod.DAILY)
         if self.entry.options.get(CONF_WEEKLY_REPORT, False) and now.weekday() == 0:
