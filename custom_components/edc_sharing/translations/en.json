@@ -46,6 +46,9 @@
           "yearly_report": "Send a yearly report",
           "report_time": "Report time",
           "report_day": "Day of month for monthly/yearly reports"
+        },
+        "data_description": {
+          "report_targets": "First go to Settings > Devices & services > Add integration and set up SMTP. Add the first recipient during setup; add more addresses later with Add recipient on the SMTP integration. Then select the resulting notify entities here."
         }
       }
     },

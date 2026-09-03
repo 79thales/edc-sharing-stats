@@ -35,6 +35,9 @@
           "yearly_report": "Odesílat roční report",
           "report_time": "Čas odesílání reportů",
           "report_day": "Den v měsíci pro měsíční a roční report"
+        },
+        "data_description": {
+          "report_targets": "Nejdříve otevřete Nastavení > Zařízení a služby > Přidat integraci a nastavte SMTP. Prvního příjemce přidáte během nastavení; další adresy potom přes Přidat příjemce v integraci SMTP. Zde následně vyberte vytvořené notify entity."
         }
       }
     },

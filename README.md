@@ -50,7 +50,17 @@ Pokud účet obsahuje více skupin sdílení, lze integraci přidat opakovaně a
 
 ## E-mailové reporty
 
-Nejdříve v Home Assistantu nastavte integraci **SMTP** a přidejte jednoho nebo více příjemců. Každá adresa se objeví jako samostatná `notify` entita. Potom otevřete **Nastavení → Zařízení a služby → EDC Sharing Stats → Nastavit**, vyberte požadované příjemce a zapněte denní, týdenní, měsíční nebo roční plán. Výchozí čas je 07:30, týdenní report se odesílá každé pondělí a měsíční/roční report pátý den měsíce, aby měl portál EDC čas zveřejnit uzavřená data.
+### Jak vytvořit e-mailového příjemce
+
+1. Otevřete **Nastavení → Zařízení a služby → Přidat integraci**.
+2. Vyhledejte a přidejte integraci **SMTP**.
+3. Zadejte odesílací adresu, SMTP server, port, zabezpečení, uživatelské jméno a heslo nebo heslo aplikace vašeho poskytovatele.
+4. Během nastavení zadejte první cílovou e-mailovou adresu.
+5. Další adresy přidáte přes **Nastavení → Zařízení a služby → SMTP → Přidat příjemce**.
+
+Každá cílová adresa vytvoří samostatnou `notify` entitu. Potom otevřete **Nastavení → Zařízení a služby → EDC Sharing Stats → Nastavit**, v poli **Příjemci e-mailových oznámení** vyberte jednu nebo více těchto entit a zapněte denní, týdenní, měsíční nebo roční plán. Výchozí čas je 07:30, týdenní report se odesílá každé pondělí a měsíční/roční report pátý den měsíce, aby měl portál EDC čas zveřejnit uzavřená data.
+
+Nastavení SMTP lze před reporty ověřit přes **Nastavení → Vývojářské nástroje → Akce → `notify.send_message`**. Jako cíl vyberte vytvořenou `notify` entitu a odešlete zkušební zprávu.
 
 Reporty lze odeslat i ručně pomocí tlačítek **Odeslat denní report**, **Odeslat týdenní report**, **Odeslat měsíční report** a **Odeslat roční report** na zařízení integrace. Denní report obsahuje poslední den dostupný v EDC, týdenní předchozí uzavřený týden od pondělí do neděle, měsíční předchozí uzavřený kalendářní měsíc a roční předchozí uzavřený kalendářní rok. Tlačítko **Odeslat souhrnný report** spojí všechny čtyři části do jediného e-mailu. Každý report uvádí skupinu, všechny sdílející a cílové EANy, spotřebu, nasdílenou elektřinu, dokup ze sítě, přetok výrobny, nevyužitý přetok, pokrytí a hodnotu sdílení.
 

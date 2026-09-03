@@ -23,6 +23,17 @@ class TranslationMetadataTest(unittest.TestCase):
         )
 
         self.assertEqual(source["entity"], english["entity"])
+        source_options = source["options"]["step"]["init"]
+        english_options = english["options"]["step"]["init"]
+        czech_options = czech["options"]["step"]["init"]
+        self.assertEqual(
+            source_options["data_description"],
+            english_options["data_description"],
+        )
+        self.assertEqual(
+            set(source_options["data_description"]),
+            set(czech_options["data_description"]),
+        )
         self.assertEqual(
             set(source["entity"]["button"]), set(czech["entity"]["button"])
         )

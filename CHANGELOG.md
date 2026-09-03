@@ -1,5 +1,10 @@
 # Přehled změn
 
+## 0.1.10 – 2026-09-03
+
+- přímo pod výběr příjemců reportů přidán postup vytvoření e-mailové `notify` entity přes integraci SMTP,
+- README nyní obsahuje podrobný postup přidání jednoho i více příjemců a otestování odesílání.
+
 ## 0.1.9 – 2026-09-02
 
 - přidány ručně spustitelné denní, týdenní, měsíční a roční reporty přes tlačítkové entity,
