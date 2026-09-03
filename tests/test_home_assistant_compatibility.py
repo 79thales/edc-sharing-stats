@@ -42,11 +42,13 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
             EdcHistoryEarliestDateSensor,
         )
 
+        status_sensor = object.__new__(EdcHistoryBackfillStatusSensor)
+        earliest_date_sensor = object.__new__(EdcHistoryEarliestDateSensor)
         self.assertEqual(
-            EdcHistoryBackfillStatusSensor._attr_device_class,
+            status_sensor.device_class,
             SensorDeviceClass.ENUM,
         )
         self.assertEqual(
-            EdcHistoryEarliestDateSensor._attr_device_class,
+            earliest_date_sensor.device_class,
             SensorDeviceClass.DATE,
         )
