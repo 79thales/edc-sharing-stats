@@ -1,5 +1,11 @@
 # Přehled změn
 
+## 0.1.11 – 2026-09-03
+
+- přidáno tlačítko pro okamžitý pokus o načtení dat z EDC,
+- nový diagnostický senzor ukazuje čas posledního pokusu a v atributech také výsledek, poslední úspěch, další plánovaný pokus a případnou chybu,
+- v nastavení integrace lze pro předmět i obsah e-mailových reportů zvolit češtinu nebo angličtinu.
+
 ## 0.1.10 – 2026-09-03
 
 - přímo pod výběr příjemců reportů přidán postup vytvoření e-mailové `notify` entity přes integraci SMTP,

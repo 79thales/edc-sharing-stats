@@ -40,6 +40,7 @@
           "sse_id": "Sharing group",
           "sale_price": "Sale price (CZK/kWh)",
           "report_targets": "Email notification recipients",
+          "report_language": "Report language",
           "daily_report": "Send a daily report",
           "weekly_report": "Send a weekly report",
           "monthly_report": "Send a monthly report",
@@ -48,7 +49,8 @@
           "report_day": "Day of month for monthly/yearly reports"
         },
         "data_description": {
-          "report_targets": "First go to Settings > Devices & services > Add integration and set up SMTP. Add the first recipient during setup; add more addresses later with Add recipient on the SMTP integration. Then select the resulting notify entities here."
+          "report_targets": "First go to Settings > Devices & services > Add integration and set up SMTP. Add the first recipient during setup; add more addresses later with Add recipient on the SMTP integration. Then select the resulting notify entities here.",
+          "report_language": "Select the language used for email subjects and report contents."
         }
       }
     },
@@ -66,7 +68,8 @@
       "send_weekly_report": { "name": "Send weekly report" },
       "send_monthly_report": { "name": "Send monthly report" },
       "send_yearly_report": { "name": "Send yearly report" },
-      "send_summary_report": { "name": "Send summary report" }
+      "send_summary_report": { "name": "Send summary report" },
+      "refresh_data": { "name": "Fetch EDC data now" }
     },
     "sensor": {
       "shared_today": { "name": "Shared – latest available day" },
@@ -83,6 +86,7 @@
       "coverage_month": { "name": "Sharing coverage this month" },
       "production_profit_month": { "name": "Production profit this month" },
       "sale_price": { "name": "Electricity sale price" },
+      "last_update_attempt": { "name": "Last data fetch attempt" },
       "sharing_ean": { "name": "Sharing EAN {ean}" },
       "target_ean": { "name": "Target EAN {ean}" }
     }

@@ -30,10 +30,12 @@ class TranslationMetadataTest(unittest.TestCase):
             source_options["data_description"],
             english_options["data_description"],
         )
+        self.assertEqual(source_options["data"], english_options["data"])
         self.assertEqual(
             set(source_options["data_description"]),
             set(czech_options["data_description"]),
         )
+        self.assertEqual(set(source_options["data"]), set(czech_options["data"]))
         self.assertEqual(
             set(source["entity"]["button"]), set(czech["entity"]["button"])
         )
@@ -41,10 +43,10 @@ class TranslationMetadataTest(unittest.TestCase):
         self.assertEqual(set(source_entities), set(czech["entity"]["sensor"]))
         for translations in (english, czech):
             names = [item["name"] for item in translations["entity"]["sensor"].values()]
-            self.assertEqual(len(names), 16)
+            self.assertEqual(len(names), 17)
             self.assertEqual(len(names), len(set(names)))
 
-        self.assertEqual(len(source["entity"]["button"]), 5)
+        self.assertEqual(len(source["entity"]["button"]), 6)
 
 
 class BrandMetadataTest(unittest.TestCase):

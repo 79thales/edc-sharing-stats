@@ -14,6 +14,7 @@ CONF_MONTHLY_REPORT = "monthly_report"
 CONF_YEARLY_REPORT = "yearly_report"
 CONF_REPORT_TIME = "report_time"
 CONF_REPORT_DAY = "report_day"
+CONF_REPORT_LANGUAGE = "report_language"
 
 DEFAULT_SALE_PRICE = 2.0
 DEFAULT_SCAN_INTERVAL = timedelta(hours=1)

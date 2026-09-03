@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -62,8 +63,11 @@ async def async_setup_entry(
     entry: EdcConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up report buttons."""
-    async_add_entities(EdcReportButton(entry, description) for description in BUTTONS)
+    """Set up report and manual data refresh buttons."""
+    async_add_entities(
+        [EdcReportButton(entry, description) for description in BUTTONS]
+        + [EdcRefreshButton(entry)]
+    )
 
 
 class EdcReportButton(CoordinatorEntity[EdcSharingCoordinator], ButtonEntity):
@@ -96,3 +100,32 @@ class EdcReportButton(CoordinatorEntity[EdcSharingCoordinator], ButtonEntity):
         await self._entry.runtime_data.reporter.async_send(
             self.entity_description.period
         )
+
+
+class EdcRefreshButton(ButtonEntity):
+    """Request an immediate EDC data download."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "refresh_data"
+    _attr_icon = "mdi:cloud-refresh"
+
+    def __init__(self, entry: EdcConfigEntry) -> None:
+        self._entry = entry
+        self._attr_unique_id = f"{entry.data[CONF_SSE_ID]}_refresh_data"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(entry.data[CONF_SSE_ID]))},
+            name=str(entry.data[CONF_SSE_NAME]),
+            manufacturer="Elektroenergetické datové centrum, a. s.",
+            model="Skupina sdílení elektřiny",
+            configuration_url="https://portal.edc-cr.cz/sprava-dat/zobrazeni-dat",
+        )
+
+    async def async_press(self) -> None:
+        """Request a refresh and surface a failed attempt to the user."""
+        coordinator = self._entry.runtime_data.coordinator
+        await coordinator.async_request_refresh()
+        if coordinator.last_attempt_result != "success":
+            raise HomeAssistantError(
+                coordinator.last_attempt_error
+                or "Stažení dat EDC se nezdařilo."
+            )

@@ -29,6 +29,7 @@
           "sse_id": "Skupina sdílení",
           "sale_price": "Prodejní cena (Kč/kWh)",
           "report_targets": "Příjemci e-mailových oznámení",
+          "report_language": "Jazyk reportů",
           "daily_report": "Odesílat denní report",
           "weekly_report": "Odesílat týdenní report",
           "monthly_report": "Odesílat měsíční report",
@@ -37,7 +38,8 @@
           "report_day": "Den v měsíci pro měsíční a roční report"
         },
         "data_description": {
-          "report_targets": "Nejdříve otevřete Nastavení > Zařízení a služby > Přidat integraci a nastavte SMTP. Prvního příjemce přidáte během nastavení; další adresy potom přes Přidat příjemce v integraci SMTP. Zde následně vyberte vytvořené notify entity."
+          "report_targets": "Nejdříve otevřete Nastavení > Zařízení a služby > Přidat integraci a nastavte SMTP. Prvního příjemce přidáte během nastavení; další adresy potom přes Přidat příjemce v integraci SMTP. Zde následně vyberte vytvořené notify entity.",
+          "report_language": "Vyberte jazyk předmětu a obsahu e-mailových reportů."
         }
       }
     },
@@ -50,7 +52,8 @@
       "send_weekly_report": { "name": "Odeslat týdenní report" },
       "send_monthly_report": { "name": "Odeslat měsíční report" },
       "send_yearly_report": { "name": "Odeslat roční report" },
-      "send_summary_report": { "name": "Odeslat souhrnný report" }
+      "send_summary_report": { "name": "Odeslat souhrnný report" },
+      "refresh_data": { "name": "Načíst data EDC nyní" }
     },
     "sensor": {
     "shared_today": { "name": "Nasdíleno – poslední dostupný den" }, "consumption_today": { "name": "Spotřeba – poslední dostupný den" },
@@ -60,6 +63,7 @@
     "grid_month": { "name": "Dokup ze sítě tento měsíc" }, "overflow_month": { "name": "Přetok výrobny tento měsíc" },
     "unused_month": { "name": "Nevyužitý přetok tento měsíc" }, "coverage_month": { "name": "Pokrytí sdílením tento měsíc" },
     "production_profit_month": { "name": "Zisk z výroby tento měsíc" }, "sale_price": { "name": "Prodejní cena elektřiny" },
+    "last_update_attempt": { "name": "Poslední pokus o načtení dat" },
     "sharing_ean": { "name": "Sdílející EAN {ean}" }, "target_ean": { "name": "Cílový EAN {ean}" }
     }
   }

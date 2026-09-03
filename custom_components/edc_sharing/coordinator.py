@@ -58,9 +58,18 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self._history_refresh_date: date | None = None
         self._history_import_enabled = False
         self._history_import_signature: tuple[object, ...] | None = None
+        self.last_attempt_at: datetime | None = None
+        self.last_success_at: datetime | None = None
+        self.next_attempt_at: datetime | None = None
+        self.last_attempt_result = "never"
+        self.last_attempt_error: str | None = None
 
     async def _async_update_data(self) -> SharingStatistics:
         now = dt_util.now()
+        self.last_attempt_at = now
+        self.next_attempt_at = None
+        self.last_attempt_result = "running"
+        self.last_attempt_error = None
         today = now.date()
         full_history_refresh = self._history_refresh_date != today
         date_from = (
@@ -122,10 +131,20 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 self._async_import_history_if_changed(
                     result, tuple(self._hours.values()), now
                 )
+            completed_at = dt_util.now()
+            self.last_success_at = completed_at
+            self.next_attempt_at = completed_at + DEFAULT_SCAN_INTERVAL
+            self.last_attempt_result = "success"
             return result
         except EdcAuthenticationError as err:
+            self.last_attempt_result = "authentication_failed"
+            self.last_attempt_error = "Přihlášení k EDC již není platné."
+            self.next_attempt_at = None
             raise ConfigEntryAuthFailed from err
         except (EdcApiError, ValueError, KeyError) as err:
+            self.last_attempt_result = "failed"
+            self.last_attempt_error = str(err)
+            self.next_attempt_at = dt_util.now() + DEFAULT_SCAN_INTERVAL
             raise UpdateFailed(str(err)) from err
 
     @callback

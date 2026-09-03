@@ -27,6 +27,7 @@ from .const import (
     CONF_WEEKLY_REPORT,
     CONF_MONTHLY_REPORT,
     CONF_REPORT_DAY,
+    CONF_REPORT_LANGUAGE,
     CONF_REPORT_TARGETS,
     CONF_REPORT_TIME,
     CONF_SALE_PRICE,
@@ -77,6 +78,14 @@ class EdcReportManager:
         if isinstance(value, str):
             return (value,)
         return tuple(str(item) for item in value if item)
+
+    @property
+    def use_czech(self) -> bool:
+        """Return the explicitly selected report language."""
+        configured = self.entry.options.get(CONF_REPORT_LANGUAGE)
+        if configured in ("cs", "en"):
+            return configured == "cs"
+        return (self.hass.config.language or "en").casefold().startswith("cs")
 
     @callback
     def async_start(self) -> None:
@@ -204,7 +213,7 @@ class EdcReportManager:
 
     def _report_title(self, period: ReportPeriod) -> str:
         """Return a localized email subject."""
-        czech = (self.hass.config.language or "en").casefold().startswith("cs")
+        czech = self.use_czech
         labels = {
             ReportPeriod.DAILY: ("Denní report", "Daily report"),
             ReportPeriod.WEEKLY: ("Týdenní report", "Weekly report"),
@@ -266,7 +275,7 @@ class EdcReportManager:
 
     def _format_unavailable_report(self, period: ReportPeriod) -> str:
         """Format a visible placeholder for a missing summary section."""
-        czech = (self.hass.config.language or "en").casefold().startswith("cs")
+        czech = self.use_czech
         labels = {
             ReportPeriod.DAILY: ("Denní report", "Daily report"),
             ReportPeriod.WEEKLY: ("Týdenní report", "Weekly report"),
@@ -289,7 +298,7 @@ class EdcReportManager:
         summary: PeriodSummary,
     ) -> str:
         """Format a localized plain-text report."""
-        czech = (self.hass.config.language or "en").casefold().startswith("cs")
+        czech = self.use_czech
         labels_cs = {
             ReportPeriod.DAILY: "Denní report",
             ReportPeriod.WEEKLY: "Týdenní report",

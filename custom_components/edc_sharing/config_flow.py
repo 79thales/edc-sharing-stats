@@ -21,6 +21,7 @@ from .const import (
     CONF_WEEKLY_REPORT,
     CONF_MONTHLY_REPORT,
     CONF_REPORT_DAY,
+    CONF_REPORT_LANGUAGE,
     CONF_REPORT_TARGETS,
     CONF_REPORT_TIME,
     CONF_SSE_ID,
@@ -206,6 +207,7 @@ class EdcSharingOptionsFlow(OptionsFlow):
                         CONF_YEARLY_REPORT: user_input[CONF_YEARLY_REPORT],
                         CONF_REPORT_TIME: user_input[CONF_REPORT_TIME],
                         CONF_REPORT_DAY: int(user_input[CONF_REPORT_DAY]),
+                        CONF_REPORT_LANGUAGE: user_input[CONF_REPORT_LANGUAGE],
                     }
                 )
 
@@ -213,6 +215,12 @@ class EdcSharingOptionsFlow(OptionsFlow):
             CONF_SALE_PRICE, self._entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE)
         )
         current_targets = self._entry.options.get(CONF_REPORT_TARGETS, [])
+        current_language = self._entry.options.get(
+            CONF_REPORT_LANGUAGE,
+            "cs"
+            if (self.hass.config.language or "en").casefold().startswith("cs")
+            else "en",
+        )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
@@ -228,6 +236,17 @@ class EdcSharingOptionsFlow(OptionsFlow):
                     CONF_REPORT_TARGETS, default=current_targets
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="notify", multiple=True)
+                ),
+                vol.Required(
+                    CONF_REPORT_LANGUAGE, default=current_language
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value="cs", label="Čeština"),
+                            selector.SelectOptionDict(value="en", label="English"),
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
                 ),
                 vol.Required(
                     CONF_DAILY_REPORT,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -97,7 +98,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up all EDC sensors."""
     await _async_refresh_existing_entity_names(hass, entry)
-    async_add_entities([EdcSharingSensor(entry, description) for description in SENSORS])
+    async_add_entities(
+        [EdcSharingSensor(entry, description) for description in SENSORS]
+        + [EdcUpdateAttemptSensor(entry)]
+    )
     known_eans: set[tuple[str, str]] = set()
 
     @callback
@@ -226,3 +230,50 @@ class EdcEanSensor(CoordinatorEntity[EdcSharingCoordinator], SensorEntity):
     def extra_state_attributes(self) -> dict[str, str]:
         """Expose a stable machine-readable role."""
         return {"role": self._ean_info.role}
+
+
+class EdcUpdateAttemptSensor(
+    CoordinatorEntity[EdcSharingCoordinator], SensorEntity
+):
+    """Show when EDC data were last requested and when retry is expected."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_translation_key = "last_update_attempt"
+
+    def __init__(self, entry: EdcConfigEntry) -> None:
+        super().__init__(entry.runtime_data.coordinator)
+        self._attr_unique_id = f"{entry.data[CONF_SSE_ID]}_last_update_attempt"
+        self._attr_icon = "mdi:cloud-clock-outline"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(entry.data[CONF_SSE_ID]))},
+            name=str(entry.data[CONF_SSE_NAME]),
+            manufacturer="Elektroenergetické datové centrum, a. s.",
+            model="Skupina sdílení elektřiny",
+            configuration_url="https://portal.edc-cr.cz/sprava-dat/zobrazeni-dat",
+        )
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the timestamp of the most recent attempt."""
+        return self.coordinator.last_attempt_at
+
+    @property
+    def available(self) -> bool:
+        """Keep diagnostics visible after a failed coordinator update."""
+        return self.coordinator.last_attempt_at is not None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | None]:
+        """Expose the outcome and automatic retry timestamps."""
+        return {
+            "result": self.coordinator.last_attempt_result,
+            "last_success": self.coordinator.last_success_at.isoformat()
+            if self.coordinator.last_success_at is not None
+            else None,
+            "next_attempt": self.coordinator.next_attempt_at.isoformat()
+            if self.coordinator.next_attempt_at is not None
+            else None,
+            "error": self.coordinator.last_attempt_error,
+        }
