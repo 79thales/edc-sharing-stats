@@ -132,10 +132,10 @@ def one_calendar_year_ago(today: date) -> date:
         return today.replace(year=today.year - 1, day=28)
 
 
-def completed_report_range(
+def report_date_range(
     period: str, today: date
 ) -> tuple[date, date]:
-    """Return a half-open range for the previous completed report period."""
+    """Return the half-open range requested by an email report."""
     if period == "weekly":
         end = today - timedelta(days=today.weekday())
         return end - timedelta(days=7), end
@@ -143,7 +143,7 @@ def completed_report_range(
         end = today.replace(day=1)
         return (end - timedelta(days=1)).replace(day=1), end
     if period == "yearly":
-        return date(today.year - 1, 1, 1), date(today.year, 1, 1)
+        return date(today.year, 1, 1), today + timedelta(days=1)
     raise ValueError(f"Unsupported report period: {period}")
 
 

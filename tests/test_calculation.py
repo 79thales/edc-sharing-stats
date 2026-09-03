@@ -81,19 +81,19 @@ class CalculationTests(unittest.TestCase):
             date(2027, 2, 28),
         )
 
-    def test_completed_report_ranges(self) -> None:
+    def test_report_date_ranges(self) -> None:
         today = date(2026, 9, 2)
         self.assertEqual(
-            calculation.completed_report_range("weekly", today),
+            calculation.report_date_range("weekly", today),
             (date(2026, 8, 24), date(2026, 8, 31)),
         )
         self.assertEqual(
-            calculation.completed_report_range("monthly", today),
+            calculation.report_date_range("monthly", today),
             (date(2026, 8, 1), date(2026, 9, 1)),
         )
         self.assertEqual(
-            calculation.completed_report_range("yearly", today),
-            (date(2025, 1, 1), date(2026, 1, 1)),
+            calculation.report_date_range("yearly", today),
+            (date(2026, 1, 1), date(2026, 9, 3)),
         )
 
     def test_daily_monthly_and_profit(self) -> None:

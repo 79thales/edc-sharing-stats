@@ -18,9 +18,9 @@ from .calculation import (
     DailySharing,
     PeriodSummary,
     calculate_period_summary,
-    completed_report_range,
     parse_daily_profile,
     profile_date_ranges,
+    report_date_range,
 )
 from .const import (
     CONF_DAILY_REPORT,
@@ -129,7 +129,6 @@ class EdcReportManager:
             periods.append(ReportPeriod.MONTHLY)
         if (
             self.entry.options.get(CONF_YEARLY_REPORT, False)
-            and now.month == 1
             and now.day == report_day
         ):
             periods.append(ReportPeriod.YEARLY)
@@ -243,8 +242,11 @@ class EdcReportManager:
             )
         if period is ReportPeriod.SUMMARY:
             raise HomeAssistantError("Souhrnný report nemá vlastní období.")
-        start, end = completed_report_range(period.value, today)
-        return start, end, await self._async_fetch_days(start, end)
+        start, end = report_date_range(period.value, today)
+        days = await self._async_fetch_days(start, end)
+        if period is ReportPeriod.YEARLY and days:
+            end = max(row.day for row in days) + timedelta(days=1)
+        return start, end, days
 
     async def _async_fetch_days(
         self, date_from: date, date_to: date

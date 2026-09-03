@@ -4,7 +4,8 @@
 
 - dohledávání historie nově používá pohyblivé období jednoho kalendářního roku od dne spuštění místo pevného počátečního data,
 - bloky se skládají od nejnovějšího směrem dozadu; například při spuštění 3. září 2026 se samostatně ověří období 1. července až 1. srpna 2026,
-- diagnostika uvádí začátek prohledávaného období i nejstarší datum skutečně nalezené v datech EDC.
+- diagnostika uvádí začátek prohledávaného období i nejstarší datum skutečně nalezené v datech EDC,
+- roční report nyní zobrazuje aktuální kalendářní rok od 1. ledna do posledního dostupného dne EDC; samostatný automatický report se odesílá měsíčně ve zvolený den.
 
 ## 0.1.13 – 2026-09-03
 
