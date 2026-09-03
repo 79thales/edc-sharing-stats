@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import html
@@ -61,6 +62,7 @@ class EdcApiClient:
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self._expires_at = 0.0
+        self._request_lock = asyncio.Lock()
 
     async def async_login(self) -> None:
         verifier = _base64url(os.urandom(48))
@@ -191,30 +193,33 @@ class EdcApiClient:
         return data
 
     async def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
-        try:
-            await self._async_ensure_token()
-            response = await self._session.request(
-                method,
-                f"{API_BASE_URL}{path}",
-                json=payload,
-                headers={
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self._access_token}",
-                    "Edc-Contract-Type": "STANDARD",
-                    "X-Correlation-ID": str(uuid.uuid4()),
-                },
-            )
-            if response.status == 401:
-                self._access_token = None
-                raise EdcAuthenticationError("Platnost přihlášení EDC skončila.")
-            if response.status >= 400:
-                raise EdcApiError(f"EDC API vrátilo HTTP {response.status}.")
-            return await response.json()
-        except EdcApiError:
-            raise
-        except (ClientError, TimeoutError, ValueError) as err:
-            raise EdcApiError(f"Spojení s EDC selhalo: {err}") from err
+        async with self._request_lock:
+            try:
+                await self._async_ensure_token()
+                response = await self._session.request(
+                    method,
+                    f"{API_BASE_URL}{path}",
+                    json=payload,
+                    headers={
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {self._access_token}",
+                        "Edc-Contract-Type": "STANDARD",
+                        "X-Correlation-ID": str(uuid.uuid4()),
+                    },
+                )
+                if response.status == 401:
+                    self._access_token = None
+                    raise EdcAuthenticationError(
+                        "Platnost přihlášení EDC skončila."
+                    )
+                if response.status >= 400:
+                    raise EdcApiError(f"EDC API vrátilo HTTP {response.status}.")
+                return await response.json()
+            except EdcApiError:
+                raise
+            except (ClientError, TimeoutError, ValueError) as err:
+                raise EdcApiError(f"Spojení s EDC selhalo: {err}") from err
 
     async def _async_ensure_token(self) -> None:
         if self._access_token and time.monotonic() < self._expires_at - 30:

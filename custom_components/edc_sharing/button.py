@@ -66,7 +66,7 @@ async def async_setup_entry(
     """Set up report and manual data refresh buttons."""
     async_add_entities(
         [EdcReportButton(entry, description) for description in BUTTONS]
-        + [EdcRefreshButton(entry)]
+        + [EdcRefreshButton(entry), EdcHistoryBackfillButton(entry)]
     )
 
 
@@ -128,4 +128,31 @@ class EdcRefreshButton(ButtonEntity):
             raise HomeAssistantError(
                 coordinator.last_attempt_error
                 or "Stažení dat EDC se nezdařilo."
+            )
+
+
+class EdcHistoryBackfillButton(ButtonEntity):
+    """Start discovery and import of all available EDC history."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "backfill_history"
+    _attr_icon = "mdi:database-clock-outline"
+
+    def __init__(self, entry: EdcConfigEntry) -> None:
+        self._entry = entry
+        self._attr_unique_id = f"{entry.data[CONF_SSE_ID]}_backfill_history"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(entry.data[CONF_SSE_ID]))},
+            name=str(entry.data[CONF_SSE_NAME]),
+            manufacturer="Elektroenergetické datové centrum, a. s.",
+            model="Skupina sdílení elektřiny",
+            configuration_url="https://portal.edc-cr.cz/sprava-dat/zobrazeni-dat",
+        )
+
+    async def async_press(self) -> None:
+        """Start or resume the one-time background history scan."""
+        coordinator = self._entry.runtime_data.coordinator
+        if not coordinator.async_start_history_backfill():
+            raise HomeAssistantError(
+                "Doplňování historie EDC již probíhá."
             )

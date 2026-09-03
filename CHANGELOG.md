@@ -1,5 +1,15 @@
 # Přehled změn
 
+## 0.1.13 – 2026-09-03
+
+- nové tlačítko vyhledá a doplní veškerou historii, kterou EDC pro skupinu zpřístupní,
+- historie se prochází zpětně v povolených blocích nejvýše 31 dní včetně kontrolního období 1. července až 1. srpna 2024; prázdné bloky hledání nepřeruší,
+- každý dokončený blok se ihned ukládá do hodinových a denních dlouhodobých statistik,
+- průběh se ukládá a po restartu Home Assistantu automaticky pokračuje,
+- požadavky na EDC se řadí za sebe, aby se doplňování historie nekřížilo s běžnou aktualizací nebo sestavením reportu,
+- nejstarší skutečně dostupné datum se určí z vrácených dat, nikoliv z pevného předpokladu,
+- atributy diagnostického senzoru ukazují stav, postup, nejstarší nalezené datum, počet importovaných hodin a dnů i případnou chybu.
+
 ## 0.1.12 – 2026-09-03
 
 - souhrnný report se všemi čtyřmi obdobími lze nově naplánovat na každý den v nastavený čas,

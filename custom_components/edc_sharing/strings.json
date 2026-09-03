@@ -71,7 +71,8 @@
       "send_monthly_report": { "name": "Send monthly report" },
       "send_yearly_report": { "name": "Send yearly report" },
       "send_summary_report": { "name": "Send summary report" },
-      "refresh_data": { "name": "Fetch EDC data now" }
+      "refresh_data": { "name": "Fetch EDC data now" },
+      "backfill_history": { "name": "Backfill all available EDC history" }
     },
     "sensor": {
       "shared_today": { "name": "Shared – latest available day" },

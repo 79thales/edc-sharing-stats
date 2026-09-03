@@ -47,7 +47,7 @@ class TranslationMetadataTest(unittest.TestCase):
             self.assertEqual(len(names), 17)
             self.assertEqual(len(names), len(set(names)))
 
-        self.assertEqual(len(source["entity"]["button"]), 6)
+        self.assertEqual(len(source["entity"]["button"]), 7)
 
 
 class BrandMetadataTest(unittest.TestCase):

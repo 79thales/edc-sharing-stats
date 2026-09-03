@@ -265,8 +265,15 @@ class EdcUpdateAttemptSensor(
         return self.coordinator.last_attempt_at is not None
 
     @property
-    def extra_state_attributes(self) -> dict[str, str | None]:
-        """Expose the outcome and automatic retry timestamps."""
+    def extra_state_attributes(self) -> dict[str, str | int | None]:
+        """Expose regular updates and full-history backfill progress."""
+        total_chunks = self.coordinator.history_backfill_total_chunks
+        processed_chunks = self.coordinator.history_backfill_processed_chunks
+        progress = (
+            round(processed_chunks / total_chunks * 100)
+            if total_chunks
+            else 0
+        )
         return {
             "result": self.coordinator.last_attempt_result,
             "last_success": self.coordinator.last_success_at.isoformat()
@@ -276,4 +283,35 @@ class EdcUpdateAttemptSensor(
             if self.coordinator.next_attempt_at is not None
             else None,
             "error": self.coordinator.last_attempt_error,
+            "history_backfill_status": self.coordinator.history_backfill_status,
+            "history_backfill_progress": progress,
+            "history_backfill_processed_chunks": processed_chunks,
+            "history_backfill_total_chunks": total_chunks,
+            "history_backfill_scanned_to": (
+                self.coordinator.history_backfill_cursor.isoformat()
+                if self.coordinator.history_backfill_cursor is not None
+                else None
+            ),
+            "history_earliest_data": (
+                self.coordinator.history_earliest_date.isoformat()
+                if self.coordinator.history_earliest_date is not None
+                else None
+            ),
+            "history_backfill_imported_days": (
+                self.coordinator.history_backfill_imported_days
+            ),
+            "history_backfill_imported_hours": (
+                self.coordinator.history_backfill_imported_hours
+            ),
+            "history_backfill_started": (
+                self.coordinator.history_backfill_started_at.isoformat()
+                if self.coordinator.history_backfill_started_at is not None
+                else None
+            ),
+            "history_backfill_completed": (
+                self.coordinator.history_backfill_completed_at.isoformat()
+                if self.coordinator.history_backfill_completed_at is not None
+                else None
+            ),
+            "history_backfill_error": self.coordinator.history_backfill_error,
         }

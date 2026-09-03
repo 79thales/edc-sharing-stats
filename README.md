@@ -14,6 +14,7 @@ Vlastní integrace pro Home Assistant, která načítá vyhodnocení skupiny sd�
 - výpočet tržby/zisku z výroby jako `nasdílené kWh × prodejní cena`,
 - automatické stažení profilových dat za předchozí a aktuální kalendářní měsíc,
 - hodinová i denní historie vypočtená ze zdrojových intervalů EDC,
+- ruční dohledání a doplnění celé dostupné historie EDC včetně kontrolního bloku před spuštěním sdílení,
 - hodinová aktualizace a podpora dlouhodobých statistik Home Assistantu,
 - ruční pokus o okamžité načtení dat a diagnostika posledního i příštího pokusu,
 - opětovné zadání hesla, pokud EDC uložené údaje odmítne,
@@ -74,7 +75,7 @@ Reporty lze odeslat i ručně pomocí tlačítek **Odeslat denní report**, **Od
 
 Integrace vytváří 14 základních hodnotových senzorů. Nejde o duplicity: šest patří poslednímu dni dostupnému v EDC, sedm aktuálnímu měsíci a jeden představuje nastavenou prodejní cenu. Každý senzor má vlastní jedinečný identifikátor a lokalizovaný název. U šesti denních senzorů atribut `data_date` uvádí skutečné datum měření; EDC obvykle zveřejňuje vyhodnocení se zpožděním, takže nemusí jít o dnešní datum.
 
-Navíc vzniká diagnostický časový senzor **Poslední pokus o načtení dat**. Jeho stav uvádí okamžik posledního pokusu; atributy `result`, `last_success`, `next_attempt` a `error` ukazují výsledek, poslední úspěšné načtení, očekávaný další automatický pokus a případnou chybu. Diagnostický senzor zůstává dostupný i tehdy, když se samotné načtení nezdaří.
+Navíc vzniká diagnostický časový senzor **Poslední pokus o načtení dat**. Jeho stav uvádí okamžik posledního pokusu; atributy `result`, `last_success`, `next_attempt` a `error` ukazují výsledek, poslední úspěšné načtení, očekávaný další automatický pokus a případnou chybu. Diagnostický senzor zůstává dostupný i tehdy, když se samotné načtení nezdaří. Stejná entita v atributech `history_backfill_*` ukazuje průběh dohledávání celé historie, nejstarší nalezené datum a počty zapsaných dnů a hodin.
 
 Stejných šest senzorů uvádí v atributech také `daily_statistic_id` a `hourly_statistic_id`. Uživatel tak může přesné identifikátory své skupiny rovnou zkopírovat do karty **Graf statistik**, aniž by ručně hledal interní číslo skupiny.
 
@@ -87,6 +88,8 @@ Historické hodnoty se zapisují podporovaným API jako externí dlouhodobé sta
 Běžné senzory se nadále obnovují jednou za hodinu a Home Assistant jejich stavy ukládá od okamžiku instalace. Energetické senzory mají třídu stavu `total` a podporují také standardní dlouhodobé statistiky.
 
 Okamžité načtení lze spustit tlačítkem **Načíst data EDC nyní** na zařízení skupiny v **Nastavení → Zařízení a služby → EDC Sharing Stats**. Tlačítko pouze požádá EDC o aktuálně zveřejněná data; nevytvoří data, která EDC ještě nezpřístupnilo. Po dokončení se aktualizuje diagnostický senzor popsaný výše.
+
+Tlačítko **Doplnit veškerou dostupnou historii EDC** spustí jednorázové hledání směrem do minulosti. Integrace projde celé možné období v blocích nejvýše 31 dní, včetně kontrolního bloku od 1. července do 1. srpna 2024. Ojedinělý prázdný blok proto nepovažuje za konec historie a nejstarší skutečně dostupné datum určí až z dat vrácených portálem. Každý blok se průběžně zapíše do dlouhodobých statistik. Uložený kurzor umožní po restartu automaticky pokračovat od posledního dokončeného bloku. Po dokončení lze tlačítko použít znovu, například kvůli dodatečným opravám dat na straně EDC.
 
 Zdrojové intervaly EDC se uchovávají v dlouhodobých statistikách jako hodinové a denní součty. Samostatné čtvrthodinové řady se nevytvářejí, aby zbytečně nezvětšovaly databázi Recorderu.
 

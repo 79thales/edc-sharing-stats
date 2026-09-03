@@ -55,7 +55,8 @@
       "send_monthly_report": { "name": "Odeslat měsíční report" },
       "send_yearly_report": { "name": "Odeslat roční report" },
       "send_summary_report": { "name": "Odeslat souhrnný report" },
-      "refresh_data": { "name": "Načíst data EDC nyní" }
+      "refresh_data": { "name": "Načíst data EDC nyní" },
+      "backfill_history": { "name": "Doplnit veškerou dostupnou historii EDC" }
     },
     "sensor": {
     "shared_today": { "name": "Nasdíleno – poslední dostupný den" }, "consumption_today": { "name": "Spotřeba – poslední dostupný den" },
