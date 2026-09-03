@@ -44,7 +44,7 @@ class TranslationMetadataTest(unittest.TestCase):
         self.assertEqual(set(source_entities), set(czech["entity"]["sensor"]))
         for translations in (english, czech):
             names = [item["name"] for item in translations["entity"]["sensor"].values()]
-            self.assertEqual(len(names), 17)
+            self.assertEqual(len(names), 19)
             self.assertEqual(len(names), len(set(names)))
 
         self.assertEqual(len(source["entity"]["button"]), 7)

@@ -85,7 +85,8 @@ class PeriodSummary:
 def _decimal(value: Any) -> Decimal:
     if value is None:
         return ZERO
-    return Decimal(str(value))
+    parsed = Decimal(str(value))
+    return parsed if parsed.is_finite() else ZERO
 
 
 def two_calendar_month_start(today: date) -> date:

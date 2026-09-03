@@ -36,6 +36,48 @@ class CalculationTests(unittest.TestCase):
     def test_empty_profile_is_a_valid_partial_result(self) -> None:
         self.assertEqual(calculation.parse_daily_profile({"content": []}), ())
 
+    def test_non_finite_edc_values_do_not_poison_totals(self) -> None:
+        response = {
+            "valueColumns": [
+                {"ean": "producer", "type": "D", "dir": "IN"},
+                {"ean": "producer", "type": "D", "dir": "OUT"},
+                {"ean": "consumer", "type": "O", "dir": "IN"},
+                {"ean": "consumer", "type": "O", "dir": "OUT"},
+            ],
+            "content": [
+                {
+                    "date": "2026-01-01",
+                    "values": [
+                        {"v": "Infinity"},
+                        {"v": "-Infinity"},
+                        {"v": "NaN"},
+                        {"v": float("nan")},
+                    ],
+                },
+                {
+                    "date": "2026-08-01",
+                    "values": [{"v": 10}, {"v": 4}, {"v": -8}, {"v": -2}],
+                },
+            ],
+        }
+
+        days = calculation.parse_daily_profile(response)
+        summary = calculation.calculate_period_summary(days, Decimal("2"))
+        values = (
+            summary.consumption,
+            summary.grid_purchase,
+            summary.shared,
+            summary.producer_overflow,
+            summary.unused_overflow,
+            summary.coverage,
+            summary.revenue,
+        )
+
+        self.assertTrue(all(value.is_finite() for value in values))
+        self.assertEqual(summary.consumption, Decimal("8"))
+        self.assertEqual(summary.shared, Decimal("6"))
+        self.assertEqual(summary.coverage, Decimal("75"))
+
     def test_extracts_multiple_sharing_and_target_eans(self) -> None:
         response = {
             "valueColumns": [

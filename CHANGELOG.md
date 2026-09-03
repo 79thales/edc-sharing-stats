@@ -1,5 +1,12 @@
 # Přehled změn
 
+## 0.1.15 – 2026-09-03
+
+- nečíselné hodnoty `NaN` vrácené EDC se již nepřenášejí do ročních součtů a neznehodnotí celý report,
+- nová diagnostická entita **Stav stahování historie** viditelně ukazuje, zda doplňování nebylo spuštěno, probíhá, je pozastavené, selhalo nebo bylo dokončeno; v atributech obsahuje procenta a podrobnosti,
+- nová diagnostická entita **Data EDC dostupná od** ukazuje nejstarší datum skutečně nalezené během prohledávání a ve svých atributech také stav hledání,
+- automatická kontrola kompatibility nyní načítá všechny moduly integrace proti Home Assistant Core 2026.8 i 2026.9.
+
 ## 0.1.14 – 2026-09-03
 
 - dohledávání historie nově používá pohyblivé období jednoho kalendářního roku od dne spuštění místo pevného počátečního data,

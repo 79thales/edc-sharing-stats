@@ -91,6 +91,17 @@
       "production_profit_month": { "name": "Production profit this month" },
       "sale_price": { "name": "Electricity sale price" },
       "last_update_attempt": { "name": "Last data fetch attempt" },
+      "history_backfill_status": {
+        "name": "History download status",
+        "state": {
+          "not_started": "Not started",
+          "running": "Running",
+          "paused": "Paused",
+          "failed": "Failed",
+          "completed": "Completed"
+        }
+      },
+      "history_earliest_date": { "name": "EDC data available since" },
       "sharing_ean": { "name": "Sharing EAN {ean}" },
       "target_ean": { "name": "Target EAN {ean}" }
     }

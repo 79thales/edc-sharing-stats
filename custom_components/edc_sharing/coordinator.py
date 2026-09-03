@@ -208,6 +208,13 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 self._history_refresh_date = today
             self._days.update(fetched)
             self._hours.update(fetched_hours)
+            if self._days:
+                earliest_known = min(self._days)
+                if (
+                    self.history_earliest_date is None
+                    or earliest_known < self.history_earliest_date
+                ):
+                    self.history_earliest_date = earliest_known
             if fetched_eans:
                 self.eans = tuple(
                     sorted(fetched_eans, key=lambda item: (item.role, item.ean))

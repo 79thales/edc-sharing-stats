@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -100,7 +100,11 @@ async def async_setup_entry(
     await _async_refresh_existing_entity_names(hass, entry)
     async_add_entities(
         [EdcSharingSensor(entry, description) for description in SENSORS]
-        + [EdcUpdateAttemptSensor(entry)]
+        + [
+            EdcUpdateAttemptSensor(entry),
+            EdcHistoryBackfillStatusSensor(entry),
+            EdcHistoryEarliestDateSensor(entry),
+        ]
     )
     known_eans: set[tuple[str, str]] = set()
 
@@ -232,6 +236,58 @@ class EdcEanSensor(CoordinatorEntity[EdcSharingCoordinator], SensorEntity):
         return {"role": self._ean_info.role}
 
 
+def _history_backfill_progress(coordinator: EdcSharingCoordinator) -> int:
+    """Return persisted backfill progress as a whole percentage."""
+    if coordinator.history_backfill_status == "completed":
+        return 100
+    total = coordinator.history_backfill_total_chunks
+    if not total:
+        return 0
+    return round(coordinator.history_backfill_processed_chunks / total * 100)
+
+
+def _history_backfill_attributes(
+    coordinator: EdcSharingCoordinator,
+) -> dict[str, str | int | None]:
+    """Return detailed progress shared by the diagnostic entities."""
+    return {
+        "history_backfill_status": coordinator.history_backfill_status,
+        "history_backfill_progress": _history_backfill_progress(coordinator),
+        "history_backfill_processed_chunks": (
+            coordinator.history_backfill_processed_chunks
+        ),
+        "history_backfill_total_chunks": coordinator.history_backfill_total_chunks,
+        "history_backfill_search_from": (
+            coordinator.history_backfill_scan_start.isoformat()
+            if coordinator.history_backfill_scan_start is not None
+            else None
+        ),
+        "history_backfill_scanned_to": (
+            coordinator.history_backfill_cursor.isoformat()
+            if coordinator.history_backfill_cursor is not None
+            else None
+        ),
+        "history_earliest_data": coordinator.history_earliest_date.isoformat()
+        if coordinator.history_earliest_date is not None
+        else None,
+        "history_backfill_imported_days": coordinator.history_backfill_imported_days,
+        "history_backfill_imported_hours": (
+            coordinator.history_backfill_imported_hours
+        ),
+        "history_backfill_started": (
+            coordinator.history_backfill_started_at.isoformat()
+            if coordinator.history_backfill_started_at is not None
+            else None
+        ),
+        "history_backfill_completed": (
+            coordinator.history_backfill_completed_at.isoformat()
+            if coordinator.history_backfill_completed_at is not None
+            else None
+        ),
+        "history_backfill_error": coordinator.history_backfill_error,
+    }
+
+
 class EdcUpdateAttemptSensor(
     CoordinatorEntity[EdcSharingCoordinator], SensorEntity
 ):
@@ -267,13 +323,6 @@ class EdcUpdateAttemptSensor(
     @property
     def extra_state_attributes(self) -> dict[str, str | int | None]:
         """Expose regular updates and full-history backfill progress."""
-        total_chunks = self.coordinator.history_backfill_total_chunks
-        processed_chunks = self.coordinator.history_backfill_processed_chunks
-        progress = (
-            round(processed_chunks / total_chunks * 100)
-            if total_chunks
-            else 0
-        )
         return {
             "result": self.coordinator.last_attempt_result,
             "last_success": self.coordinator.last_success_at.isoformat()
@@ -283,40 +332,91 @@ class EdcUpdateAttemptSensor(
             if self.coordinator.next_attempt_at is not None
             else None,
             "error": self.coordinator.last_attempt_error,
-            "history_backfill_status": self.coordinator.history_backfill_status,
-            "history_backfill_progress": progress,
-            "history_backfill_processed_chunks": processed_chunks,
-            "history_backfill_total_chunks": total_chunks,
-            "history_backfill_search_from": (
-                self.coordinator.history_backfill_scan_start.isoformat()
-                if self.coordinator.history_backfill_scan_start is not None
-                else None
-            ),
-            "history_backfill_scanned_to": (
-                self.coordinator.history_backfill_cursor.isoformat()
-                if self.coordinator.history_backfill_cursor is not None
-                else None
-            ),
-            "history_earliest_data": (
-                self.coordinator.history_earliest_date.isoformat()
-                if self.coordinator.history_earliest_date is not None
-                else None
-            ),
-            "history_backfill_imported_days": (
-                self.coordinator.history_backfill_imported_days
-            ),
-            "history_backfill_imported_hours": (
-                self.coordinator.history_backfill_imported_hours
-            ),
-            "history_backfill_started": (
-                self.coordinator.history_backfill_started_at.isoformat()
-                if self.coordinator.history_backfill_started_at is not None
-                else None
-            ),
-            "history_backfill_completed": (
-                self.coordinator.history_backfill_completed_at.isoformat()
-                if self.coordinator.history_backfill_completed_at is not None
-                else None
-            ),
-            "history_backfill_error": self.coordinator.history_backfill_error,
+            **_history_backfill_attributes(self.coordinator),
         }
+
+
+class EdcHistoryBackfillStatusSensor(
+    CoordinatorEntity[EdcSharingCoordinator], SensorEntity
+):
+    """Expose whether the one-year EDC history download is still running."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_translation_key = "history_backfill_status"
+    _attr_options = ["not_started", "running", "paused", "failed", "completed"]
+
+    def __init__(self, entry: EdcConfigEntry) -> None:
+        super().__init__(entry.runtime_data.coordinator)
+        self._attr_unique_id = f"{entry.data[CONF_SSE_ID]}_history_backfill_status"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(entry.data[CONF_SSE_ID]))},
+            name=str(entry.data[CONF_SSE_NAME]),
+            manufacturer="Elektroenergetické datové centrum, a. s.",
+            model="Skupina sdílení elektřiny",
+            configuration_url="https://portal.edc-cr.cz/sprava-dat/zobrazeni-dat",
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return a translatable machine-readable status."""
+        return self.coordinator.history_backfill_status
+
+    @property
+    def available(self) -> bool:
+        """Keep persisted backfill diagnostics visible during API errors."""
+        return True
+
+    @property
+    def icon(self) -> str:
+        """Show the current download outcome at a glance."""
+        return {
+            "running": "mdi:database-sync",
+            "paused": "mdi:database-clock-outline",
+            "failed": "mdi:database-alert-outline",
+            "completed": "mdi:database-check-outline",
+        }.get(self.coordinator.history_backfill_status, "mdi:database-outline")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | int | None]:
+        """Expose percentage, covered range, counters, and errors."""
+        return _history_backfill_attributes(self.coordinator)
+
+
+class EdcHistoryEarliestDateSensor(
+    CoordinatorEntity[EdcSharingCoordinator], SensorEntity
+):
+    """Expose the oldest date actually returned by EDC."""
+
+    _attr_device_class = SensorDeviceClass.DATE
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_translation_key = "history_earliest_date"
+    _attr_icon = "mdi:calendar-start"
+
+    def __init__(self, entry: EdcConfigEntry) -> None:
+        super().__init__(entry.runtime_data.coordinator)
+        self._attr_unique_id = f"{entry.data[CONF_SSE_ID]}_history_earliest_date"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(entry.data[CONF_SSE_ID]))},
+            name=str(entry.data[CONF_SSE_NAME]),
+            manufacturer="Elektroenergetické datové centrum, a. s.",
+            model="Skupina sdílení elektřiny",
+            configuration_url="https://portal.edc-cr.cz/sprava-dat/zobrazeni-dat",
+        )
+
+    @property
+    def native_value(self) -> date | None:
+        """Return the oldest date found while scanning EDC."""
+        return self.coordinator.history_earliest_date
+
+    @property
+    def available(self) -> bool:
+        """Keep the entity visible before the first history scan finishes."""
+        return True
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | int | None]:
+        """Expose scan status so the date cannot be mistaken for a final limit."""
+        return _history_backfill_attributes(self.coordinator)

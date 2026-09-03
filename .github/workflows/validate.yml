@@ -23,6 +23,24 @@ jobs:
       - name: Run calculation tests
         run: python -m unittest discover -s tests -v
 
+  home-assistant-compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        home-assistant-version:
+          - "2026.8.0"
+          - "2026.9.0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install Home Assistant ${{ matrix.home-assistant-version }}
+        run: pip install "homeassistant==${{ matrix.home-assistant-version }}"
+      - name: Import integration against Home Assistant
+        run: python -m unittest tests.test_home_assistant_compatibility -v
+
   hassfest:
     runs-on: ubuntu-latest
     steps:

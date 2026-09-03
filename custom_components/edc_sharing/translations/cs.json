@@ -68,6 +68,17 @@
     "unused_month": { "name": "Nevyužitý přetok tento měsíc" }, "coverage_month": { "name": "Pokrytí sdílením tento měsíc" },
     "production_profit_month": { "name": "Zisk z výroby tento měsíc" }, "sale_price": { "name": "Prodejní cena elektřiny" },
     "last_update_attempt": { "name": "Poslední pokus o načtení dat" },
+    "history_backfill_status": {
+      "name": "Stav stahování historie",
+      "state": {
+        "not_started": "Nespuštěno",
+        "running": "Probíhá",
+        "paused": "Pozastaveno",
+        "failed": "Selhalo",
+        "completed": "Dokončeno"
+      }
+    },
+    "history_earliest_date": { "name": "Data EDC dostupná od" },
     "sharing_ean": { "name": "Sdílející EAN {ean}" }, "target_ean": { "name": "Cílový EAN {ean}" }
     }
   }
