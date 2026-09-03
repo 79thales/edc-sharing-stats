@@ -1,9 +1,15 @@
 # Přehled změn
 
+## 0.1.14 – 2026-09-03
+
+- dohledávání historie nově používá pohyblivé období jednoho kalendářního roku od dne spuštění místo pevného počátečního data,
+- bloky se skládají od nejnovějšího směrem dozadu; například při spuštění 3. září 2026 se samostatně ověří období 1. července až 1. srpna 2026,
+- diagnostika uvádí začátek prohledávaného období i nejstarší datum skutečně nalezené v datech EDC.
+
 ## 0.1.13 – 2026-09-03
 
 - nové tlačítko vyhledá a doplní veškerou historii, kterou EDC pro skupinu zpřístupní,
-- historie se prochází zpětně v povolených blocích nejvýše 31 dní včetně kontrolního období 1. července až 1. srpna 2024; prázdné bloky hledání nepřeruší,
+- historie se prochází zpětně v povolených blocích nejvýše 31 dní a prázdné bloky hledání nepřeruší,
 - každý dokončený blok se ihned ukládá do hodinových a denních dlouhodobých statistik,
 - průběh se ukládá a po restartu Home Assistantu automaticky pokračuje,
 - požadavky na EDC se řadí za sebe, aby se doplňování historie nekřížilo s běžnou aktualizací nebo sestavením reportu,

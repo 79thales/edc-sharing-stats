@@ -23,9 +23,11 @@ from .calculation import (
     SharingStatistics,
     calculate_statistics,
     extract_eans,
+    one_calendar_year_ago,
     parse_daily_profile,
     parse_hourly_profile,
     profile_date_ranges,
+    profile_date_ranges_backwards,
     two_calendar_month_start,
 )
 from .const import (
@@ -35,7 +37,6 @@ from .const import (
     DEFAULT_SALE_PRICE,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
-    HISTORY_SCAN_START_DATE,
 )
 from .history import async_import_daily_history, async_import_hourly_history
 
@@ -101,6 +102,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self.history_backfill_status = "not_started"
         self.history_backfill_started_at: datetime | None = None
         self.history_backfill_completed_at: datetime | None = None
+        self.history_backfill_scan_start: date | None = None
         self.history_backfill_cursor: date | None = None
         self.history_earliest_date: date | None = None
         self.history_backfill_processed_chunks = 0
@@ -134,6 +136,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self.history_backfill_completed_at = _stored_datetime(
             stored.get("completed_at")
         )
+        self.history_backfill_scan_start = _stored_date(stored.get("scan_start"))
         self.history_backfill_cursor = _stored_date(stored.get("cursor"))
         self.history_earliest_date = _stored_date(stored.get("earliest_date"))
         self.history_backfill_processed_chunks = _stored_non_negative_int(
@@ -246,7 +249,6 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         can_resume = (
             self.history_backfill_status in {"running", "paused", "failed"}
             and self.history_backfill_cursor is not None
-            and self.history_backfill_cursor > HISTORY_SCAN_START_DATE
         )
         if resume_only and not can_resume:
             return False
@@ -254,7 +256,11 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         now = dt_util.now()
         if not can_resume:
             scan_end = two_calendar_month_start(now.date())
-            ranges = profile_date_ranges(HISTORY_SCAN_START_DATE, scan_end)
+            self.history_backfill_scan_start = one_calendar_year_ago(now.date())
+            ranges = profile_date_ranges_backwards(
+                self.history_backfill_scan_start,
+                scan_end,
+            )
             self.history_backfill_cursor = scan_end
             self.history_backfill_started_at = now
             self.history_backfill_completed_at = None
@@ -264,9 +270,13 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             self.history_backfill_imported_days = 0
             self.history_backfill_imported_hours = 0
         else:
+            scan_start = self.history_backfill_scan_start or one_calendar_year_ago(
+                now.date()
+            )
+            self.history_backfill_scan_start = scan_start
             remaining = len(
-                profile_date_ranges(
-                    HISTORY_SCAN_START_DATE,
+                profile_date_ranges_backwards(
+                    scan_start,
                     self.history_backfill_cursor,
                 )
             )
@@ -298,12 +308,17 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         try:
             await self._async_save_history_backfill_state()
             cursor = self.history_backfill_cursor
-            if cursor is None or cursor <= HISTORY_SCAN_START_DATE:
+            scan_start = self.history_backfill_scan_start
+            if scan_start is None:
+                scan_start = one_calendar_year_ago(dt_util.now().date())
+                self.history_backfill_scan_start = scan_start
+            if cursor is None or cursor <= scan_start:
                 await self._async_finish_history_backfill()
                 return
 
-            ranges = tuple(
-                reversed(profile_date_ranges(HISTORY_SCAN_START_DATE, cursor))
+            ranges = profile_date_ranges_backwards(
+                scan_start,
+                cursor,
             )
             local_tz = dt_util.now().tzinfo
             price = Decimal(
@@ -386,7 +401,8 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
     async def _async_finish_history_backfill(self) -> None:
         """Persist successful completion and notify diagnostic entities."""
         self.history_backfill_status = "completed"
-        self.history_backfill_cursor = HISTORY_SCAN_START_DATE
+        self.history_backfill_cursor = self.history_backfill_scan_start
+        self.history_backfill_processed_chunks = self.history_backfill_total_chunks
         self.history_backfill_completed_at = dt_util.now()
         self.history_backfill_error = None
         await self._async_save_history_backfill_state()
@@ -410,6 +426,9 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 else None,
                 "completed_at": self.history_backfill_completed_at.isoformat()
                 if self.history_backfill_completed_at is not None
+                else None,
+                "scan_start": self.history_backfill_scan_start.isoformat()
+                if self.history_backfill_scan_start is not None
                 else None,
                 "cursor": self.history_backfill_cursor.isoformat()
                 if self.history_backfill_cursor is not None

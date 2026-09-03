@@ -109,6 +109,29 @@ def profile_date_ranges(
     return tuple(ranges)
 
 
+def profile_date_ranges_backwards(
+    date_from: date, date_to: date
+) -> tuple[tuple[date, date], ...]:
+    """Split an interval into newest-first EDC-compatible requests."""
+    if date_to <= date_from:
+        return ()
+    ranges: list[tuple[date, date]] = []
+    chunk_to = date_to
+    while chunk_to > date_from:
+        chunk_from = max(date_from, chunk_to - timedelta(days=MAX_PROFILE_DAYS))
+        ranges.append((chunk_from, chunk_to))
+        chunk_to = chunk_from
+    return tuple(ranges)
+
+
+def one_calendar_year_ago(today: date) -> date:
+    """Return the same calendar date one year earlier."""
+    try:
+        return today.replace(year=today.year - 1)
+    except ValueError:
+        return today.replace(year=today.year - 1, day=28)
+
+
 def completed_report_range(
     period: str, today: date
 ) -> tuple[date, date]:

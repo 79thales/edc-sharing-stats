@@ -14,7 +14,7 @@ Vlastní integrace pro Home Assistant, která načítá vyhodnocení skupiny sd�
 - výpočet tržby/zisku z výroby jako `nasdílené kWh × prodejní cena`,
 - automatické stažení profilových dat za předchozí a aktuální kalendářní měsíc,
 - hodinová i denní historie vypočtená ze zdrojových intervalů EDC,
-- ruční dohledání a doplnění celé dostupné historie EDC včetně kontrolního bloku před spuštěním sdílení,
+- ruční dohledání a doplnění dostupné historie EDC až jeden kalendářní rok zpět,
 - hodinová aktualizace a podpora dlouhodobých statistik Home Assistantu,
 - ruční pokus o okamžité načtení dat a diagnostika posledního i příštího pokusu,
 - opětovné zadání hesla, pokud EDC uložené údaje odmítne,
@@ -89,7 +89,7 @@ Běžné senzory se nadále obnovují jednou za hodinu a Home Assistant jejich s
 
 Okamžité načtení lze spustit tlačítkem **Načíst data EDC nyní** na zařízení skupiny v **Nastavení → Zařízení a služby → EDC Sharing Stats**. Tlačítko pouze požádá EDC o aktuálně zveřejněná data; nevytvoří data, která EDC ještě nezpřístupnilo. Po dokončení se aktualizuje diagnostický senzor popsaný výše.
 
-Tlačítko **Doplnit veškerou dostupnou historii EDC** spustí jednorázové hledání směrem do minulosti. Integrace projde celé možné období v blocích nejvýše 31 dní, včetně kontrolního bloku od 1. července do 1. srpna 2024. Ojedinělý prázdný blok proto nepovažuje za konec historie a nejstarší skutečně dostupné datum určí až z dat vrácených portálem. Každý blok se průběžně zapíše do dlouhodobých statistik. Uložený kurzor umožní po restartu automaticky pokračovat od posledního dokončeného bloku. Po dokončení lze tlačítko použít znovu, například kvůli dodatečným opravám dat na straně EDC.
+Tlačítko **Doplnit dostupnou historii EDC za poslední rok** spustí jednorázové hledání směrem do minulosti. Počáteční mez se při každém novém spuštění určí jako stejné kalendářní datum předchozího roku. Při spuštění 3. září 2026 se tedy hledá nejvýše do 3. září 2025. Integrace postupuje od nejnovějších dat dozadu v blocích nejvýše 31 dní; v tomto příkladu proto samostatně načte také blok od 1. července do 1. srpna 2026. Ojedinělý prázdný blok nepovažuje za konec historie a nejstarší skutečně dostupné datum určí až z dat vrácených portálem. Každý blok se průběžně zapíše do dlouhodobých statistik. Uložený kurzor i začátek období umožní po restartu automaticky pokračovat od posledního dokončeného bloku. Po dokončení lze tlačítko použít znovu, například kvůli dodatečným opravám dat na straně EDC.
 
 Zdrojové intervaly EDC se uchovávají v dlouhodobých statistikách jako hodinové a denní součty. Samostatné čtvrthodinové řady se nevytvářejí, aby zbytečně nezvětšovaly databázi Recorderu.
 

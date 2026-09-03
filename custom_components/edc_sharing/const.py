@@ -1,6 +1,6 @@
 """Constants for the EDC sharing integration."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 DOMAIN = "edc_sharing"
 
@@ -21,8 +21,6 @@ DEFAULT_SALE_PRICE = 2.0
 DEFAULT_SCAN_INTERVAL = timedelta(hours=1)
 DEFAULT_REPORT_TIME = "07:30:00"
 DEFAULT_REPORT_DAY = 5
-HISTORY_SCAN_START_DATE = date(2024, 7, 1)
-
 API_BASE_URL = "https://api.portal.edc-cr.cz/api/v0"
 AUTHORITY_URL = "https://sso.portal.edc-cr.cz/auth/realms/edc"
 CLIENT_ID = "a63c22a3-6e1d-4eac-b383-d06373da046a"

@@ -57,22 +57,28 @@ class CalculationTests(unittest.TestCase):
             ),
         )
 
-    def test_full_history_ranges_cover_every_day_backwards(self) -> None:
-        ranges = tuple(
-            reversed(
-                calculation.profile_date_ranges(
-                    date(2024, 7, 1), date(2026, 8, 1)
-                )
-            )
+    def test_one_year_history_ranges_cover_every_day_backwards(self) -> None:
+        today = date(2026, 9, 3)
+        date_from = calculation.one_calendar_year_ago(today)
+        ranges = calculation.profile_date_ranges_backwards(
+            date_from,
+            date(2026, 8, 1),
         )
 
-        self.assertEqual(ranges[0][1], date(2026, 8, 1))
-        self.assertEqual(ranges[-1], (date(2024, 7, 1), date(2024, 8, 1)))
+        self.assertEqual(date_from, date(2025, 9, 3))
+        self.assertEqual(ranges[0], (date(2026, 7, 1), date(2026, 8, 1)))
+        self.assertEqual(ranges[-1][0], date_from)
         self.assertTrue(
             all((chunk_to - chunk_from).days <= 31 for chunk_from, chunk_to in ranges)
         )
         self.assertTrue(
             all(older[1] == newer[0] for newer, older in zip(ranges, ranges[1:]))
+        )
+
+    def test_one_calendar_year_ago_handles_leap_day(self) -> None:
+        self.assertEqual(
+            calculation.one_calendar_year_ago(date(2028, 2, 29)),
+            date(2027, 2, 28),
         )
 
     def test_completed_report_ranges(self) -> None:

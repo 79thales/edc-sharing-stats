@@ -287,6 +287,11 @@ class EdcUpdateAttemptSensor(
             "history_backfill_progress": progress,
             "history_backfill_processed_chunks": processed_chunks,
             "history_backfill_total_chunks": total_chunks,
+            "history_backfill_search_from": (
+                self.coordinator.history_backfill_scan_start.isoformat()
+                if self.coordinator.history_backfill_scan_start is not None
+                else None
+            ),
             "history_backfill_scanned_to": (
                 self.coordinator.history_backfill_cursor.isoformat()
                 if self.coordinator.history_backfill_cursor is not None
