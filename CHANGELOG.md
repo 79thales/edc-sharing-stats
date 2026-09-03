@@ -1,11 +1,20 @@
-# Přehled změn
+# Přehled změn / Changelog
 
 ## 0.1.16 – 2026-09-03
+
+### Čeština
 
 - historický blok z doby, kdy skupina ještě neobsahovala současně výrobní i odběrný EAN, již nezastaví dohledávání historie,
 - přeskočený neúplný blok se započítá jako zpracovaný a hledání pokračuje až k pohyblivé roční hranici,
 - roční a souhrnné e-mailové reporty přeskočí neúplné starší bloky a sestaví výsledek ze všech skutečně dostupných dnů,
 - běžné načítání aktuálních dat zůstává přísné a neúplnou odpověď EDC nadále oznámí jako chybu.
+
+### English
+
+- a historical block from a time when the sharing group did not yet contain both a producer and a consumer EAN no longer stops the history backfill,
+- an incomplete block is recorded as processed and the search continues to the rolling one-year boundary,
+- annual and combined email reports skip incomplete older blocks and use all days for which complete data is available,
+- regular updates of current data remain strict and still report an incomplete EDC response as an error.
 
 ## 0.1.15 – 2026-09-03
 
