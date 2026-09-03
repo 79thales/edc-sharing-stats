@@ -20,6 +20,7 @@ from .calculation import (
     DailySharing,
     EanInfo,
     HourlySharing,
+    IncompleteProfileLayoutError,
     SharingStatistics,
     calculate_statistics,
     extract_eans,
@@ -346,16 +347,30 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     dt_util.as_utc(local_from).isoformat().replace("+00:00", "Z"),
                     dt_util.as_utc(local_to).isoformat().replace("+00:00", "Z"),
                 )
-                days = tuple(
-                    row
-                    for row in parse_daily_profile(raw)
-                    if chunk_from <= row.day < chunk_to
-                )
-                hours = tuple(
-                    row
-                    for row in parse_hourly_profile(raw)
-                    if chunk_from <= row.start.date() < chunk_to
-                )
+                try:
+                    days = tuple(
+                        row
+                        for row in parse_daily_profile(raw)
+                        if chunk_from <= row.day < chunk_to
+                    )
+                    hours = tuple(
+                        row
+                        for row in parse_hourly_profile(raw)
+                        if chunk_from <= row.start.date() < chunk_to
+                    )
+                except IncompleteProfileLayoutError as err:
+                    # Before both EAN roles joined the sharing group, EDC can
+                    # return a valid profile containing only one side. Such a
+                    # block is outside this integration's usable history and
+                    # must not stop the backwards scan.
+                    _LOGGER.debug(
+                        "Skipping incomplete EDC history block %s to %s: %s",
+                        chunk_from,
+                        chunk_to,
+                        err,
+                    )
+                    days = ()
+                    hours = ()
                 now = dt_util.now()
                 self.history_backfill_imported_days += async_import_daily_history(
                     self.hass,

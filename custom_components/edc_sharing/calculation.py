@@ -12,6 +12,10 @@ ZERO = Decimal("0")
 MAX_PROFILE_DAYS = 31
 
 
+class IncompleteProfileLayoutError(ValueError):
+    """EDC profile data does not contain both sides of electricity sharing."""
+
+
 @dataclass(frozen=True, slots=True)
 class EanInfo:
     """One EAN participating in an EDC sharing group."""
@@ -174,7 +178,9 @@ def _profile_layout(
         if target is not None and direction in ("IN", "OUT"):
             target.setdefault(ean, {})[direction] = index
     if not producers or not consumers:
-        raise ValueError("V odpovědi EDC nebyl rozpoznán výrobní a odběrný EAN.")
+        raise IncompleteProfileLayoutError(
+            "V odpovědi EDC nebyl rozpoznán výrobní a odběrný EAN."
+        )
     return columns, content, producers, consumers
 
 

@@ -16,6 +16,7 @@ from homeassistant.util import dt as dt_util
 from .api import EdcApiError, EdcAuthenticationError
 from .calculation import (
     DailySharing,
+    IncompleteProfileLayoutError,
     PeriodSummary,
     calculate_period_summary,
     parse_daily_profile,
@@ -263,10 +264,23 @@ class EdcReportManager:
                     dt_util.as_utc(local_from).isoformat().replace("+00:00", "Z"),
                     dt_util.as_utc(local_to).isoformat().replace("+00:00", "Z"),
                 )
+                try:
+                    rows = parse_daily_profile(raw)
+                except IncompleteProfileLayoutError as err:
+                    # A report can span time before both EAN roles participated
+                    # in the group. Ignore that unusable block and retain every
+                    # complete block in the requested period.
+                    _LOGGER.debug(
+                        "Skipping incomplete EDC report block %s to %s: %s",
+                        chunk_from,
+                        chunk_to,
+                        err,
+                    )
+                    continue
                 fetched.update(
                     {
                         row.day: row
-                        for row in parse_daily_profile(raw)
+                        for row in rows
                         if date_from <= row.day < date_to
                     }
                 )

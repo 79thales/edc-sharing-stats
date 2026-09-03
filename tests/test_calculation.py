@@ -161,7 +161,7 @@ class CalculationTests(unittest.TestCase):
         self.assertEqual(result.month_unused, Decimal("4"))
 
     def test_missing_roles_is_rejected(self) -> None:
-        with self.assertRaises(ValueError):
+        with self.assertRaises(calculation.IncompleteProfileLayoutError):
             calculation.calculate_profile(
                 {"valueColumns": [{"ean": "111", "type": "D", "dir": "IN"}], "content": [{"date": "2026-09-01", "values": [{"v": 1}]}]},
                 Decimal("2"),

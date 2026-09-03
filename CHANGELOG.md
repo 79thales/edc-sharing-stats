@@ -1,5 +1,12 @@
 # Přehled změn
 
+## 0.1.16 – 2026-09-03
+
+- historický blok z doby, kdy skupina ještě neobsahovala současně výrobní i odběrný EAN, již nezastaví dohledávání historie,
+- přeskočený neúplný blok se započítá jako zpracovaný a hledání pokračuje až k pohyblivé roční hranici,
+- roční a souhrnné e-mailové reporty přeskočí neúplné starší bloky a sestaví výsledek ze všech skutečně dostupných dnů,
+- běžné načítání aktuálních dat zůstává přísné a neúplnou odpověď EDC nadále oznámí jako chybu.
+
 ## 0.1.15 – 2026-09-03
 
 - nečíselné hodnoty `NaN` vrácené EDC se již nepřenášejí do ročních součtů a neznehodnotí celý report,
