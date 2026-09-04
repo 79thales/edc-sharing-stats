@@ -196,10 +196,10 @@ class CalculationTests(unittest.TestCase):
         """Producer values are positive and consumer values negative in EDC."""
         response = {
             "valueColumns": [
-                {"ean": "859182400708995788", "type": "D", "dir": "IN"},
-                {"ean": "859182400708995788", "type": "D", "dir": "OUT"},
-                {"ean": "859182400701870518", "type": "O", "dir": "IN"},
-                {"ean": "859182400701870518", "type": "O", "dir": "OUT"},
+                {"ean": "test-producer-ean", "type": "D", "dir": "IN"},
+                {"ean": "test-producer-ean", "type": "D", "dir": "OUT"},
+                {"ean": "test-consumer-ean", "type": "O", "dir": "IN"},
+                {"ean": "test-consumer-ean", "type": "O", "dir": "OUT"},
             ],
             "content": [{
                 "date": "2026-08-03",

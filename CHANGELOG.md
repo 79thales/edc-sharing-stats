@@ -1,5 +1,23 @@
 # Přehled změn / Changelog
 
+## 0.1.18 – 2026-09-04
+
+### Čeština
+
+- na začátek README byl přidán stručný profesionální anglický přehled funkcí pro HACS review; podrobná česká dokumentace zůstala zachována,
+- bezpečnostní a privacy dokumentace nyní přesně rozlišuje trvale uložené přihlašovací údaje, tokeny pouze v paměti a údaje obsažené v diagnostických entitách, statistikách a volitelných e-mailových reportech,
+- zavádějící název „zisk z výroby“ byl nahrazen přesnějším označením hodnoty sdílené elektřiny a anglické názvy používají pojmy „shared electricity“ a „grid import“; identifikátory entit a statistik se nemění,
+- reálné EANy byly odstraněny z testovací fixture a nová automatická kontrola brání přidání 18místných EANů nebo skutečných e-mailových adres do textových souborů repozitáře,
+- `.gitignore` nově chrání běžné soubory s přihlašovacími údaji, cookies, Home Assistant databází a exporty EDC; funkce integrace ani formát reportů se nemění.
+
+### English
+
+- added a concise, professional feature overview at the top of the README for HACS reviewers while retaining the detailed Czech documentation,
+- clarified which credentials are persisted, which tokens remain in memory, and which data appears in diagnostic entities, long-term statistics, and optional email reports,
+- replaced the misleading “production profit” label with “shared electricity value” and standardized English entity labels on “shared electricity” and “grid import”; entity IDs and statistic IDs remain unchanged,
+- removed real EAN values from a test fixture and added automated checks that reject 18-digit EAN literals or non-example email addresses in repository text files,
+- expanded ignore rules for common credential, cookie, Home Assistant database, and EDC export files; integration behavior and report formatting are unchanged.
+
 ## 0.1.17 – 2026-09-04
 
 ### Čeština

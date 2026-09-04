@@ -2,6 +2,18 @@
 
 [![Otevřít repozitář v HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=79thales&repository=edc-sharing-stats&category=integration)
 
+## English overview
+
+EDC Sharing Stats is a custom Home Assistant integration for electricity-sharing groups managed through the Czech EDC portal. For the latest available EDC day, it exposes shared electricity, consumption, grid import, unused production surplus, sharing coverage, and an estimated value based on a configurable CZK/kWh price. Current-month statistics additionally include total production surplus.
+
+Historical EDC profile data is aggregated into hourly and daily Home Assistant long-term statistics. The integration supports a resumable, one-year history backfill, refresh and backfill diagnostics, and optional on-demand or scheduled email reports in Czech or English through Home Assistant `notify` entities.
+
+The EDC account email and password are stored in the Home Assistant config entry and may therefore be included in Home Assistant backups. Access and refresh tokens remain in memory only. Group names and full EANs are visible in diagnostic entities and are included in enabled email reports, so reports should only be sent through trusted notification targets.
+
+This is an independent integration and is not an official product of, or supported by, Elektroenergetické datové centrum, a. s. The EDC web API is not publicly guaranteed and may change without notice.
+
+## Česká dokumentace
+
 Vlastní integrace pro Home Assistant, která načítá vyhodnocení skupiny sdílení elektřiny z českého portálu EDC.
 
 ## Funkce
@@ -11,7 +23,7 @@ Vlastní integrace pro Home Assistant, která načítá vyhodnocení skupiny sd�
 - hodnoty za poslední dostupný den a za aktuální měsíc pro sdílení, spotřebu, dokup a přetoky,
 - procentuální pokrytí spotřeby sdílenou elektřinou,
 - nastavitelná prodejní cena v Kč/kWh,
-- výpočet tržby/zisku z výroby jako `nasdílené kWh × prodejní cena`,
+- výpočet hodnoty nasdílené elektřiny jako `nasdílené kWh × prodejní cena`,
 - automatické stažení profilových dat za předchozí a aktuální kalendářní měsíc,
 - hodinová i denní historie vypočtená ze zdrojových intervalů EDC,
 - ruční dohledání a doplnění dostupné historie EDC až jeden kalendářní rok zpět,
@@ -24,7 +36,7 @@ Vlastní integrace pro Home Assistant, která načítá vyhodnocení skupiny sd�
 - souhrnný report se všemi čtyřmi obdobími v jediném e-mailu.
 
 > [!IMPORTANT]
-> Výpočet označený jako zisk neodečítá investiční ani provozní náklady. Jde o hodnotu skutečně nasdílené energie při nastavené ceně.
+> Hodnota sdílení neodečítá investiční ani provozní náklady a nepředstavuje čistý zisk. Jde o hodnotu skutečně nasdílené energie při nastavené ceně.
 
 ## Instalace přes HACS
 
@@ -47,7 +59,7 @@ Průvodce vyžaduje:
 - skupinu sdílení dostupnou danému účtu,
 - prodejní cenu elektřiny v Kč/kWh.
 
-Skupinu a cenu lze později změnit přes **Nastavení → Zařízení a služby → EDC Sharing Stats → Nastavit**. Přístupový token zůstává pouze v paměti; po restartu se integrace přihlásí znovu uloženými přístupovými údaji.
+Skupinu a cenu lze později změnit přes **Nastavení → Zařízení a služby → EDC Sharing Stats → Nastavit**. Přístupový i obnovovací token zůstává pouze v paměti; po restartu se integrace přihlásí znovu uloženými přístupovými údaji.
 
 Pokud účet obsahuje více skupin sdílení, lze integraci přidat opakovaně a při každém nastavení vybrat jinou skupinu podle názvu vráceného EDC. Každý nalezený sdílející a cílový EAN má vlastní diagnostickou entitu se stavem obsahujícím celé číslo EAN. Entit může být na obou stranách libovolný počet a jejich zobrazované názvy lze běžně změnit v nastavení entity Home Assistantu.
 
@@ -70,7 +82,7 @@ Reporty lze odeslat i ručně pomocí tlačítek **Odeslat denní report**, **Od
 ## Vytvářené senzory
 
 - nasdíleno, spotřeba, dokup, nevyužitý přetok, pokrytí a tržba za poslední den dostupný v EDC,
-- nasdíleno, spotřeba, dokup, přetok výrobny, nevyužitý přetok, pokrytí a hodnota výroby za aktuální měsíc,
+- nasdíleno, spotřeba, dokup, přetok výrobny, nevyužitý přetok, pokrytí a hodnota sdílení za aktuální měsíc,
 - nastavená prodejní cena.
 
 Integrace vytváří 14 základních hodnotových senzorů. Nejde o duplicity: šest patří poslednímu dni dostupnému v EDC, sedm aktuálnímu měsíci a jeden představuje nastavenou prodejní cenu. Každý senzor má vlastní jedinečný identifikátor a lokalizovaný název. U šesti denních senzorů atribut `data_date` uvádí skutečné datum měření; EDC obvykle zveřejňuje vyhodnocení se zpožděním, takže nemusí jít o dnešní datum.
@@ -99,7 +111,10 @@ Zdrojové intervaly EDC se uchovávají v dlouhodobých statistikách jako hodin
 
 - Integrace používá webové API portálu EDC, které není veřejně garantované a může se změnit.
 - Účty vyžadující další interaktivní krok nebo vícefaktorové ověření zatím nejsou podporované.
-- Heslo je uloženo v konfigurační položce Home Assistantu. Chraňte přístup k adresáři konfigurace a zálohám.
+- E-mail účtu EDC a heslo jsou uloženy v konfigurační položce Home Assistantu a mohou být součástí záloh. Chraňte přístup k adresáři konfigurace, skrytému úložišti `.storage` a zálohám.
+- Přístupový a obnovovací token jsou pouze v paměti API klienta. Integrace je neukládá do úložiště průběhu historie, atributů entit ani vlastních logů.
+- Diagnostické entity záměrně zobrazují celý EAN a název skupiny. Dlouhodobé statistiky obsahují energetické hodnoty a interní ID skupiny.
+- Zapnuté e-mailové reporty obsahují název skupiny, celé EANy a energetické hodnoty. Odesílají se výhradně přes uživatelem vybrané Home Assistant `notify` entity; používejte pouze důvěryhodné příjemce a SMTP server.
 
 ## Podpora
 

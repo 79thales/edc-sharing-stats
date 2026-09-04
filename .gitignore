@@ -8,3 +8,16 @@ __pycache__/
 .vscode/
 dist/
 *.zip
+*.log
+.env
+.env.*
+!.env.example
+.storage/
+secrets.yaml
+home-assistant_v2.db*
+*.sqlite
+*.sqlite3
+cookies*.json
+credentials*.json
+edc-denni-hodnoty*.json
+edc-export*/
