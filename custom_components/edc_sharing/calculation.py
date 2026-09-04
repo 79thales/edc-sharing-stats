@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
-from decimal import Decimal
+from datetime import UTC, date, datetime, timedelta, tzinfo
+from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
 
@@ -89,7 +89,10 @@ class PeriodSummary:
 def _decimal(value: Any) -> Decimal:
     if value is None:
         return ZERO
-    parsed = Decimal(str(value))
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as err:
+        raise ValueError("EDC vrátilo neplatnou číselnou hodnotu.") from err
     return parsed if parsed.is_finite() else ZERO
 
 
@@ -274,13 +277,45 @@ def parse_daily_profile(response: dict[str, Any]) -> tuple[DailySharing, ...]:
     return tuple(daily)
 
 
-def parse_hourly_profile(response: dict[str, Any]) -> tuple[HourlySharing, ...]:
+def _local_hour_as_utc(
+    local_hour: datetime,
+    local_tz: tzinfo,
+    occurrence: int,
+) -> datetime:
+    """Resolve one EDC wall-clock hour, including DST folds, to UTC."""
+    first = local_hour.replace(tzinfo=local_tz, fold=0)
+    second = local_hour.replace(tzinfo=local_tz, fold=1)
+    first_exists = (
+        first.astimezone(UTC).astimezone(local_tz).replace(tzinfo=None)
+        == local_hour
+    )
+    second_exists = (
+        second.astimezone(UTC).astimezone(local_tz).replace(tzinfo=None)
+        == local_hour
+    )
+    if not first_exists and not second_exists:
+        raise ValueError(
+            f"EDC vrátilo neexistující lokální čas {local_hour.isoformat()}."
+        )
+    ambiguous = (
+        first_exists
+        and second_exists
+        and first.utcoffset() != second.utcoffset()
+    )
+    resolved = second if ambiguous and occurrence else first
+    return resolved.astimezone(UTC)
+
+
+def parse_hourly_profile(
+    response: dict[str, Any], *, local_tz: tzinfo | None = None
+) -> tuple[HourlySharing, ...]:
     """Aggregate quarter-hour standard profile rows into clock hours."""
     columns, content, producers, consumers = _profile_layout(response)
     if not content:
         return ()
 
     values_by_hour: dict[datetime, list[Decimal]] = {}
+    interval_occurrences: dict[tuple[date, str], int] = {}
     for item in content:
         start_text = str(item.get("start") or "")
         hour_text = start_text.partition(":")[0]
@@ -290,7 +325,15 @@ def parse_hourly_profile(response: dict[str, Any]) -> tuple[HourlySharing, ...]:
         if not 0 <= hour <= 23:
             continue
         item_date = date.fromisoformat(str(item["date"])[:10])
-        hour_start = datetime.combine(item_date, datetime.min.time()).replace(hour=hour)
+        interval_key = (item_date, start_text)
+        occurrence = interval_occurrences.get(interval_key, 0)
+        interval_occurrences[interval_key] = occurrence + 1
+        local_hour = datetime.combine(item_date, datetime.min.time()).replace(hour=hour)
+        hour_start = (
+            _local_hour_as_utc(local_hour, local_tz, occurrence)
+            if local_tz is not None
+            else local_hour
+        )
         totals = values_by_hour.setdefault(hour_start, [ZERO] * len(columns))
         _add_values(totals, item.get("values") or [], len(columns))
 

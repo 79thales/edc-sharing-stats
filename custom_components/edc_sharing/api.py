@@ -15,9 +15,12 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 import uuid
 
-from aiohttp import ClientError, ClientSession
+from aiohttp import ClientError, ClientSession, ClientTimeout
 
 from .const import API_BASE_URL, AUTHORITY_URL, CLIENT_ID, REDIRECT_URI
+
+
+REQUEST_TIMEOUT = ClientTimeout(total=30)
 
 
 class EdcApiError(Exception):
@@ -83,6 +86,7 @@ class EdcApiClient:
             response = await self._session.get(
                 f"{AUTHORITY_URL}/protocol/openid-connect/auth?{urlencode(params)}",
                 allow_redirects=False,
+                timeout=REQUEST_TIMEOUT,
             )
             response, location = await self._async_follow_login_redirects(response)
             redirect_query = parse_qs(urlparse(location).query)
@@ -107,7 +111,10 @@ class EdcApiClient:
                 "credentialId": "",
             }
             login_response = await self._session.post(
-                urljoin(str(response.url), login_action), data=form, allow_redirects=False
+                urljoin(str(response.url), login_action),
+                data=form,
+                allow_redirects=False,
+                timeout=REQUEST_TIMEOUT,
             )
             login_response, location = await self._async_follow_login_redirects(login_response)
             redirect_query = parse_qs(urlparse(location).query)
@@ -127,8 +134,8 @@ class EdcApiClient:
             await self._async_exchange_code(code, verifier)
         except EdcApiError:
             raise
-        except (ClientError, TimeoutError, ValueError) as err:
-            raise EdcApiError(f"Spojení s EDC selhalo: {err}") from err
+        except (ClientError, TimeoutError, ValueError):
+            raise EdcApiError("Spojení s EDC selhalo.") from None
 
     async def _async_follow_login_redirects(
         self, response: Any
@@ -141,7 +148,9 @@ class EdcApiClient:
             if response.status not in (301, 302, 303, 307, 308) or not location:
                 break
             response = await self._session.get(
-                urljoin(str(response.url), location), allow_redirects=False
+                urljoin(str(response.url), location),
+                allow_redirects=False,
+                timeout=REQUEST_TIMEOUT,
             )
             location = response.headers.get("Location", "")
         return response, location
@@ -163,6 +172,7 @@ class EdcApiClient:
                 "code": code,
                 "code_verifier": verifier,
             },
+            timeout=REQUEST_TIMEOUT,
         )
         if token_response.status != 200:
             raise EdcAuthenticationError("Přihlášení EDC se nepodařilo dokončit.")
@@ -170,7 +180,9 @@ class EdcApiClient:
 
     async def async_get_groups(self) -> list[dict[str, Any]]:
         data = await self._request("GET", "/profiles-data/get-sse")
-        if not isinstance(data, list):
+        if not isinstance(data, list) or not all(
+            isinstance(item, dict) for item in data
+        ):
             raise EdcApiError("EDC vrátilo neplatný seznam skupin.")
         return data
 
@@ -200,6 +212,7 @@ class EdcApiClient:
                     method,
                     f"{API_BASE_URL}{path}",
                     json=payload,
+                    timeout=REQUEST_TIMEOUT,
                     headers={
                         "Accept": "application/json",
                         "Content-Type": "application/json",
@@ -218,8 +231,8 @@ class EdcApiClient:
                 return await response.json()
             except EdcApiError:
                 raise
-            except (ClientError, TimeoutError, ValueError) as err:
-                raise EdcApiError(f"Spojení s EDC selhalo: {err}") from err
+            except (ClientError, TimeoutError, ValueError):
+                raise EdcApiError("Spojení s EDC selhalo.") from None
 
     async def _async_ensure_token(self) -> None:
         if self._access_token and time.monotonic() < self._expires_at - 30:
@@ -232,6 +245,7 @@ class EdcApiClient:
                     "grant_type": "refresh_token",
                     "refresh_token": self._refresh_token,
                 },
+                timeout=REQUEST_TIMEOUT,
             )
             if response.status == 200:
                 self._store_tokens(await response.json())
@@ -239,9 +253,19 @@ class EdcApiClient:
         await self.async_login()
 
     def _store_tokens(self, data: dict[str, Any]) -> None:
-        self._access_token = str(data["access_token"])
-        self._refresh_token = data.get("refresh_token")
-        self._expires_at = time.monotonic() + int(data.get("expires_in", 300))
+        try:
+            access_token = data["access_token"]
+            expires_in = int(data.get("expires_in", 300))
+        except (KeyError, TypeError, ValueError) as err:
+            raise EdcApiError("EDC vrátilo neplatnou tokenovou odpověď.") from err
+        if not isinstance(access_token, str) or not access_token:
+            raise EdcApiError("EDC vrátilo neplatnou tokenovou odpověď.")
+        refresh_token = data.get("refresh_token")
+        self._access_token = access_token
+        self._refresh_token = (
+            refresh_token if isinstance(refresh_token, str) and refresh_token else None
+        )
+        self._expires_at = time.monotonic() + max(0, expires_in)
 
 
 def _base64url(value: bytes) -> str:

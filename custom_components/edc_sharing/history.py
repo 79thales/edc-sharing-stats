@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime, time, tzinfo
+from datetime import UTC, date, datetime, time, tzinfo
 from decimal import Decimal
 
 from homeassistant.components.recorder.models import (
@@ -84,6 +84,10 @@ HISTORY_SERIES: tuple[HistorySeries, ...] = (
     ),
 )
 
+# EDC rows are values for one completed hour/day, not monotonically increasing
+# lifetime counters. Dedicated hourly and daily statistic IDs therefore use
+# mean/min/max and deliberately do not publish a cumulative ``sum``.
+
 
 @callback
 def async_import_daily_history(
@@ -142,8 +146,20 @@ def async_import_hourly_history(
     local_tz: tzinfo,
 ) -> int:
     """Queue completed EDC hours as idempotent external statistics."""
-    current_hour = now.replace(tzinfo=None, minute=0, second=0, microsecond=0)
-    finalized = tuple(row for row in hours if row.start < current_hour)
+    aware_now = now if now.tzinfo is not None else now.replace(tzinfo=local_tz)
+    current_hour = aware_now.replace(
+        minute=0, second=0, microsecond=0
+    ).astimezone(UTC)
+    finalized = tuple(
+        row
+        for row in hours
+        if (
+            row.start
+            if row.start.tzinfo is not None
+            else row.start.replace(tzinfo=local_tz).astimezone(UTC)
+        )
+        < current_hour
+    )
     if not finalized:
         return 0
 
@@ -152,9 +168,14 @@ def async_import_hourly_history(
         statistics: list[StatisticData] = []
         for row in finalized:
             value = float(series.value_fn(row, sale_price))
+            start = (
+                row.start
+                if row.start.tzinfo is not None
+                else row.start.replace(tzinfo=local_tz)
+            )
             statistics.append(
                 StatisticData(
-                    start=row.start.replace(tzinfo=local_tz),
+                    start=start,
                     mean=value,
                     min=value,
                     max=value,

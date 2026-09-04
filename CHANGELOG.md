@@ -1,5 +1,23 @@
 # Přehled změn / Changelog
 
+## 0.1.19 – 2026-09-04
+
+### Čeština
+
+- všechny požadavky na EDC API a přihlášení mají explicitní 30sekundový timeout; pomalý nebo nedostupný portál tak nemůže ponechat aktualizaci čekat na dlouhém výchozím timeoutu `aiohttp`,
+- chybné tokenové, seznamové a číselné odpovědi EDC se nyní mění na sanitizované chyby integrace; nízkoúrovňové síťové hlášky se již nepropagují do diagnostických atributů,
+- hodinová historie rozlišuje obě opakované hodiny při podzimním přechodu na standardní čas a používá jednoznačné UTC timestampy; neexistující jarní lokální hodina je odmítnuta místo vytvoření kolidující statistiky,
+- přibyly regresní testy pro timeout, autentizaci, vadné odpovědi, oba DST přechody, lokální půlnoc, metadata externích statistik, opakovaný import a opravené hodnoty,
+- entity ID, unique ID, statistic ID, config-entry a storage schema, reporty i denní výpočty zůstávají beze změny.
+
+### English
+
+- all EDC API and sign-in requests now use an explicit 30-second timeout, preventing an unavailable portal from holding an update until the much longer default `aiohttp` timeout expires,
+- malformed token, group-list, and numeric responses are converted to sanitized integration errors; low-level network error text is no longer propagated to diagnostic attributes,
+- hourly history now distinguishes both occurrences of the repeated hour during the autumn DST transition and uses unambiguous UTC timestamps; a nonexistent spring-forward local hour is rejected instead of creating a colliding statistic,
+- added regression coverage for timeouts, authentication, malformed responses, both DST transitions, local midnight, external-statistics metadata, repeated imports, and corrected values,
+- entity IDs, unique IDs, statistic IDs, config-entry and storage schemas, report formatting, and daily calculations remain unchanged.
+
 ## 0.1.18 – 2026-09-04
 
 ### Čeština

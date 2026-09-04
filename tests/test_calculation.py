@@ -1,6 +1,6 @@
 """Tests for standalone EDC calculation logic."""
 
-from datetime import date
+from datetime import date, datetime, timedelta, tzinfo
 from decimal import Decimal
 import importlib.util
 from pathlib import Path
@@ -19,7 +19,102 @@ sys.modules[SPEC.name] = calculation
 SPEC.loader.exec_module(calculation)
 
 
+class _Prague2026Timezone(tzinfo):
+    """Small deterministic CET/CEST timezone used without external tzdata."""
+
+    _SPRING_UTC = datetime(2026, 3, 29, 1)
+    _AUTUMN_UTC = datetime(2026, 10, 25, 1)
+
+    def utcoffset(self, value: datetime | None) -> timedelta | None:
+        if value is None:
+            return None
+        wall = value.replace(tzinfo=None)
+        if datetime(2026, 10, 25, 2) <= wall < datetime(2026, 10, 25, 3):
+            return timedelta(hours=1 if value.fold else 2)
+        if datetime(2026, 3, 29, 2) <= wall < datetime(2026, 3, 29, 3):
+            return timedelta(hours=2 if value.fold else 1)
+        if datetime(2026, 3, 29, 3) <= wall < datetime(2026, 10, 25, 3):
+            return timedelta(hours=2)
+        return timedelta(hours=1)
+
+    def dst(self, value: datetime | None) -> timedelta | None:
+        offset = self.utcoffset(value)
+        return None if offset is None else offset - timedelta(hours=1)
+
+    def tzname(self, value: datetime | None) -> str | None:
+        return "CEST" if self.utcoffset(value) == timedelta(hours=2) else "CET"
+
+    def fromutc(self, value: datetime) -> datetime:
+        utc = value.replace(tzinfo=None)
+        if self._SPRING_UTC <= utc < self._AUTUMN_UTC:
+            return (utc + timedelta(hours=2)).replace(tzinfo=self, fold=0)
+        fold = int(self._AUTUMN_UTC <= utc < self._AUTUMN_UTC + timedelta(hours=1))
+        return (utc + timedelta(hours=1)).replace(tzinfo=self, fold=fold)
+
+
+PRAGUE_2026 = _Prague2026Timezone()
+
+
+def _dst_profile(day: str, starts: tuple[str, ...]) -> dict:
+    return {
+        "valueColumns": [
+            {"ean": "producer", "type": "D", "dir": "IN"},
+            {"ean": "producer", "type": "D", "dir": "OUT"},
+            {"ean": "consumer", "type": "O", "dir": "IN"},
+            {"ean": "consumer", "type": "O", "dir": "OUT"},
+        ],
+        "content": [
+            {
+                "date": day,
+                "start": start,
+                "values": [{"v": index + 1}, {"v": 0}, {"v": -(index + 1)}, {"v": 0}],
+            }
+            for index, start in enumerate(starts)
+        ],
+    }
+
+
 class CalculationTests(unittest.TestCase):
+    def test_spring_dst_hours_have_distinct_utc_timestamps(self) -> None:
+        hours = calculation.parse_hourly_profile(
+            _dst_profile("2026-03-29", ("01:00:00", "03:00:00")),
+            local_tz=PRAGUE_2026,
+        )
+
+        self.assertEqual(
+            tuple(row.start.isoformat() for row in hours),
+            ("2026-03-29T00:00:00+00:00", "2026-03-29T01:00:00+00:00"),
+        )
+
+    def test_nonexistent_spring_dst_hour_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "neexistující lokální čas"):
+            calculation.parse_hourly_profile(
+                _dst_profile("2026-03-29", ("02:00:00",)),
+                local_tz=PRAGUE_2026,
+            )
+
+    def test_autumn_dst_repeated_hour_is_not_merged(self) -> None:
+        hours = calculation.parse_hourly_profile(
+            _dst_profile("2026-10-25", ("02:00:00", "02:00:00")),
+            local_tz=PRAGUE_2026,
+        )
+
+        self.assertEqual(len(hours), 2)
+        self.assertEqual(
+            tuple(row.start.isoformat() for row in hours),
+            ("2026-10-25T00:00:00+00:00", "2026-10-25T01:00:00+00:00"),
+        )
+        self.assertEqual(tuple(row.shared for row in hours), (Decimal("1"), Decimal("2")))
+
+    def test_local_midnight_keeps_its_calendar_date_after_utc_conversion(self) -> None:
+        hours = calculation.parse_hourly_profile(
+            _dst_profile("2026-08-04", ("00:00:00",)),
+            local_tz=PRAGUE_2026,
+        )
+
+        self.assertEqual(hours[0].start.isoformat(), "2026-08-03T22:00:00+00:00")
+        self.assertEqual(hours[0].start.astimezone(PRAGUE_2026).date(), date(2026, 8, 4))
+
     def test_two_month_range_is_split_at_31_days(self) -> None:
         self.assertEqual(
             calculation.two_calendar_month_start(date(2026, 9, 2)),
@@ -77,6 +172,13 @@ class CalculationTests(unittest.TestCase):
         self.assertEqual(summary.consumption, Decimal("8"))
         self.assertEqual(summary.shared, Decimal("6"))
         self.assertEqual(summary.coverage, Decimal("75"))
+
+    def test_malformed_numeric_value_is_rejected(self) -> None:
+        response = _dst_profile("2026-08-01", ("00:00:00",))
+        response["content"][0]["values"][0]["v"] = "not-a-number"
+
+        with self.assertRaisesRegex(ValueError, "neplatnou číselnou hodnotu"):
+            calculation.parse_daily_profile(response)
 
     def test_extracts_multiple_sharing_and_target_eans(self) -> None:
         response = {

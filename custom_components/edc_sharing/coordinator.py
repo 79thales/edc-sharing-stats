@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, tzinfo
 from decimal import Decimal
 import logging
 from typing import Any
@@ -73,6 +73,18 @@ def _stored_non_negative_int(value: object) -> int:
         return max(0, int(value))
     except (TypeError, ValueError):
         return 0
+
+
+def _hour_start_utc(value: datetime, local_tz: tzinfo) -> datetime:
+    """Return an hourly profile timestamp as an aware UTC datetime."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=local_tz)
+    return dt_util.as_utc(value)
+
+
+def _hour_local_date(value: datetime, local_tz: tzinfo) -> date:
+    """Return the local calendar date represented by an hourly timestamp."""
+    return _hour_start_utc(value, local_tz).astimezone(local_tz).date()
 
 
 class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
@@ -162,6 +174,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self.last_attempt_result = "running"
         self.last_attempt_error = None
         today = now.date()
+        local_tz = now.tzinfo or dt_util.get_default_time_zone()
         full_history_refresh = self._history_refresh_date != today
         date_from = (
             two_calendar_month_start(today)
@@ -174,8 +187,8 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             fetched_hours: dict[datetime, HourlySharing] = {}
             fetched_eans: set[EanInfo] = set()
             for chunk_from, chunk_to in profile_date_ranges(date_from, date_to):
-                local_from = datetime.combine(chunk_from, time.min, tzinfo=now.tzinfo)
-                local_to = datetime.combine(chunk_to, time.min, tzinfo=now.tzinfo)
+                local_from = datetime.combine(chunk_from, time.min, tzinfo=local_tz)
+                local_to = datetime.combine(chunk_to, time.min, tzinfo=local_tz)
                 raw = await self.api.async_get_daily_profile(
                     int(self.config_entry.data[CONF_SSE_ID]),
                     dt_util.as_utc(local_from).isoformat().replace("+00:00", "Z"),
@@ -191,8 +204,10 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 fetched_hours.update(
                     {
                         row.start: row
-                        for row in parse_hourly_profile(raw)
-                        if date_from <= row.start.date() < date_to
+                        for row in parse_hourly_profile(raw, local_tz=local_tz)
+                        if date_from
+                        <= _hour_local_date(row.start, local_tz)
+                        < date_to
                     }
                 )
                 fetched_eans.update(extract_eans(raw))
@@ -204,7 +219,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 self._hours = {
                     start: row
                     for start, row in self._hours.items()
-                    if start.date() >= date_from
+                    if _hour_local_date(start, local_tz) >= date_from
                 }
                 self._history_refresh_date = today
             self._days.update(fetched)
@@ -328,7 +343,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 scan_start,
                 cursor,
             )
-            local_tz = dt_util.now().tzinfo
+            local_tz = dt_util.now().tzinfo or dt_util.get_default_time_zone()
             price = Decimal(
                 str(
                     self.config_entry.options.get(
@@ -355,8 +370,10 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     )
                     hours = tuple(
                         row
-                        for row in parse_hourly_profile(raw)
-                        if chunk_from <= row.start.date() < chunk_to
+                        for row in parse_hourly_profile(raw, local_tz=local_tz)
+                        if chunk_from
+                        <= _hour_local_date(row.start, local_tz)
+                        < chunk_to
                     )
                 except IncompleteProfileLayoutError as err:
                     # Before both EAN roles joined the sharing group, EDC can
@@ -481,10 +498,17 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         now: datetime,
     ) -> None:
         finalized = tuple(row for row in statistics.days if row.day < now.date())
-        current_hour = now.replace(tzinfo=None, minute=0, second=0, microsecond=0)
+        local_tz = now.tzinfo or dt_util.get_default_time_zone()
+        current_hour = dt_util.as_utc(
+            now.replace(minute=0, second=0, microsecond=0)
+        )
         finalized_hours = tuple(
             sorted(
-                (row for row in hours if row.start < current_hour),
+                (
+                    row
+                    for row in hours
+                    if _hour_start_utc(row.start, local_tz) < current_hour
+                ),
                 key=lambda row: row.start,
             )
         )

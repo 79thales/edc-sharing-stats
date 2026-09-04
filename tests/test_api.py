@@ -6,6 +6,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import types
+from typing import Any
 import unittest
 from unittest.mock import patch
 
@@ -18,11 +19,16 @@ except ModuleNotFoundError:
     class ClientError(Exception):
         pass
 
+    class ClientTimeout:
+        def __init__(self, *, total: float) -> None:
+            self.total = total
+
     class ClientSession:
         pass
 
     aiohttp_stub.ClientError = ClientError
     aiohttp_stub.ClientSession = ClientSession
+    aiohttp_stub.ClientTimeout = ClientTimeout
     sys.modules["aiohttp"] = aiohttp_stub
 
 
@@ -54,27 +60,34 @@ class _Response:
         *,
         location: str = "",
         text: str = "",
-        json_data: dict | None = None,
+        json_data: Any = None,
     ) -> None:
         self.status = status
         self.url = url
         self.headers = {"Location": location} if location else {}
         self._text = text
-        self._json_data = json_data or {}
+        self._json_data = {} if json_data is None else json_data
 
     async def text(self) -> str:
         return self._text
 
-    async def json(self) -> dict:
+    async def json(self) -> Any:
         return self._json_data
 
 
 class _Session:
-    def __init__(self, get_responses: list[_Response], post_responses: list[_Response]) -> None:
+    def __init__(
+        self,
+        get_responses: list[_Response],
+        post_responses: list[_Response],
+        request_responses: list[_Response | BaseException] | None = None,
+    ) -> None:
         self.get_responses = get_responses
         self.post_responses = post_responses
+        self.request_responses = request_responses or []
         self.get_calls: list[tuple[str, dict]] = []
         self.post_calls: list[tuple[str, dict]] = []
+        self.request_calls: list[tuple[str, str, dict]] = []
 
     async def get(self, url: str, **kwargs) -> _Response:
         self.get_calls.append((url, kwargs))
@@ -83,6 +96,13 @@ class _Session:
     async def post(self, url: str, **kwargs) -> _Response:
         self.post_calls.append((url, kwargs))
         return self.post_responses.pop(0)
+
+    async def request(self, method: str, url: str, **kwargs) -> _Response:
+        self.request_calls.append((method, url, kwargs))
+        response = self.request_responses.pop(0)
+        if isinstance(response, BaseException):
+            raise response
+        return response
 
 
 class KeycloakPageTest(unittest.TestCase):
@@ -142,8 +162,10 @@ class LoginRedirectTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client._access_token, "access")
         self.assertIn("prompt=login", session.get_calls[0][0])
         self.assertFalse(session.get_calls[0][1]["allow_redirects"])
+        self.assertIs(session.get_calls[0][1]["timeout"], api.REQUEST_TIMEOUT)
         self.assertEqual(len(session.post_calls), 1)
         self.assertEqual(session.post_calls[0][1]["data"]["code"], "auth-code")
+        self.assertIs(session.post_calls[0][1]["timeout"], api.REQUEST_TIMEOUT)
 
     async def test_session_code_is_not_mistaken_for_authorization_code(self) -> None:
         login_page = _Response(200, "https://sso.example/login", text="login page")
@@ -176,6 +198,61 @@ class LoginRedirectTest(unittest.IsolatedAsyncioTestCase):
                 await client.async_login()
 
         self.assertNotIsInstance(raised.exception, api.EdcAuthenticationError)
+
+    def test_malformed_token_response_is_a_sanitized_api_error(self) -> None:
+        client = api.EdcApiClient(_Session([], []), "user@example.com", "secret")
+
+        with self.assertRaisesRegex(api.EdcApiError, "token"):
+            client._store_tokens({"expires_in": "invalid"})
+
+
+class ApiRequestTest(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _authenticated_client(session: _Session):
+        client = api.EdcApiClient(session, "user@example.com", "secret")
+        client._store_tokens({"access_token": "access", "expires_in": 300})
+        return client
+
+    async def test_profile_request_has_explicit_timeout(self) -> None:
+        session = _Session([], [], [_Response(200, "https://api.example", json_data={})])
+        client = self._authenticated_client(session)
+
+        await client.async_get_daily_profile(1, "from", "to")
+
+        self.assertIs(session.request_calls[0][2]["timeout"], api.REQUEST_TIMEOUT)
+
+    async def test_timeout_is_wrapped_without_credentials(self) -> None:
+        session = _Session([], [], [TimeoutError("session_code=sensitive")])
+        client = self._authenticated_client(session)
+
+        with self.assertRaisesRegex(api.EdcApiError, "Spojení s EDC selhalo") as raised:
+            await client.async_get_groups()
+
+        self.assertNotIn("user@example.com", str(raised.exception))
+        self.assertNotIn("secret", str(raised.exception))
+        self.assertNotIn("session_code", str(raised.exception))
+        self.assertNotIn("sensitive", str(raised.exception))
+        self.assertIsNone(raised.exception.__cause__)
+
+    async def test_unauthorized_response_requires_reauthentication(self) -> None:
+        session = _Session([], [], [_Response(401, "https://api.example")])
+        client = self._authenticated_client(session)
+
+        with self.assertRaises(api.EdcAuthenticationError):
+            await client.async_get_groups()
+
+        self.assertIsNone(client._access_token)
+
+    async def test_malformed_group_response_is_rejected(self) -> None:
+        for payload in ({"bad": "shape"}, ["not-a-group"]):
+            with self.subTest(payload=payload):
+                session = _Session(
+                    [], [], [_Response(200, "https://api.example", json_data=payload)]
+                )
+                client = self._authenticated_client(session)
+
+                with self.assertRaisesRegex(api.EdcApiError, "neplatný seznam skupin"):
+                    await client.async_get_groups()
 
 
 if __name__ == "__main__":

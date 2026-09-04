@@ -106,10 +106,12 @@ Okamžité načtení lze spustit tlačítkem **Načíst data EDC nyní** na zař
 Tlačítko **Doplnit dostupnou historii EDC za poslední rok** spustí jednorázové hledání směrem do minulosti. Počáteční mez se při každém novém spuštění určí jako stejné kalendářní datum předchozího roku. Při spuštění 3. září 2026 se tedy hledá nejvýše do 3. září 2025. Integrace postupuje od nejnovějších dat dozadu v blocích nejvýše 31 dní; v tomto příkladu proto samostatně načte také blok od 1. července do 1. srpna 2026. Ojedinělý prázdný blok ani blok z doby před zapojením obou rolí EAN nepovažuje za konec historie. Takový neúplný blok přeskočí, pokračuje dál a nejstarší skutečně dostupné datum určí jen z úplných dat sdílení vrácených portálem. Každý použitelný blok se průběžně zapíše do dlouhodobých statistik. Uložený kurzor i začátek období umožní po restartu automaticky pokračovat od posledního dokončeného bloku. Po dokončení lze tlačítko použít znovu, například kvůli dodatečným opravám dat na straně EDC.
 
 Zdrojové intervaly EDC se uchovávají v dlouhodobých statistikách jako hodinové a denní součty. Samostatné čtvrthodinové řady se nevytvářejí, aby zbytečně nezvětšovaly databázi Recorderu.
+Hodinové body používají jednoznačné UTC časové značky. Při podzimním přechodu času zůstanou obě opakované místní hodiny oddělené; při jarním přechodu integrace nevytváří statistiku pro neexistující místní hodinu.
 
 ## Omezení a bezpečnost
 
 - Integrace používá webové API portálu EDC, které není veřejně garantované a může se změnit.
+- Jednotlivé požadavky na portál a přihlášení mají timeout 30 sekund. Běžná aktualizace se po přechodné chybě opakuje v následujícím hodinovém intervalu; doplňování historie se zastaví se stavem `Selhalo` a lze je bezpečně obnovit.
 - Účty vyžadující další interaktivní krok nebo vícefaktorové ověření zatím nejsou podporované.
 - E-mail účtu EDC a heslo jsou uloženy v konfigurační položce Home Assistantu a mohou být součástí záloh. Chraňte přístup k adresáři konfigurace, skrytému úložišti `.storage` a zálohám.
 - Přístupový a obnovovací token jsou pouze v paměti API klienta. Integrace je neukládá do úložiště průběhu historie, atributů entit ani vlastních logů.
