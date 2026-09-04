@@ -1,5 +1,17 @@
 # Přehled změn / Changelog
 
+## 0.1.17 – 2026-09-04
+
+### Čeština
+
+- poznámky k vydání jsou nově dostupné v češtině i angličtině,
+- lokální metadata Visual Studia jsou vyloučena z verzování.
+
+### English
+
+- release notes are now available in both Czech and English,
+- local Visual Studio metadata is excluded from version control.
+
 ## 0.1.16 – 2026-09-03
 
 ### Čeština
