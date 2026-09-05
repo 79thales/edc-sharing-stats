@@ -71,6 +71,13 @@ class EdcReportManager:
         self.entry = entry
         self.coordinator = coordinator
 
+    async def async_initialize_profiles(self) -> None:
+        """Load independent schedules and delivery state before registering timers."""
+        from .profile_report import ProfileReportManager
+
+        self.profiles = ProfileReportManager(self)
+        await self.profiles.async_initialize()
+
     @property
     def targets(self) -> tuple[str, ...]:
         """Return configured notify entity IDs."""
@@ -92,6 +99,9 @@ class EdcReportManager:
     @callback
     def async_start(self) -> None:
         """Start the configured report scheduler."""
+        if hasattr(self, "profiles"):
+            self.profiles.start()
+            return
         report_time = str(
             self.entry.options.get(CONF_REPORT_TIME, DEFAULT_REPORT_TIME)
         )

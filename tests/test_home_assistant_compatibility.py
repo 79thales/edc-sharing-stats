@@ -31,6 +31,9 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
             "custom_components.edc_sharing.coordinator",
             "custom_components.edc_sharing.history",
             "custom_components.edc_sharing.report",
+            "custom_components.edc_sharing.profile_report",
+            "custom_components.edc_sharing.profile_options",
+            "custom_components.edc_sharing.report_profiles",
             "custom_components.edc_sharing.sensor",
         )
 
@@ -120,7 +123,9 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
         self.assertEqual(first_metadata["statistic_id"], "edc_sharing:1_shared_hourly")
         self.assertEqual(first_metadata["mean_type"], StatisticMeanType.ARITHMETIC)
         self.assertFalse(first_metadata["has_sum"])
-        self.assertEqual(first_metadata["unit_of_measurement"], UnitOfEnergy.KILO_WATT_HOUR)
+        self.assertEqual(
+            first_metadata["unit_of_measurement"], UnitOfEnergy.KILO_WATT_HOUR
+        )
         self.assertEqual(
             tuple(row["start"] for row in first_rows),
             (
@@ -170,3 +175,67 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
                 datetime(2026, 10, 25, 1, tzinfo=UTC),
             ),
         )
+
+
+@unittest.skipUnless(
+    HOME_ASSISTANT_INSTALLED, "Requires Home Assistant compatibility CI"
+)
+class ReportProfileFlowTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        from custom_components.edc_sharing.config_flow import EdcSharingOptionsFlow
+
+        self.entry = SimpleNamespace(
+            options={
+                "report_targets": ["notify.owner"],
+                "daily_report": True,
+                "sale_price": 2,
+            },
+            data={"sse_id": "test"},
+        )
+        self.flow = EdcSharingOptionsFlow(self.entry)
+        self.flow.hass = SimpleNamespace(config=SimpleNamespace(language="cs"))
+        self.flow.async_show_form = lambda **kwargs: kwargs
+        self.flow.async_show_menu = lambda **kwargs: kwargs
+        self.flow.async_create_entry = lambda **kwargs: kwargs
+
+    async def test_profile_creation_validation_and_legacy_preservation(self):
+        from custom_components.edc_sharing.report_profiles import default_profile
+
+        menu = await self.flow.async_step_init()
+        self.assertEqual(menu["menu_options"], ["general", "profiles"])
+        form = await self.flow.async_step_profiles({"profile": "new"})
+        values = default_profile() | {
+            "name": "Accountant",
+            "targets": ["notify.accountant"],
+            "periods": ["monthly"],
+            "frequency": "yearly",
+        }
+        values.pop("id")
+        normalized = form["data_schema"](values)
+        saved = await self.flow.async_step_profile_edit(normalized)
+        self.assertEqual(saved["data"]["sale_price"], 2)
+        self.assertEqual(saved["data"]["report_targets"], ["notify.owner"])
+        self.assertEqual(len(saved["data"]["report_profiles"]), 2)
+        self.assertEqual(saved["data"]["report_profiles"][0]["id"], "legacy_daily")
+        self.assertEqual(
+            saved["data"]["report_profiles"][1]["targets"], ["notify.accountant"]
+        )
+
+    async def test_invalid_profile_stays_in_form(self):
+        await self.flow.async_step_profiles({"profile": "new"})
+        response = await self.flow.async_step_profile_edit({"name": "No recipients"})
+        self.assertEqual(response["errors"], {"base": "invalid_profile"})
+
+    async def test_duplicate_is_paused_and_has_new_identity(self):
+        await self.flow.async_step_profiles({"profile": "legacy_daily"})
+        await self.flow.async_step_profile_duplicate()
+        self.assertNotEqual(self.flow._selected_profile["id"], "legacy_daily")
+        self.assertFalse(self.flow._selected_profile["enabled"])
+
+    async def test_delete_requires_confirmation_and_preserves_options(self):
+        await self.flow.async_step_profiles({"profile": "legacy_daily"})
+        canceled = await self.flow.async_step_profile_delete({"confirm": False})
+        self.assertEqual(canceled["step_id"], "profile_manage")
+        saved = await self.flow.async_step_profile_delete({"confirm": True})
+        self.assertEqual(saved["data"]["report_profiles"], [])
+        self.assertEqual(saved["data"]["sale_price"], 2)

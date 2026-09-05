@@ -54,7 +54,9 @@ class RepositoryPrivacyTest(unittest.TestCase):
 
 class TranslationMetadataTest(unittest.TestCase):
     def test_runtime_translations_match_source_entity_keys(self) -> None:
-        source = json.loads((COMPONENT_ROOT / "strings.json").read_text(encoding="utf-8"))
+        source = json.loads(
+            (COMPONENT_ROOT / "strings.json").read_text(encoding="utf-8")
+        )
         english = json.loads(
             (COMPONENT_ROOT / "translations" / "en.json").read_text(encoding="utf-8")
         )
@@ -63,9 +65,9 @@ class TranslationMetadataTest(unittest.TestCase):
         )
 
         self.assertEqual(source["entity"], english["entity"])
-        source_options = source["options"]["step"]["init"]
-        english_options = english["options"]["step"]["init"]
-        czech_options = czech["options"]["step"]["init"]
+        source_options = source["options"]["step"]["general"]
+        english_options = english["options"]["step"]["general"]
+        czech_options = czech["options"]["step"]["general"]
         self.assertEqual(
             source_options["data_description"],
             english_options["data_description"],
@@ -88,6 +90,24 @@ class TranslationMetadataTest(unittest.TestCase):
             self.assertEqual(len(names), len(set(names)))
 
         self.assertEqual(len(source["entity"]["button"]), 7)
+
+    def test_profile_ui_translations_are_complete(self) -> None:
+        documents = [
+            json.loads((COMPONENT_ROOT / path).read_text(encoding="utf-8"))
+            for path in ("strings.json", "translations/en.json", "translations/cs.json")
+        ]
+        source, english, czech = documents
+        self.assertEqual(source, english)
+        for step, fields in source["options"]["step"].items():
+            for section in ("data", "data_description", "menu_options"):
+                self.assertEqual(
+                    set(fields.get(section, {})),
+                    set(czech["options"]["step"][step].get(section, {})),
+                )
+        self.assertEqual(
+            set(source["selector"]["report_profile"]["options"]),
+            set(czech["selector"]["report_profile"]["options"]),
+        )
 
 
 class BrandMetadataTest(unittest.TestCase):

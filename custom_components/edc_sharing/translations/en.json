@@ -13,12 +13,16 @@
       },
       "group": {
         "title": "Select a sharing group",
-        "data": { "sse_id": "Sharing group" }
+        "data": {
+          "sse_id": "Sharing group"
+        }
       },
       "reauth_confirm": {
         "title": "Sign in to EDC again",
         "description": "The saved EDC credentials are no longer accepted. Enter the new password.",
-        "data": { "password": "Password" }
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -35,7 +39,14 @@
     "step": {
       "init": {
         "title": "EDC settings",
-        "description": "Select a group, sale price, report recipients, and automatic email schedule. Weekly and monthly reports use the last completed calendar period. The yearly report covers the current year through the latest available EDC day.",
+        "menu_options": {
+          "general": "General settings and original buttons",
+          "profiles": "Report profiles"
+        }
+      },
+      "general": {
+        "title": "EDC settings",
+        "description": "Group, price and default recipients/language for the original report buttons. Legacy schedules are shown until profiles are first saved; then manage schedules under Report profiles.",
         "data": {
           "sse_id": "Sharing group",
           "sale_price": "Sale price (CZK/kWh)",
@@ -55,10 +66,80 @@
           "yearly_report": "Sends the year-to-date report every month on the selected day.",
           "summary_report": "Sends one email containing the daily, weekly, monthly, and yearly sections every day at report time. It can be enabled together with any separate reports."
         }
+      },
+      "profiles": {
+        "title": "Report profiles",
+        "description": "Select a profile or ＋ to add one. Each profile has its own recipients, content, language and schedule.",
+        "data": {
+          "profile": "Profile / add new"
+        }
+      },
+      "profile_manage": {
+        "title": "Manage profile",
+        "menu_options": {
+          "profile_edit": "Edit profile",
+          "profile_toggle": "Enable / pause",
+          "profile_duplicate": "Duplicate profile",
+          "profile_preview": "Preview without sending",
+          "profile_send": "Send now",
+          "profile_delete": "Delete profile",
+          "profile_status": "Status and next attempt"
+        }
+      },
+      "profile_edit": {
+        "title": "Report profile settings",
+        "description": "Reports contain totals for the configured group. The daily section always uses the latest available EDC day. Send now also works for paused profiles.",
+        "data": {
+          "name": "Profile name",
+          "enabled": "Automatic sending enabled",
+          "targets": "Recipients (SMTP notify entities)",
+          "language": "Language",
+          "periods": "Report periods",
+          "combined": "Combine selected periods in one email",
+          "period_mode": "Period range",
+          "frequency": "Sending frequency",
+          "time": "Sending time",
+          "weekdays": "Weekdays",
+          "day": "Day of month (1–28)",
+          "month": "Month for annual sending (1–12)",
+          "only_new": "Send only when data changes",
+          "energy": "Include energy and coverage",
+          "finance": "Include price and sharing value",
+          "ean_mode": "EAN visibility"
+        },
+        "data_description": {
+          "targets": "Create recipients under Settings > Devices & services > SMTP > Add recipient, then select their notify entities here.",
+          "period_mode": "Current = this week/month/year. Previous = the last completed period. Legacy = previous week/month and current year.",
+          "weekdays": "Used only for weekly sending.",
+          "day": "Used for monthly and yearly sending.",
+          "month": "Used only for yearly sending.",
+          "only_new": "Scheduled attempts skip unchanged data. Send now bypasses this check."
+        }
+      },
+      "profile_delete": {
+        "title": "Delete profile",
+        "description": "Delete profile {name}? EDC history will be retained.",
+        "data": {
+          "confirm": "Yes, delete this profile"
+        }
+      },
+      "profile_preview": {
+        "title": "Report preview",
+        "description": "{preview}"
+      },
+      "profile_send": {
+        "title": "Send report now",
+        "description": "Submit to send profile {name} to all its recipients, even if paused or the data has not changed."
+      },
+      "profile_status": {
+        "title": "Delivery status",
+        "description": "Result: {result}\n\nLast attempt: {last_attempt}\n\nLast successful handoff: {last_success}\n\nNext scheduled attempt: {next_attempt}\n\nA successful SMTP handoff does not confirm inbox delivery. Missed schedules while HA is offline are not automatically replayed."
       }
     },
     "error": {
-      "already_configured": "This sharing group is already configured."
+      "already_configured": "This sharing group is already configured.",
+      "invalid_profile": "Enter a name, select at least one recipient and period, include energy or finance, and check the schedule.",
+      "report_failed": "The report could not be prepared or handed off to all recipients. Check EDC availability and SMTP settings."
     },
     "abort": {
       "cannot_connect": "Unable to connect to the EDC portal.",
@@ -67,30 +148,74 @@
   },
   "entity": {
     "button": {
-      "send_daily_report": { "name": "Send daily report" },
-      "send_weekly_report": { "name": "Send weekly report" },
-      "send_monthly_report": { "name": "Send monthly report" },
-      "send_yearly_report": { "name": "Send yearly report" },
-      "send_summary_report": { "name": "Send summary report" },
-      "refresh_data": { "name": "Fetch EDC data now" },
-      "backfill_history": { "name": "Backfill available EDC history for the last year" }
+      "send_daily_report": {
+        "name": "Send daily report"
+      },
+      "send_weekly_report": {
+        "name": "Send weekly report"
+      },
+      "send_monthly_report": {
+        "name": "Send monthly report"
+      },
+      "send_yearly_report": {
+        "name": "Send yearly report"
+      },
+      "send_summary_report": {
+        "name": "Send summary report"
+      },
+      "refresh_data": {
+        "name": "Fetch EDC data now"
+      },
+      "backfill_history": {
+        "name": "Backfill available EDC history for the last year"
+      }
     },
     "sensor": {
-      "shared_today": { "name": "Shared electricity – latest available day" },
-      "consumption_today": { "name": "Consumption – latest available day" },
-      "grid_today": { "name": "Grid import – latest available day" },
-      "unused_today": { "name": "Unused surplus – latest available day" },
-      "coverage_today": { "name": "Sharing coverage – latest available day" },
-      "revenue_today": { "name": "Shared electricity value – latest available day" },
-      "shared_month": { "name": "Shared electricity this month" },
-      "consumption_month": { "name": "Consumption this month" },
-      "grid_month": { "name": "Grid import this month" },
-      "overflow_month": { "name": "Production surplus this month" },
-      "unused_month": { "name": "Unused surplus this month" },
-      "coverage_month": { "name": "Sharing coverage this month" },
-      "production_profit_month": { "name": "Shared electricity value this month" },
-      "sale_price": { "name": "Electricity sale price" },
-      "last_update_attempt": { "name": "Last data fetch attempt" },
+      "shared_today": {
+        "name": "Shared electricity – latest available day"
+      },
+      "consumption_today": {
+        "name": "Consumption – latest available day"
+      },
+      "grid_today": {
+        "name": "Grid import – latest available day"
+      },
+      "unused_today": {
+        "name": "Unused surplus – latest available day"
+      },
+      "coverage_today": {
+        "name": "Sharing coverage – latest available day"
+      },
+      "revenue_today": {
+        "name": "Shared electricity value – latest available day"
+      },
+      "shared_month": {
+        "name": "Shared electricity this month"
+      },
+      "consumption_month": {
+        "name": "Consumption this month"
+      },
+      "grid_month": {
+        "name": "Grid import this month"
+      },
+      "overflow_month": {
+        "name": "Production surplus this month"
+      },
+      "unused_month": {
+        "name": "Unused surplus this month"
+      },
+      "coverage_month": {
+        "name": "Sharing coverage this month"
+      },
+      "production_profit_month": {
+        "name": "Shared electricity value this month"
+      },
+      "sale_price": {
+        "name": "Electricity sale price"
+      },
+      "last_update_attempt": {
+        "name": "Last data fetch attempt"
+      },
       "history_backfill_status": {
         "name": "History download status",
         "state": {
@@ -101,9 +226,40 @@
           "completed": "Completed"
         }
       },
-      "history_earliest_date": { "name": "EDC data available since" },
-      "sharing_ean": { "name": "Sharing EAN {ean}" },
-      "target_ean": { "name": "Target EAN {ean}" }
+      "history_earliest_date": {
+        "name": "EDC data available since"
+      },
+      "sharing_ean": {
+        "name": "Sharing EAN {ean}"
+      },
+      "target_ean": {
+        "name": "Target EAN {ean}"
+      }
+    }
+  },
+  "selector": {
+    "report_profile": {
+      "options": {
+        "0": "Monday",
+        "1": "Tuesday",
+        "2": "Wednesday",
+        "3": "Thursday",
+        "4": "Friday",
+        "5": "Saturday",
+        "6": "Sunday",
+        "cs": "Čeština",
+        "en": "English",
+        "daily": "Daily",
+        "weekly": "Weekly",
+        "monthly": "Monthly",
+        "yearly": "Yearly",
+        "current": "Current period",
+        "previous": "Previous completed period",
+        "legacy": "Legacy period ranges",
+        "hidden": "Hide EANs",
+        "masked": "Last 4 digits only",
+        "full": "Full EANs"
+      }
     }
   }
 }

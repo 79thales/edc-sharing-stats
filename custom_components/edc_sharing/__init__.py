@@ -53,6 +53,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EdcConfigEntry) -> bool:
     await coordinator.async_initialize()
     await coordinator.async_config_entry_first_refresh()
     reporter = EdcReportManager(hass, entry, coordinator)
+    await reporter.async_initialize_profiles()
     entry.runtime_data = EdcRuntimeData(api, coordinator, reporter)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     coordinator.async_enable_history_import()

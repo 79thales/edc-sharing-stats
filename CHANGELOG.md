@@ -1,5 +1,25 @@
 # Přehled změn / Changelog
 
+## Unreleased – report profiles
+
+### Čeština
+
+- samostatné pojmenované profily s vlastními příjemci, jazykem, výběrem období a denním/týdenním/měsíčním/ročním rozvrhem,
+- vybraná období v jednom e-mailu nebo samostatně; probíhající a uzavřená období nezávisle na četnosti odesílání,
+- náhled, ruční odeslání, pozastavení, duplikování, odstranění a stav profilu v nastavení integrace,
+- volitelná energie/finance a skrytí či maskování EAN; označení neúplného rozsahu denních dat,
+- uchování výsledků předání po příjemcích, ochrana proti opakovanému termínu a volba posílat jen změněná data,
+- dosavadní rozvrhy se převedou na profily; původní tlačítka a identifikátory entit zůstávají zachované.
+
+### English
+
+- independent named profiles with their own recipients, language, report periods and daily/weekly/monthly/yearly schedules,
+- combine selected periods or send them separately; choose current or completed periods independently of sending frequency,
+- preview, send now, pause, duplicate, delete and inspect delivery status from the integration options,
+- optional energy/financial details, hidden or masked EANs, and explicit daily-data coverage for incomplete periods,
+- persistent per-recipient handoff records, duplicate-schedule protection and an option to send only changed data,
+- existing schedules are adapted into profiles; original report buttons and entity identifiers are preserved.
+
 ## 0.1.19 – 2026-09-04
 
 ### Čeština

@@ -8,7 +8,9 @@ EDC Sharing Stats is a custom Home Assistant integration for electricity-sharing
 
 Historical EDC profile data is aggregated into hourly and daily Home Assistant long-term statistics. The integration supports a resumable, one-year history backfill, refresh and backfill diagnostics, and optional on-demand or scheduled email reports in Czech or English through Home Assistant `notify` entities.
 
-The EDC account email and password are stored in the Home Assistant config entry and may therefore be included in Home Assistant backups. Access and refresh tokens remain in memory only. Group names and full EANs are visible in diagnostic entities and are included in enabled email reports, so reports should only be sent through trusted notification targets.
+Named report profiles provide independent recipients, languages, schedules and a selection of daily, weekly, monthly or yearly sections, combined into one email or sent separately. Profiles support current or completed periods, previews, manual sending, optional financial details, masked EANs and delivery status.
+
+The EDC account email and password are stored in the Home Assistant config entry and may therefore be included in Home Assistant backups. Access and refresh tokens remain in memory only. Group names and full EANs are visible in diagnostic entities. New report profiles mask EANs by default; legacy reports include full EANs. Reports should only be sent through trusted notification targets.
 
 This is an independent integration and is not an official product of, or supported by, Elektroenergetické datové centrum, a. s. The EDC web API is not publicly guaranteed and may change without notice.
 
@@ -65,6 +67,45 @@ Pokud účet obsahuje více skupin sdílení, lze integraci přidat opakovaně a
 
 ## E-mailové reporty
 
+### Samostatné profily příjemců a rozvrhů
+
+Otevřete **Nastavení → Zařízení a služby → EDC Sharing Stats → Nastavit → Profily reportů → ＋**.
+Zadejte název profilu, jeho příjemce (`notify` entity vytvořené v SMTP), jazyk a vyberte období.
+Nový profil je zpočátku pozastavený; přepínačem **Automatické odesílání zapnuto** zapnete jeho rozvrh.
+
+| Nastavení | Význam |
+| --- | --- |
+| Období v reportu | Libovolná kombinace denního, týdenního, měsíčního a ročního reportu |
+| Všechna období v jednom e-mailu | Zapnuto: jeden společný e-mail; vypnuto: samostatný e-mail za každé období |
+| Rozsah období | Probíhající týden/měsíc/rok, nebo předchozí uzavřené období |
+| Četnost a čas | Denně, vybrané dny týdne, měsíčně nebo ročně; roční plán má vlastní měsíc |
+| Den v měsíci | 1–28, aby byl termín platný ve všech měsících |
+| Pouze při změně dat | Při plánovaném pokusu se nezměněné hodnoty znovu neposílají; oprava dat EDC se počítá jako změna |
+| Energie / finance | Zvolte, které údaje příjemci dostanou; alespoň jedna skupina musí zůstat zapnutá |
+| EAN | Skrýt, poslední čtyři číslice (výchozí), nebo celé EAN |
+
+Například můžete sobě posílat každý den český souhrn dne, měsíce a aktuálního roku; účetní každý pátý den uzavřený předchozí měsíc; jinému příjemci v pondělí anglický týdenní přehled.
+Četnost odesílání je nezávislá na obsahu: aktuální rok lze posílat každý týden, uzavřený rok jednou ročně.
+Denní část vždy používá **poslední dostupný den EDC**, nikoliv automaticky dnešek.
+
+Po výběru uloženého profilu lze upravit nastavení, profil pozastavit/zapnout, duplikovat, zobrazit náhled, odeslat nyní, odstranit nebo zobrazit stav.
+**Náhled nic neodesílá. Odeslat nyní** vyžaduje potvrzení v následujícím formuláři, odešle všem příjemcům profilu a funguje i při pozastavení nebo nezměněných datech.
+Duplikát dostane nové ID a je pozastavený.
+
+Stav uvádí poslední pokus, poslední úspěšné předání a příští plánovaný pokus. Úspěšné předání SMTP není potvrzením doručení do schránky.
+Chyba jednoho příjemce nezastaví ostatní. Výsledky předání se uchovávají samostatně po příjemcích a zprávách i přes restart, bez ukládání textů e-mailů nebo SMTP chyb.
+Opakovaný termín v podzimní změně času neposílá znovu již úspěšně předané zprávy; neexistující jarní čas se přeskočí.
+Zmeškané termíny při vypnutém HA se automaticky nedohánějí. Selhání se automaticky neopakuje v krátké smyčce; další pokus je podle rozvrhu nebo ruční.
+Pokud proces skončí přesně mezi předáním SMTP a uložením výsledku, nelze vyloučit opakované předání.
+
+Report ukazuje skutečný rozsah dostupných **denních** dat a počet dnů oproti požadovanému období. Neúplné období je označené, chybějící dny nejsou vydávány za nulovou spotřebu. Tento přehled neověřuje úplnost každého měřicího intervalu uvnitř dne.
+Výpočty jsou stále **za celou zvolenou skupinu**, nikoliv za jednotlivého příjemce nebo EAN.
+
+Dosavadní zapnuté rozvrhy se zobrazí jako profily `EDC — daily/weekly/monthly/yearly/summary` se zachovanými příjemci, časy a jazykem. První uložení profilu je uloží do nového seznamu; dále se rozvrhy upravují už pouze přes profily. Prázdný seznam profilů automatické odesílání vypne.
+Původní tlačítka na zařízení nadále používají výchozí příjemce a jazyk v **Obecném nastavení a původních tlačítkách**; nastavení konkrétního profilu se na ně nevztahuje.
+
+### SMTP a původní tlačítka
+
 ### Jak vytvořit e-mailového příjemce
 
 1. Otevřete **Nastavení → Zařízení a služby → Přidat integraci**.
@@ -73,7 +114,7 @@ Pokud účet obsahuje více skupin sdílení, lze integraci přidat opakovaně a
 4. Během nastavení zadejte první cílovou e-mailovou adresu.
 5. Další adresy přidáte přes **Nastavení → Zařízení a služby → SMTP → Přidat příjemce**.
 
-Každá cílová adresa vytvoří samostatnou `notify` entitu. Potom otevřete **Nastavení → Zařízení a služby → EDC Sharing Stats → Nastavit**, v poli **Příjemci e-mailových oznámení** vyberte jednu nebo více těchto entit, zvolte **češtinu nebo angličtinu** pro předmět i obsah zprávy a zapněte požadované exporty. Lze současně vybrat libovolnou kombinaci denního, týdenního, měsíčního, ročního a souhrnného reportu. Souhrnný report spojí všechna čtyři období do jednoho e-mailu a odesílá se každý den v nastavený čas. Ostatní zapnuté reporty odcházejí jako samostatné e-maily. Výchozí čas je 07:30, týdenní report se odesílá každé pondělí a měsíční report i průběžný report aktuálního roku pátý den každého měsíce, aby měl portál EDC čas zveřejnit uzavřená data.
+Každá cílová adresa vytvoří samostatnou `notify` entitu. Vyberte ji v konkrétním profilu reportů. Pro původní tlačítka vyberte výchozí příjemce a jazyk v **Nastavit → Obecné nastavení a původní tlačítka**. Staré rozvrhy (do prvního uložení profilů) mají výchozí čas 07:30, týdenní report v pondělí a měsíční i aktuální roční report pátý den měsíce. Nové profily mají čas a četnost nezávislé.
 
 Nastavení SMTP lze před reporty ověřit přes **Nastavení → Vývojářské nástroje → Akce → `notify.send_message`**. Jako cíl vyberte vytvořenou `notify` entitu a odešlete zkušební zprávu.
 
@@ -116,7 +157,7 @@ Hodinové body používají jednoznačné UTC časové značky. Při podzimním 
 - E-mail účtu EDC a heslo jsou uloženy v konfigurační položce Home Assistantu a mohou být součástí záloh. Chraňte přístup k adresáři konfigurace, skrytému úložišti `.storage` a zálohám.
 - Přístupový a obnovovací token jsou pouze v paměti API klienta. Integrace je neukládá do úložiště průběhu historie, atributů entit ani vlastních logů.
 - Diagnostické entity záměrně zobrazují celý EAN a název skupiny. Dlouhodobé statistiky obsahují energetické hodnoty a interní ID skupiny.
-- Zapnuté e-mailové reporty obsahují název skupiny, celé EANy a energetické hodnoty. Odesílají se výhradně přes uživatelem vybrané Home Assistant `notify` entity; používejte pouze důvěryhodné příjemce a SMTP server.
+- E-mailové reporty obsahují název skupiny a zvolené hodnoty. Nové profily standardně maskují EAN; celé EAN obsahují původní reporty a profily s výslovně zapnutým úplným zobrazením. Odesílají se výhradně přes vybrané Home Assistant `notify` entity; používejte pouze důvěryhodné příjemce a SMTP server.
 
 ## Podpora
 

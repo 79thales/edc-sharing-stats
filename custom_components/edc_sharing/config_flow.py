@@ -15,6 +15,8 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import EdcApiClient, EdcApiError, EdcAuthenticationError
+from .profile_options import ProfileOptionsMixin
+from .report_profiles import CONF_REPORT_PROFILES
 from .const import (
     CONF_SALE_PRICE,
     CONF_DAILY_REPORT,
@@ -45,7 +47,9 @@ class EdcSharingConfigFlow(ConfigFlow, domain=DOMAIN):
         self._credentials: dict[str, Any] = {}
         self._groups: dict[str, str] = {}
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
             api = EdcApiClient(
@@ -72,20 +76,28 @@ class EdcSharingConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._credentials = dict(user_input)
                     return await self.async_step_group()
 
-        schema = vol.Schema({
-            vol.Required(CONF_USERNAME): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.EMAIL)
-            ),
-            vol.Required(CONF_PASSWORD): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-            ),
-            vol.Required(CONF_SALE_PRICE, default=DEFAULT_SALE_PRICE): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=0, max=100, step=0.01, mode=selector.NumberSelectorMode.BOX)
-            ),
-        })
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_USERNAME): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.EMAIL)
+                ),
+                vol.Required(CONF_PASSWORD): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                ),
+                vol.Required(
+                    CONF_SALE_PRICE, default=DEFAULT_SALE_PRICE
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0, max=100, step=0.01, mode=selector.NumberSelectorMode.BOX
+                    )
+                ),
+            }
+        )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
-    async def async_step_group(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+    async def async_step_group(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         if user_input is not None:
             sse_id = str(user_input[CONF_SSE_ID])
             await self.async_set_unique_id(
@@ -99,14 +111,19 @@ class EdcSharingConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(title=self._groups[sse_id], data=data)
         return self.async_show_form(
             step_id="group",
-            data_schema=vol.Schema({
-                vol.Required(CONF_SSE_ID): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=[selector.SelectOptionDict(value=key, label=value) for key, value in self._groups.items()],
-                        mode=selector.SelectSelectorMode.DROPDOWN,
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_SSE_ID): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                selector.SelectOptionDict(value=key, label=value)
+                                for key, value in self._groups.items()
+                            ],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
                     )
-                )
-            }),
+                }
+            ),
         )
 
     async def async_step_reauth(
@@ -136,16 +153,21 @@ class EdcSharingConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 return self.async_update_reload_and_abort(
                     entry,
-                    data_updates=entry.data | {CONF_PASSWORD: user_input[CONF_PASSWORD]},
+                    data_updates=entry.data
+                    | {CONF_PASSWORD: user_input[CONF_PASSWORD]},
                 )
 
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema({
-                vol.Required(CONF_PASSWORD): selector.TextSelector(
-                    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-                )
-            }),
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_PASSWORD): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.PASSWORD
+                        )
+                    )
+                }
+            ),
             errors=errors,
         )
 
@@ -155,13 +177,22 @@ class EdcSharingConfigFlow(ConfigFlow, domain=DOMAIN):
         return EdcSharingOptionsFlow(config_entry)
 
 
-class EdcSharingOptionsFlow(OptionsFlow):
+class EdcSharingOptionsFlow(ProfileOptionsMixin, OptionsFlow):
     """Change group and sale price from integration administration."""
 
     def __init__(self, config_entry) -> None:
         self._entry = config_entry
 
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return self.async_show_menu(
+            step_id="init", menu_options=["general", "profiles"]
+        )
+
+    async def async_step_general(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         api = EdcApiClient(
             async_get_clientsession(self.hass),
@@ -170,20 +201,37 @@ class EdcSharingOptionsFlow(OptionsFlow):
         )
         try:
             groups = await api.async_get_groups()
-            choices = {str(item["sseId"]): str(item.get("name") or item["sseId"]) for item in groups}
+            choices = {
+                str(item["sseId"]): str(item.get("name") or item["sseId"])
+                for item in groups
+            }
         except EdcAuthenticationError:
             return self.async_abort(reason="invalid_auth")
         except EdcApiError:
             return self.async_abort(reason="cannot_connect")
 
         if user_input is not None:
+            user_input = {
+                CONF_DAILY_REPORT: self._entry.options.get(CONF_DAILY_REPORT, False),
+                CONF_WEEKLY_REPORT: self._entry.options.get(CONF_WEEKLY_REPORT, False),
+                CONF_MONTHLY_REPORT: self._entry.options.get(
+                    CONF_MONTHLY_REPORT, False
+                ),
+                CONF_YEARLY_REPORT: self._entry.options.get(CONF_YEARLY_REPORT, False),
+                CONF_SUMMARY_REPORT: self._entry.options.get(
+                    CONF_SUMMARY_REPORT, False
+                ),
+                CONF_REPORT_TIME: self._entry.options.get(
+                    CONF_REPORT_TIME, DEFAULT_REPORT_TIME
+                ),
+                CONF_REPORT_DAY: self._entry.options.get(
+                    CONF_REPORT_DAY, DEFAULT_REPORT_DAY
+                ),
+            } | user_input
             sse_id = str(user_input[CONF_SSE_ID])
-            unique_id = config_entry_unique_id(
-                self._entry.data[CONF_USERNAME], sse_id
-            )
+            unique_id = config_entry_unique_id(self._entry.data[CONF_USERNAME], sse_id)
             duplicate = any(
-                entry.entry_id != self._entry.entry_id
-                and entry.unique_id == unique_id
+                entry.entry_id != self._entry.entry_id and entry.unique_id == unique_id
                 for entry in self.hass.config_entries.async_entries(DOMAIN)
             )
             if duplicate:
@@ -197,11 +245,10 @@ class EdcSharingOptionsFlow(OptionsFlow):
                     self._entry, data=new_data, unique_id=unique_id
                 )
                 return self.async_create_entry(
-                    data={
+                    data=dict(self._entry.options)
+                    | {
                         CONF_SALE_PRICE: user_input[CONF_SALE_PRICE],
-                        CONF_REPORT_TARGETS: user_input.get(
-                            CONF_REPORT_TARGETS, []
-                        ),
+                        CONF_REPORT_TARGETS: user_input.get(CONF_REPORT_TARGETS, []),
                         CONF_DAILY_REPORT: user_input[CONF_DAILY_REPORT],
                         CONF_WEEKLY_REPORT: user_input[CONF_WEEKLY_REPORT],
                         CONF_MONTHLY_REPORT: user_input[CONF_MONTHLY_REPORT],
@@ -223,76 +270,94 @@ class EdcSharingOptionsFlow(OptionsFlow):
             if (self.hass.config.language or "en").casefold().startswith("cs")
             else "en",
         )
+        schema = {
+            vol.Required(
+                CONF_SSE_ID, default=str(self._entry.data[CONF_SSE_ID])
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=key, label=value)
+                        for key, value in choices.items()
+                    ]
+                )
+            ),
+            vol.Required(
+                CONF_SALE_PRICE, default=float(Decimal(str(current_price)))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0, max=100, step=0.01, mode=selector.NumberSelectorMode.BOX
+                )
+            ),
+            vol.Optional(
+                CONF_REPORT_TARGETS, default=current_targets
+            ): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="notify", multiple=True)
+            ),
+            vol.Required(
+                CONF_REPORT_LANGUAGE, default=current_language
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value="cs", label="Čeština"),
+                        selector.SelectOptionDict(value="en", label="English"),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(
+                CONF_DAILY_REPORT,
+                default=bool(self._entry.options.get(CONF_DAILY_REPORT, False)),
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_WEEKLY_REPORT,
+                default=bool(self._entry.options.get(CONF_WEEKLY_REPORT, False)),
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_MONTHLY_REPORT,
+                default=bool(self._entry.options.get(CONF_MONTHLY_REPORT, False)),
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_YEARLY_REPORT,
+                default=bool(self._entry.options.get(CONF_YEARLY_REPORT, False)),
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_SUMMARY_REPORT,
+                default=bool(self._entry.options.get(CONF_SUMMARY_REPORT, False)),
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_REPORT_TIME,
+                default=str(
+                    self._entry.options.get(CONF_REPORT_TIME, DEFAULT_REPORT_TIME)
+                ),
+            ): selector.TimeSelector(),
+            vol.Required(
+                CONF_REPORT_DAY,
+                default=int(
+                    self._entry.options.get(CONF_REPORT_DAY, DEFAULT_REPORT_DAY)
+                ),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=28,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+        }
+        if CONF_REPORT_PROFILES in self._entry.options:
+            schema = {
+                key: value
+                for key, value in schema.items()
+                if str(key)
+                in (
+                    CONF_SSE_ID,
+                    CONF_SALE_PRICE,
+                    CONF_REPORT_TARGETS,
+                    CONF_REPORT_LANGUAGE,
+                )
+            }
         return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema({
-                vol.Required(CONF_SSE_ID, default=str(self._entry.data[CONF_SSE_ID])): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=[selector.SelectOptionDict(value=key, label=value) for key, value in choices.items()]
-                    )
-                ),
-                vol.Required(CONF_SALE_PRICE, default=float(Decimal(str(current_price)))): selector.NumberSelector(
-                    selector.NumberSelectorConfig(min=0, max=100, step=0.01, mode=selector.NumberSelectorMode.BOX)
-                ),
-                vol.Optional(
-                    CONF_REPORT_TARGETS, default=current_targets
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="notify", multiple=True)
-                ),
-                vol.Required(
-                    CONF_REPORT_LANGUAGE, default=current_language
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=[
-                            selector.SelectOptionDict(value="cs", label="Čeština"),
-                            selector.SelectOptionDict(value="en", label="English"),
-                        ],
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-                vol.Required(
-                    CONF_DAILY_REPORT,
-                    default=bool(self._entry.options.get(CONF_DAILY_REPORT, False)),
-                ): selector.BooleanSelector(),
-                vol.Required(
-                    CONF_WEEKLY_REPORT,
-                    default=bool(self._entry.options.get(CONF_WEEKLY_REPORT, False)),
-                ): selector.BooleanSelector(),
-                vol.Required(
-                    CONF_MONTHLY_REPORT,
-                    default=bool(self._entry.options.get(CONF_MONTHLY_REPORT, False)),
-                ): selector.BooleanSelector(),
-                vol.Required(
-                    CONF_YEARLY_REPORT,
-                    default=bool(self._entry.options.get(CONF_YEARLY_REPORT, False)),
-                ): selector.BooleanSelector(),
-                vol.Required(
-                    CONF_SUMMARY_REPORT,
-                    default=bool(
-                        self._entry.options.get(CONF_SUMMARY_REPORT, False)
-                    ),
-                ): selector.BooleanSelector(),
-                vol.Required(
-                    CONF_REPORT_TIME,
-                    default=str(
-                        self._entry.options.get(
-                            CONF_REPORT_TIME, DEFAULT_REPORT_TIME
-                        )
-                    ),
-                ): selector.TimeSelector(),
-                vol.Required(
-                    CONF_REPORT_DAY,
-                    default=int(
-                        self._entry.options.get(CONF_REPORT_DAY, DEFAULT_REPORT_DAY)
-                    ),
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=1,
-                        max=28,
-                        step=1,
-                        mode=selector.NumberSelectorMode.BOX,
-                    )
-                ),
-            }),
+            step_id="general",
+            data_schema=vol.Schema(schema),
             errors=errors,
         )

@@ -5,16 +5,31 @@
       "user": {
         "title": "Přihlášení k portálu EDC",
         "description": "Zadejte přístupové údaje a cenu, za kterou prodáváte jednu kWh sdílené elektřiny.",
-        "data": { "username": "E-mail", "password": "Heslo", "sale_price": "Prodejní cena (Kč/kWh)" }
+        "data": {
+          "username": "E-mail",
+          "password": "Heslo",
+          "sale_price": "Prodejní cena (Kč/kWh)"
+        }
       },
-      "group": { "title": "Výběr skupiny sdílení", "data": { "sse_id": "Skupina sdílení" } },
+      "group": {
+        "title": "Výběr skupiny sdílení",
+        "data": {
+          "sse_id": "Skupina sdílení"
+        }
+      },
       "reauth_confirm": {
         "title": "Opětovné přihlášení k EDC",
         "description": "Uložené přihlašovací údaje již EDC nepřijímá. Zadejte nové heslo.",
-        "data": { "password": "Heslo" }
+        "data": {
+          "password": "Heslo"
+        }
       }
     },
-    "error": { "cannot_connect": "K portálu EDC se nelze připojit.", "invalid_auth": "Neplatný e-mail nebo heslo.", "no_groups": "Účet nemá dostupnou skupinu sdílení." },
+    "error": {
+      "cannot_connect": "K portálu EDC se nelze připojit.",
+      "invalid_auth": "Neplatný e-mail nebo heslo.",
+      "no_groups": "Účet nemá dostupnou skupinu sdílení."
+    },
     "abort": {
       "already_configured": "Tato skupina sdílení EDC je již nastavená.",
       "reauth_successful": "Přihlašovací údaje EDC byly úspěšně aktualizovány."
@@ -24,7 +39,14 @@
     "step": {
       "init": {
         "title": "Nastavení EDC",
-        "description": "Vyberte skupinu, prodejní cenu, příjemce reportů a plán automatického odesílání. Týdenní a měsíční report používá poslední uzavřené období. Roční report obsahuje aktuální rok až do posledního dne dostupného v EDC.",
+        "menu_options": {
+          "general": "Obecné nastavení a původní tlačítka",
+          "profiles": "Profily reportů"
+        }
+      },
+      "general": {
+        "title": "Nastavení EDC",
+        "description": "Skupina, cena a výchozí příjemci/jazyk pro původní tlačítka odesílání. Starší plánování se zobrazuje jen do prvního uložení profilů; poté upravujte rozvrhy v Profilech reportů.",
         "data": {
           "sse_id": "Skupina sdílení",
           "sale_price": "Prodejní cena (Kč/kWh)",
@@ -44,42 +66,200 @@
           "yearly_report": "Souhrn od 1. ledna do posledního dostupného dne EDC se odešle každý měsíc ve zvolený den.",
           "summary_report": "Každý den v nastavený čas odešle jeden e-mail obsahující denní, týdenní, měsíční i roční část. Lze jej zapnout současně s libovolnými samostatnými reporty."
         }
+      },
+      "profiles": {
+        "title": "Profily reportů",
+        "description": "Vyberte profil nebo ＋ pro přidání. Každý profil má vlastní příjemce, obsah, jazyk a rozvrh.",
+        "data": {
+          "profile": "Profil / přidat nový"
+        }
+      },
+      "profile_manage": {
+        "title": "Správa profilu",
+        "menu_options": {
+          "profile_edit": "Upravit profil",
+          "profile_toggle": "Zapnout / pozastavit",
+          "profile_duplicate": "Duplikovat profil",
+          "profile_preview": "Náhled bez odeslání",
+          "profile_send": "Odeslat nyní",
+          "profile_delete": "Odstranit profil",
+          "profile_status": "Stav a příští pokus"
+        }
+      },
+      "profile_edit": {
+        "title": "Nastavení profilu reportů",
+        "description": "Report obsahuje souhrn vybrané skupiny. Denní část vždy používá poslední dostupný den EDC. Odeslání nyní funguje i u pozastaveného profilu.",
+        "data": {
+          "name": "Název profilu",
+          "enabled": "Automatické odesílání zapnuto",
+          "targets": "Příjemci (SMTP notify entity)",
+          "language": "Jazyk",
+          "periods": "Období v reportu",
+          "combined": "Všechna vybraná období v jednom e-mailu",
+          "period_mode": "Rozsah období",
+          "frequency": "Četnost odesílání",
+          "time": "Čas odesílání",
+          "weekdays": "Dny v týdnu",
+          "day": "Den v měsíci (1–28)",
+          "month": "Měsíc ročního odeslání (1–12)",
+          "only_new": "Odeslat pouze při změně dat",
+          "energy": "Zahrnout energii a pokrytí",
+          "finance": "Zahrnout cenu a hodnotu sdílení",
+          "ean_mode": "Zobrazení EAN"
+        },
+        "data_description": {
+          "targets": "Příjemce založte v Nastavení > Zařízení a služby > SMTP > Přidat příjemce. Zde vyberte jejich notify entity.",
+          "period_mode": "Probíhající = tento týden/měsíc/rok. Uzavřené = předchozí období. Původní = předchozí týden a měsíc, aktuální rok.",
+          "weekdays": "Použije se jen při týdenním odesílání.",
+          "day": "Použije se při měsíčním a ročním odesílání.",
+          "month": "Použije se jen při ročním odesílání.",
+          "only_new": "Při plánovaném pokusu přeskočí nezměněná data. Odeslat nyní tuto kontrolu obejde."
+        }
+      },
+      "profile_delete": {
+        "title": "Odstranit profil",
+        "description": "Odstranit profil {name}? Historie EDC zůstane zachována.",
+        "data": {
+          "confirm": "Ano, odstranit tento profil"
+        }
+      },
+      "profile_preview": {
+        "title": "Náhled reportu",
+        "description": "{preview}"
+      },
+      "profile_send": {
+        "title": "Odeslat report nyní",
+        "description": "Potvrzením odešlete profil {name} všem jeho příjemcům, i pokud je pozastavený nebo se data nezměnila."
+      },
+      "profile_status": {
+        "title": "Stav odesílání",
+        "description": "Výsledek: {result}\n\nPoslední pokus: {last_attempt}\n\nPoslední úspěšné předání: {last_success}\n\nPříští plánovaný pokus: {next_attempt}\n\nÚspěšné předání SMTP nepotvrzuje doručení do schránky. Při vypnutém HA se zmeškaný termín automaticky nedohání."
       }
     },
-    "error": { "already_configured": "Tato skupina sdílení je již nastavená." },
-    "abort": { "cannot_connect": "K portálu EDC se nelze připojit.", "invalid_auth": "Přihlášení EDC již není platné." }
+    "error": {
+      "already_configured": "Tato skupina sdílení je již nastavená.",
+      "invalid_profile": "Vyplňte název, alespoň jednoho příjemce a období, vyberte energii nebo finance a zkontrolujte rozvrh.",
+      "report_failed": "Report se nepodařilo připravit nebo předat všem příjemcům. Zkontrolujte dostupnost EDC a nastavení SMTP."
+    },
+    "abort": {
+      "cannot_connect": "K portálu EDC se nelze připojit.",
+      "invalid_auth": "Přihlášení EDC již není platné."
+    }
   },
   "entity": {
     "button": {
-      "send_daily_report": { "name": "Odeslat denní report" },
-      "send_weekly_report": { "name": "Odeslat týdenní report" },
-      "send_monthly_report": { "name": "Odeslat měsíční report" },
-      "send_yearly_report": { "name": "Odeslat roční report" },
-      "send_summary_report": { "name": "Odeslat souhrnný report" },
-      "refresh_data": { "name": "Načíst data EDC nyní" },
-      "backfill_history": { "name": "Doplnit dostupnou historii EDC za poslední rok" }
-    },
-    "sensor": {
-    "shared_today": { "name": "Nasdíleno – poslední dostupný den" }, "consumption_today": { "name": "Spotřeba – poslední dostupný den" },
-    "grid_today": { "name": "Dokup ze sítě – poslední dostupný den" }, "unused_today": { "name": "Nevyužitý přetok – poslední dostupný den" },
-    "coverage_today": { "name": "Pokrytí sdílením – poslední dostupný den" }, "revenue_today": { "name": "Tržba – poslední dostupný den" },
-    "shared_month": { "name": "Nasdíleno tento měsíc" }, "consumption_month": { "name": "Spotřeba tento měsíc" },
-    "grid_month": { "name": "Dokup ze sítě tento měsíc" }, "overflow_month": { "name": "Přetok výrobny tento měsíc" },
-    "unused_month": { "name": "Nevyužitý přetok tento měsíc" }, "coverage_month": { "name": "Pokrytí sdílením tento měsíc" },
-    "production_profit_month": { "name": "Hodnota sdílení tento měsíc" }, "sale_price": { "name": "Prodejní cena elektřiny" },
-    "last_update_attempt": { "name": "Poslední pokus o načtení dat" },
-    "history_backfill_status": {
-      "name": "Stav stahování historie",
-      "state": {
-        "not_started": "Nespuštěno",
-        "running": "Probíhá",
-        "paused": "Pozastaveno",
-        "failed": "Selhalo",
-        "completed": "Dokončeno"
+      "send_daily_report": {
+        "name": "Odeslat denní report"
+      },
+      "send_weekly_report": {
+        "name": "Odeslat týdenní report"
+      },
+      "send_monthly_report": {
+        "name": "Odeslat měsíční report"
+      },
+      "send_yearly_report": {
+        "name": "Odeslat roční report"
+      },
+      "send_summary_report": {
+        "name": "Odeslat souhrnný report"
+      },
+      "refresh_data": {
+        "name": "Načíst data EDC nyní"
+      },
+      "backfill_history": {
+        "name": "Doplnit dostupnou historii EDC za poslední rok"
       }
     },
-    "history_earliest_date": { "name": "Data EDC dostupná od" },
-    "sharing_ean": { "name": "Sdílející EAN {ean}" }, "target_ean": { "name": "Cílový EAN {ean}" }
+    "sensor": {
+      "shared_today": {
+        "name": "Nasdíleno – poslední dostupný den"
+      },
+      "consumption_today": {
+        "name": "Spotřeba – poslední dostupný den"
+      },
+      "grid_today": {
+        "name": "Dokup ze sítě – poslední dostupný den"
+      },
+      "unused_today": {
+        "name": "Nevyužitý přetok – poslední dostupný den"
+      },
+      "coverage_today": {
+        "name": "Pokrytí sdílením – poslední dostupný den"
+      },
+      "revenue_today": {
+        "name": "Tržba – poslední dostupný den"
+      },
+      "shared_month": {
+        "name": "Nasdíleno tento měsíc"
+      },
+      "consumption_month": {
+        "name": "Spotřeba tento měsíc"
+      },
+      "grid_month": {
+        "name": "Dokup ze sítě tento měsíc"
+      },
+      "overflow_month": {
+        "name": "Přetok výrobny tento měsíc"
+      },
+      "unused_month": {
+        "name": "Nevyužitý přetok tento měsíc"
+      },
+      "coverage_month": {
+        "name": "Pokrytí sdílením tento měsíc"
+      },
+      "production_profit_month": {
+        "name": "Hodnota sdílení tento měsíc"
+      },
+      "sale_price": {
+        "name": "Prodejní cena elektřiny"
+      },
+      "last_update_attempt": {
+        "name": "Poslední pokus o načtení dat"
+      },
+      "history_backfill_status": {
+        "name": "Stav stahování historie",
+        "state": {
+          "not_started": "Nespuštěno",
+          "running": "Probíhá",
+          "paused": "Pozastaveno",
+          "failed": "Selhalo",
+          "completed": "Dokončeno"
+        }
+      },
+      "history_earliest_date": {
+        "name": "Data EDC dostupná od"
+      },
+      "sharing_ean": {
+        "name": "Sdílející EAN {ean}"
+      },
+      "target_ean": {
+        "name": "Cílový EAN {ean}"
+      }
+    }
+  },
+  "selector": {
+    "report_profile": {
+      "options": {
+        "0": "Pondělí",
+        "1": "Úterý",
+        "2": "Středa",
+        "3": "Čtvrtek",
+        "4": "Pátek",
+        "5": "Sobota",
+        "6": "Neděle",
+        "cs": "Čeština",
+        "en": "English",
+        "daily": "Denně / denní",
+        "weekly": "Týdně / týdenní",
+        "monthly": "Měsíčně / měsíční",
+        "yearly": "Ročně / roční",
+        "current": "Probíhající období",
+        "previous": "Předchozí uzavřené období",
+        "legacy": "Původní rozsah období",
+        "hidden": "Skrýt EAN",
+        "masked": "Jen poslední 4 číslice",
+        "full": "Celý EAN"
+      }
     }
   }
 }
