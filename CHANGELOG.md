@@ -1,5 +1,17 @@
 # Přehled změn / Changelog
 
+## Unreleased
+
+### Čeština
+
+- společný přehled všech profilů reportů přímo v nastavení, včetně příjemců, období, rozvrhu, zapnuto/pozastaveno a výsledků i termínů odesílání,
+- označení nenalezených či nedostupných příjemců, časy v časovém pásmu HA a návrat z detailu na přehled; zobrazení nic neodesílá ani nenačítá z EDC.
+
+### English
+
+- a shared report profile overview in integration options, showing recipients, periods, schedules, enabled/paused state, delivery results and attempt times,
+- missing or unavailable recipients are identified, times use the HA time zone, and profile details link back to the overview; viewing it does not send reports or fetch EDC data.
+
 ## 0.1.20 – 2026-09-05
 
 ### Čeština

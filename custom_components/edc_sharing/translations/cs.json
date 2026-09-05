@@ -68,8 +68,8 @@
         }
       },
       "profiles": {
-        "title": "Profily reportů",
-        "description": "Vyberte profil nebo ＋ pro přidání. Každý profil má vlastní příjemce, obsah, jazyk a rozvrh.",
+        "title": "Přehled profilů reportů",
+        "description": "{overview}\n\nČasy odpovídají časovému pásmu Home Assistantu. Přehled se obnoví při opětovném otevření. Úspěšné předání SMTP nepotvrzuje doručení do schránky.\n\nNíže vyberte profil pro úpravu nebo přidejte nový.",
         "data": {
           "profile": "Profil / přidat nový"
         }
@@ -83,7 +83,8 @@
           "profile_preview": "Náhled bez odeslání",
           "profile_send": "Odeslat nyní",
           "profile_delete": "Odstranit profil",
-          "profile_status": "Stav a příští pokus"
+          "profile_status": "Stav a příští pokus",
+          "profiles": "Zpět na přehled profilů"
         }
       },
       "profile_edit": {

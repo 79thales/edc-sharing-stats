@@ -73,6 +73,8 @@ Otevřete **Nastavení → Zařízení a služby → EDC Sharing Stats → Nasta
 Zadejte název profilu, jeho příjemce (`notify` entity vytvořené v SMTP), jazyk a vyberte období.
 Nový profil je zpočátku pozastavený; přepínačem **Automatické odesílání zapnuto** zapnete jeho rozvrh.
 
+Po otevření **Profilů reportů** se zobrazí společný přehled všech profilů: zapnuto/pozastaveno, příjemci, vybraná období a jejich rozsah, společný či samostatný e-mail, jazyk, rozvrh a poslední i příští pokus o odeslání. U příjemců jsou uvedeny názvy i identifikátory `notify` entit; chybějící nebo nedostupná entita je označená. Časy se zobrazují v časovém pásmu HA. Přehled se obnovuje opětovným otevřením; nic neodesílá ani nestahuje z EDC. Z detailu profilu se vrátíte volbou **Zpět na přehled profilů**.
+
 | Nastavení | Význam |
 | --- | --- |
 | Období v reportu | Libovolná kombinace denního, týdenního, měsíčního a ročního reportu |

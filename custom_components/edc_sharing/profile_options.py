@@ -8,6 +8,9 @@ from uuid import uuid4
 import voluptuous as vol
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
+from homeassistant.util import dt as dt_util
+
+from .profile_overview import delivery_label, format_overview
 
 from .report_profiles import (
     CONF_REPORT_PROFILES,
@@ -101,13 +104,51 @@ class ProfileOptionsMixin:
                 p for p in self._profiles() if p["id"] == selected
             )
             return await self.async_step_profile_manage()
-        choices = [selector.SelectOptionDict(value="new", label="＋")]
+        czech = (self.hass.config.language or "en").startswith("cs")
+        profiles = self._profiles()
+        recipients = {}
+        for profile in profiles:
+            for target in profile["targets"]:
+                state = self.hass.states.get(target)
+                if state is not None:
+                    name = state.name
+                    # Notify entities with no previous handoff can be unknown
+                    # while still available for sending.
+                    if state.state == "unavailable":
+                        name += " — nedostupné" if czech else " — unavailable"
+                    recipients[target] = name
+        runtime = getattr(self._entry, "runtime_data", None)
+        reporter = getattr(runtime, "reporter", None)
+        manager = getattr(reporter, "profiles", None)
+        statuses = {p["id"]: manager.status(p) for p in profiles} if manager else {}
+        overview = format_overview(
+            profiles,
+            recipients,
+            statuses,
+            czech=czech,
+            local_tz=dt_util.now().tzinfo,
+        )
+        choices = [
+            selector.SelectOptionDict(
+                value="new", label="＋ Přidat profil" if czech else "＋ Add profile"
+            )
+        ]
         choices += [
-            selector.SelectOptionDict(value=p["id"], label=p["name"])
-            for p in self._profiles()
+            selector.SelectOptionDict(
+                value=p["id"],
+                label=p["name"]
+                + " — "
+                + (
+                    ("Zapnuto" if czech else "Enabled")
+                    if p["enabled"]
+                    else ("Pozastaveno" if czech else "Paused")
+                ),
+            )
+            for p in profiles
         ]
         return self.async_show_form(
             step_id="profiles",
+            description_placeholders={"overview": overview},
             data_schema=vol.Schema(
                 {
                     vol.Required("profile"): selector.SelectSelector(
@@ -146,6 +187,7 @@ class ProfileOptionsMixin:
                 "profile_send",
                 "profile_delete",
                 "profile_status",
+                "profiles",
             ],
         )
 
@@ -222,27 +264,7 @@ class ProfileOptionsMixin:
             self._selected_profile
         )
         czech = (self.hass.config.language or "en").startswith("cs")
-        labels = {
-            "not_sent": ("Zatím neodesláno", "Not sent yet"),
-            "sending": ("Odesílání probíhá", "Sending"),
-            "interrupted": (
-                "Přerušeno restartem nebo změnou nastavení",
-                "Interrupted by restart or settings reload",
-            ),
-            "sent": ("Předáno příjemcům", "Handed off to recipients"),
-            "failed": ("Selhalo", "Failed"),
-            "partial_failure": (
-                "Některým příjemcům se odeslání nezdařilo",
-                "Some recipients failed",
-            ),
-            "no_new_data": (
-                "Přeskočeno: nezměněná data nebo již odesláno",
-                "Skipped: unchanged data or already sent",
-            ),
-        }
-        state["result"] = labels.get(
-            state["result"], (state["result"], state["result"])
-        )[0 if czech else 1]
+        state["result"] = delivery_label(state["result"], czech)
         return self.async_show_form(
             step_id="profile_status",
             data_schema=vol.Schema({}),

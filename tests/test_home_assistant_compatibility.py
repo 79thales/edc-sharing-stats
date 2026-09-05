@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 HOME_ASSISTANT_INSTALLED = importlib.util.find_spec("homeassistant") is not None
@@ -33,6 +33,7 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
             "custom_components.edc_sharing.report",
             "custom_components.edc_sharing.profile_report",
             "custom_components.edc_sharing.profile_options",
+            "custom_components.edc_sharing.profile_overview",
             "custom_components.edc_sharing.report_profiles",
             "custom_components.edc_sharing.sensor",
         )
@@ -193,7 +194,10 @@ class ReportProfileFlowTests(unittest.IsolatedAsyncioTestCase):
             data={"sse_id": "test"},
         )
         self.flow = EdcSharingOptionsFlow(self.entry)
-        self.flow.hass = SimpleNamespace(config=SimpleNamespace(language="cs"))
+        self.flow.hass = SimpleNamespace(
+            config=SimpleNamespace(language="cs"),
+            states=SimpleNamespace(get=Mock(return_value=None)),
+        )
         self.flow.async_show_form = lambda **kwargs: kwargs
         self.flow.async_show_menu = lambda **kwargs: kwargs
         self.flow.async_create_entry = lambda **kwargs: kwargs
@@ -239,3 +243,66 @@ class ReportProfileFlowTests(unittest.IsolatedAsyncioTestCase):
         saved = await self.flow.async_step_profile_delete({"confirm": True})
         self.assertEqual(saved["data"]["report_profiles"], [])
         self.assertEqual(saved["data"]["sale_price"], 2)
+
+    async def test_overview_reads_all_profiles_without_sending_or_saving(self):
+        from copy import deepcopy
+        from datetime import timedelta, timezone
+
+        from custom_components.edc_sharing.report_profiles import default_profile
+
+        active = default_profile("active") | {
+            "name": "Owner",
+            "enabled": True,
+            "targets": ["notify.owner"],
+            "periods": ["daily", "yearly"],
+        }
+        paused = default_profile("paused") | {
+            "name": "Accountant",
+            "targets": ["notify.missing"],
+            "periods": ["monthly"],
+            "combined": False,
+            "frequency": "monthly",
+        }
+        self.entry.options["report_profiles"] = [active, paused]
+        options_before = deepcopy(self.entry.options)
+        self.flow.hass.states.get.side_effect = lambda entity_id: (
+            SimpleNamespace(name="Owner recipient", state="unavailable")
+            if entity_id == "notify.owner"
+            else None
+        )
+        manager = Mock()
+        manager.status.side_effect = lambda profile: {
+            "result": "sent" if profile["enabled"] else "not_sent",
+            "last_attempt": "2026-09-05T06:00:00+00:00",
+            "last_success": "2026-09-05T06:01:00+00:00",
+            "next_attempt": "2026-09-06T06:00:00+00:00" if profile["enabled"] else "–",
+        }
+        self.entry.runtime_data = SimpleNamespace(
+            reporter=SimpleNamespace(profiles=manager)
+        )
+        with patch(
+            "custom_components.edc_sharing.profile_options.dt_util.now",
+            return_value=datetime(2026, 9, 5, 12, tzinfo=timezone(timedelta(hours=2))),
+        ):
+            result = await self.flow.async_step_profiles()
+        overview = result["description_placeholders"]["overview"]
+        self.assertIn("Owner — Zapnuto", overview)
+        self.assertIn("Accountant — Pozastaveno", overview)
+        self.assertIn("Owner recipient — nedostupné", overview)
+        self.assertIn("entita nenalezena", overview)
+        self.assertIn("05. 09. 2026 08:01:00", overview)
+        self.assertIn("souhrn v jednom e-mailu", overview)
+        self.assertIn("samostatné e-maily", overview)
+        self.assertIn("**Příští pokus:** —", overview)
+        self.assertEqual(self.entry.options, options_before)
+        self.assertEqual([call[0] for call in manager.mock_calls], ["status", "status"])
+
+    async def test_empty_or_unloaded_overview_still_allows_profile_management(self):
+        self.entry.options = {"report_profiles": []}
+        empty = await self.flow.async_step_profiles()
+        self.assertIn("žádné profily", empty["description_placeholders"]["overview"])
+        self.entry.options = {"daily_report": True, "report_targets": ["notify.owner"]}
+        unloaded = await self.flow.async_step_profiles()
+        self.assertIn(
+            "Integrace není načtená", unloaded["description_placeholders"]["overview"]
+        )

@@ -68,8 +68,8 @@
         }
       },
       "profiles": {
-        "title": "Report profiles",
-        "description": "Select a profile or ＋ to add one. Each profile has its own recipients, content, language and schedule.",
+        "title": "Report profiles overview",
+        "description": "{overview}\n\nTimes use the Home Assistant time zone. Reopen this page to refresh the overview. A successful SMTP handoff does not confirm inbox delivery.\n\nSelect a profile below to manage it, or add a new one.",
         "data": {
           "profile": "Profile / add new"
         }
@@ -83,7 +83,8 @@
           "profile_preview": "Preview without sending",
           "profile_send": "Send now",
           "profile_delete": "Delete profile",
-          "profile_status": "Status and next attempt"
+          "profile_status": "Status and next attempt",
+          "profiles": "Back to profiles overview"
         }
       },
       "profile_edit": {
