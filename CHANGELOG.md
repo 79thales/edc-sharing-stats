@@ -1,6 +1,6 @@
 # Přehled změn / Changelog
 
-## Unreleased – report profiles
+## 0.1.20 – 2026-09-05
 
 ### Čeština
 
