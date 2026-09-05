@@ -134,6 +134,34 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
         await restarted.async_send(self.profile)
         self.assertEqual(self.hass.services.async_call.await_count, 4)
 
+    async def test_interrupted_send_is_not_reported_as_still_running(self):
+        await self.manager.async_send(self.profile, scheduled=True)
+        self.saved["one"]["result"] = "sending"
+        restarted = self.runtime.ProfileReportManager(self.reporter)
+        await restarted.async_initialize()
+        self.assertEqual(restarted.state["one"]["result"], "interrupted")
+        await restarted.async_send(self.profile, scheduled=True)
+        self.assertEqual(self.hass.services.async_call.await_count, 2)
+
+    async def test_unload_cancels_in_flight_sending(self):
+        import asyncio
+
+        started = asyncio.Event()
+
+        async def wait_for_notify(*args, **kwargs):
+            started.set()
+            await asyncio.Future()
+
+        self.hass.services.async_call.side_effect = wait_for_notify
+        task = asyncio.create_task(self.manager.async_send(self.profile))
+        await asyncio.wait_for(started.wait(), 1)
+        self.manager.close()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertFalse(self.manager.tasks)
+        with self.assertRaises(self.error):
+            await self.manager.async_send(self.profile)
+
     async def test_failed_recipient_does_not_block_others_or_leak_exception(self):
         self.hass.services.async_call.side_effect = [
             RuntimeError("private SMTP credentials"),

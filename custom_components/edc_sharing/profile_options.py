@@ -225,6 +225,10 @@ class ProfileOptionsMixin:
         labels = {
             "not_sent": ("Zatím neodesláno", "Not sent yet"),
             "sending": ("Odesílání probíhá", "Sending"),
+            "interrupted": (
+                "Přerušeno restartem nebo změnou nastavení",
+                "Interrupted by restart or settings reload",
+            ),
             "sent": ("Předáno příjemcům", "Handed off to recipients"),
             "failed": ("Selhalo", "Failed"),
             "partial_failure": (

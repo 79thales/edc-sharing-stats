@@ -168,6 +168,15 @@ class ProfileReportManager:
 
     async def async_initialize(self) -> None:
         self.state = await self.store.async_load() or {}
+        # A process interrupted after a successful recipient handoff can have
+        # persisted intermediate progress. It is no longer actively sending.
+        interrupted = False
+        for record in self.state.values():
+            if record.get("result") == "sending":
+                record["result"] = "interrupted"
+                interrupted = True
+        if interrupted:
+            await self.store.async_save(self.state)
 
     def start(self) -> None:
         self.entry.async_on_unload(self.close)
