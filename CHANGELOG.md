@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.21 – 2026-09-12
+
 ### Čeština
 
 - pět nových senzorů využití přetoku pro poslední dostupný den, aktuální týden, měsíc, rok a všechna uložená data; metrika počítá `nasdíleno / přetok výrobny × 100` a není zaměněna s pokrytím spotřeby,
