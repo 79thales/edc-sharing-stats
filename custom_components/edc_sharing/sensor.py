@@ -18,7 +18,7 @@ from homeassistant.helpers.translation import async_get_translations
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import EdcConfigEntry
-from .calculation import EanInfo, SharingStatistics
+from .calculation import EanInfo, SharingStatistics, SurplusUtilization
 from .const import CONF_SSE_ID, CONF_SSE_NAME, DOMAIN
 from .coordinator import EdcSharingCoordinator
 
@@ -44,6 +44,26 @@ def _latest_attributes(statistics: SharingStatistics) -> dict[str, Any]:
         if statistics.latest_day is not None
         else None
     }
+
+
+def _utilization_attributes(value: SurplusUtilization) -> dict[str, Any]:
+    """Expose the inputs and available range behind a utilization value."""
+    return {
+        "shared_kwh": float(value.shared),
+        "production_surplus_kwh": float(value.production_surplus),
+        "unused_surplus_kwh": float(value.unused_surplus),
+        "data_start": value.data_start.isoformat() if value.data_start else None,
+        "data_end": value.data_end.isoformat() if value.data_end else None,
+        "available_days": value.available_days,
+    }
+
+
+SURPLUS_UTILIZATION = dict(
+    native_unit_of_measurement=PERCENTAGE,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=1,
+    icon="mdi:solar-power-variant",
+)
 
 
 SENSORS: tuple[EdcSensorDescription, ...] = (
@@ -78,6 +98,51 @@ SENSORS: tuple[EdcSensorDescription, ...] = (
     EdcSensorDescription(
         key="sale_price", translation_key="sale_price", value_fn=lambda x: x.sale_price,
         native_unit_of_measurement="CZK/kWh", state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=2,
+    ),
+    EdcSensorDescription(
+        key="surplus_utilization_latest_available_day",
+        translation_key="surplus_utilization_latest_available_day",
+        value_fn=lambda x: x.surplus_utilization_latest_available_day.value,
+        attributes_fn=lambda x: _utilization_attributes(
+            x.surplus_utilization_latest_available_day
+        ),
+        **SURPLUS_UTILIZATION,
+    ),
+    EdcSensorDescription(
+        key="surplus_utilization_this_week",
+        translation_key="surplus_utilization_this_week",
+        value_fn=lambda x: x.surplus_utilization_this_week.value,
+        attributes_fn=lambda x: _utilization_attributes(
+            x.surplus_utilization_this_week
+        ),
+        **SURPLUS_UTILIZATION,
+    ),
+    EdcSensorDescription(
+        key="surplus_utilization_this_month",
+        translation_key="surplus_utilization_this_month",
+        value_fn=lambda x: x.surplus_utilization_this_month.value,
+        attributes_fn=lambda x: _utilization_attributes(
+            x.surplus_utilization_this_month
+        ),
+        **SURPLUS_UTILIZATION,
+    ),
+    EdcSensorDescription(
+        key="surplus_utilization_this_year",
+        translation_key="surplus_utilization_this_year",
+        value_fn=lambda x: x.surplus_utilization_this_year.value,
+        attributes_fn=lambda x: _utilization_attributes(
+            x.surplus_utilization_this_year
+        ),
+        **SURPLUS_UTILIZATION,
+    ),
+    EdcSensorDescription(
+        key="surplus_utilization_total",
+        translation_key="surplus_utilization_total",
+        value_fn=lambda x: x.surplus_utilization_total.value,
+        attributes_fn=lambda x: _utilization_attributes(
+            x.surplus_utilization_total
+        ),
+        **SURPLUS_UTILIZATION,
     ),
 )
 

@@ -4,7 +4,7 @@
 
 ## English overview
 
-EDC Sharing Stats is a custom Home Assistant integration for electricity-sharing groups managed through the Czech EDC portal. For the latest available EDC day, it exposes shared electricity, consumption, grid import, unused production surplus, sharing coverage, and an estimated value based on a configurable CZK/kWh price. Current-month statistics additionally include total production surplus.
+EDC Sharing Stats is a custom Home Assistant integration for electricity-sharing groups managed through the Czech EDC portal. For the latest available EDC day, it exposes shared electricity, consumption, grid import, unused production surplus, sharing coverage, and an estimated value based on a configurable CZK/kWh price. Current-month statistics additionally include total production surplus. Separate surplus-utilization sensors show the percentage of production surplus actually used for sharing for the latest day, current week, month, year and all retained history.
 
 Historical EDC profile data is aggregated into hourly and daily Home Assistant long-term statistics. The integration supports a resumable, one-year history backfill, refresh and backfill diagnostics, and optional on-demand or scheduled email reports in Czech or English through Home Assistant `notify` entities.
 
@@ -24,6 +24,7 @@ Vlastní integrace pro Home Assistant, která načítá vyhodnocení skupiny sd�
 - automatické načtení a výběr skupiny sdílení,
 - hodnoty za poslední dostupný den a za aktuální měsíc pro sdílení, spotřebu, dokup a přetoky,
 - procentuální pokrytí spotřeby sdílenou elektřinou,
+- využití přetoku výrobny za poslední dostupný den, tento týden, měsíc, rok a celkem,
 - nastavitelná prodejní cena v Kč/kWh,
 - výpočet hodnoty nasdílené elektřiny jako `nasdílené kWh × prodejní cena`,
 - automatické stažení profilových dat za předchozí a aktuální kalendářní měsíc,
@@ -126,9 +127,16 @@ Reporty lze odeslat i ručně pomocí tlačítek **Odeslat denní report**, **Od
 
 - nasdíleno, spotřeba, dokup, nevyužitý přetok, pokrytí a tržba za poslední den dostupný v EDC,
 - nasdíleno, spotřeba, dokup, přetok výrobny, nevyužitý přetok, pokrytí a hodnota sdílení za aktuální měsíc,
-- nastavená prodejní cena.
+- nastavená prodejní cena,
+- využití přetoku za poslední dostupný den, tento týden, měsíc, rok a celou uloženou historii.
 
-Integrace vytváří 14 základních hodnotových senzorů. Nejde o duplicity: šest patří poslednímu dni dostupnému v EDC, sedm aktuálnímu měsíci a jeden představuje nastavenou prodejní cenu. Každý senzor má vlastní jedinečný identifikátor a lokalizovaný název. U šesti denních senzorů atribut `data_date` uvádí skutečné datum měření; EDC obvykle zveřejňuje vyhodnocení se zpožděním, takže nemusí jít o dnešní datum.
+Integrace vytváří 19 základních hodnotových senzorů. Nejde o duplicity: šest patří poslednímu dni dostupnému v EDC, sedm aktuálnímu měsíci, jeden představuje nastavenou prodejní cenu a pět zobrazuje využití přetoku v různých obdobích. Každý senzor má vlastní jedinečný identifikátor a lokalizovaný název. U šesti denních senzorů atribut `data_date` uvádí skutečné datum měření; EDC obvykle zveřejňuje vyhodnocení se zpožděním, takže nemusí jít o dnešní datum.
+
+**Pokrytí spotřeby** udává, kolik procent spotřeby příjemce pokryla sdílená elektřina (`nasdíleno / spotřeba`). **Využití přetoku** naproti tomu udává, kolik procent celkového přetoku výrobny bylo skutečně využito pro sdílení (`nasdíleno / přetok výrobny`). Při nulovém nebo záporném přetoku je hodnota `0 %`, stejně jako u stávajících procentních výpočtů s nulovým jmenovatelem. Výpočet používá nezaokrouhlené agregované hodnoty a UI doporučuje jedno desetinné místo.
+
+Každý senzor využití přetoku obsahuje diagnostické atributy `shared_kwh`, `production_surplus_kwh`, `unused_surplus_kwh`, `data_start`, `data_end` a `available_days`. Hodnoty pro rok a celkem se počítají ze všech denních dat, která integrace dosud načetla a uložila; u nové instalace se rozsah rozšíří po spuštění ročního backfillu. Opakované načtení stejného dne uložený den nahradí, takže nedochází k dvojímu započtení.
+
+Nové entity používají stabilní koncovky `surplus_utilization_latest_available_day`, `surplus_utilization_this_week`, `surplus_utilization_this_month`, `surplus_utilization_this_year` a `surplus_utilization_total`. Například pro zařízení `Dvořák osady ležáku 64` vzniknou entity ve tvaru `sensor.dvorak_osady_lezaku_64_surplus_utilization_…`; konkrétní ID lze po vytvoření ověřit a případně uživatelsky přejmenovat v registru entit Home Assistantu.
 
 Navíc vzniká diagnostický časový senzor **Poslední pokus o načtení dat**. Jeho stav uvádí okamžik posledního pokusu; atributy `result`, `last_success`, `next_attempt` a `error` ukazují výsledek, poslední úspěšné načtení, očekávaný další automatický pokus a případnou chybu. Diagnostický senzor zůstává dostupný i tehdy, když se samotné načtení nezdaří.
 

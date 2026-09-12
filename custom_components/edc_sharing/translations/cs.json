@@ -214,6 +214,21 @@
       "sale_price": {
         "name": "Prodejní cena elektřiny"
       },
+      "surplus_utilization_latest_available_day": {
+        "name": "Využití přetoku – poslední dostupný den"
+      },
+      "surplus_utilization_this_week": {
+        "name": "Využití přetoku – tento týden"
+      },
+      "surplus_utilization_this_month": {
+        "name": "Využití přetoku – tento měsíc"
+      },
+      "surplus_utilization_this_year": {
+        "name": "Využití přetoku – tento rok"
+      },
+      "surplus_utilization_total": {
+        "name": "Využití přetoku – celkem"
+      },
       "last_update_attempt": {
         "name": "Poslední pokus o načtení dat"
       },

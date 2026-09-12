@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date, datetime, time, timedelta, tzinfo
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import logging
 from typing import Any
 
@@ -75,6 +75,49 @@ def _stored_non_negative_int(value: object) -> int:
         return 0
 
 
+_DAILY_DECIMAL_FIELDS = (
+    "consumption",
+    "grid_purchase",
+    "shared",
+    "producer_overflow",
+    "used_overflow",
+    "unused_overflow",
+    "coverage",
+    "consistency_difference",
+)
+
+
+def _serialize_daily_row(row: DailySharing) -> dict[str, str]:
+    """Serialize one aggregate without losing Decimal precision."""
+    return {
+        "day": row.day.isoformat(),
+        **{field: str(getattr(row, field)) for field in _DAILY_DECIMAL_FIELDS},
+    }
+
+
+def _stored_daily_rows(value: object) -> dict[date, DailySharing]:
+    """Restore valid cached daily aggregates and ignore malformed entries."""
+    if not isinstance(value, list):
+        return {}
+    restored: dict[date, DailySharing] = {}
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        day = _stored_date(item.get("day"))
+        if day is None:
+            continue
+        try:
+            values = {
+                field: Decimal(str(item[field])) for field in _DAILY_DECIMAL_FIELDS
+            }
+        except (InvalidOperation, KeyError, TypeError, ValueError):
+            continue
+        if not all(number.is_finite() for number in values.values()):
+            continue
+        restored[day] = DailySharing(day=day, **values)
+    return restored
+
+
 def _hour_start_utc(value: datetime, local_tz: tzinfo) -> datetime:
     """Return an hourly profile timestamp as an aware UTC datetime."""
     if value.tzinfo is None:
@@ -103,6 +146,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self.api = api
         self.eans: tuple[EanInfo, ...] = ()
         self._days: dict[date, DailySharing] = {}
+        self._history_days: dict[date, DailySharing] = {}
         self._hours: dict[datetime, HourlySharing] = {}
         self._history_refresh_date: date | None = None
         self._history_import_enabled = False
@@ -166,6 +210,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         )
         error = stored.get("error")
         self.history_backfill_error = str(error) if error else None
+        self._history_days = _stored_daily_rows(stored.get("daily_rows"))
 
     async def _async_update_data(self) -> SharingStatistics:
         now = dt_util.now()
@@ -224,8 +269,12 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 self._history_refresh_date = today
             self._days.update(fetched)
             self._hours.update(fetched_hours)
-            if self._days:
-                earliest_known = min(self._days)
+            history_changed = any(
+                self._history_days.get(day) != row for day, row in fetched.items()
+            )
+            self._history_days.update(fetched)
+            if self._history_days:
+                earliest_known = min(self._history_days)
                 if (
                     self.history_earliest_date is None
                     or earliest_known < self.history_earliest_date
@@ -239,7 +288,9 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 CONF_SALE_PRICE,
                 self.config_entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE),
             )))
-            result = calculate_statistics(tuple(self._days.values()), price, today)
+            result = calculate_statistics(
+                tuple(self._history_days.values()), price, today
+            )
             if self._history_import_enabled:
                 self._async_import_history_if_changed(
                     result, tuple(self._hours.values()), now
@@ -248,6 +299,8 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             self.last_success_at = completed_at
             self.next_attempt_at = completed_at + DEFAULT_SCAN_INTERVAL
             self.last_attempt_result = "success"
+            if history_changed:
+                await self._async_save_history_backfill_state()
             return result
         except EdcAuthenticationError as err:
             self.last_attempt_result = "authentication_failed"
@@ -287,7 +340,9 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             self.history_backfill_cursor = scan_end
             self.history_backfill_started_at = now
             self.history_backfill_completed_at = None
-            self.history_earliest_date = min(self._days) if self._days else None
+            self.history_earliest_date = (
+                min(self._history_days) if self._history_days else None
+            )
             self.history_backfill_processed_chunks = 0
             self.history_backfill_total_chunks = len(ranges)
             self.history_backfill_imported_days = 0
@@ -408,6 +463,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     local_tz=local_tz,
                 )
                 if days:
+                    self._history_days.update({row.day: row for row in days})
                     earliest = min(row.day for row in days)
                     if (
                         self.history_earliest_date is None
@@ -417,7 +473,11 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 self.history_backfill_cursor = chunk_from
                 self.history_backfill_processed_chunks += 1
                 await self._async_save_history_backfill_state()
-                self.async_update_listeners()
+                self.async_set_updated_data(
+                    calculate_statistics(
+                        tuple(self._history_days.values()), price, now.date()
+                    )
+                )
                 await asyncio.sleep(_BACKFILL_REQUEST_DELAY)
 
             await self._async_finish_history_backfill()
@@ -480,6 +540,12 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 "imported_days": self.history_backfill_imported_days,
                 "imported_hours": self.history_backfill_imported_hours,
                 "error": self.history_backfill_error,
+                "daily_rows": [
+                    _serialize_daily_row(row)
+                    for row in sorted(
+                        self._history_days.values(), key=lambda item: item.day
+                    )
+                ],
             }
         )
 

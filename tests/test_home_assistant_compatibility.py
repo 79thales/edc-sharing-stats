@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 import unittest
@@ -60,6 +60,56 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
             earliest_date_sensor.device_class,
             SensorDeviceClass.DATE,
         )
+
+    def test_surplus_utilization_sensor_metadata(self) -> None:
+        from homeassistant.components.sensor import SensorStateClass
+        from homeassistant.const import PERCENTAGE
+
+        from custom_components.edc_sharing.sensor import SENSORS
+
+        keys = {
+            "surplus_utilization_latest_available_day",
+            "surplus_utilization_this_week",
+            "surplus_utilization_this_month",
+            "surplus_utilization_this_year",
+            "surplus_utilization_total",
+        }
+        descriptions = {
+            description.key: description
+            for description in SENSORS
+            if description.key in keys
+        }
+
+        self.assertEqual(set(descriptions), keys)
+        for description in descriptions.values():
+            self.assertEqual(description.native_unit_of_measurement, PERCENTAGE)
+            self.assertEqual(description.state_class, SensorStateClass.MEASUREMENT)
+            self.assertEqual(description.suggested_display_precision, 1)
+            self.assertEqual(description.icon, "mdi:solar-power-variant")
+
+    def test_cached_daily_row_round_trip_preserves_precision(self) -> None:
+        from custom_components.edc_sharing.calculation import DailySharing
+        from custom_components.edc_sharing.coordinator import (
+            _serialize_daily_row,
+            _stored_daily_rows,
+        )
+
+        row = DailySharing(
+            date(2026, 9, 1),
+            Decimal("10.96"),
+            Decimal("4.22"),
+            Decimal("6.74"),
+            Decimal("10.96"),
+            Decimal("6.74"),
+            Decimal("4.22"),
+            Decimal("61.49635036496350364963503650"),
+            Decimal("0.00"),
+        )
+
+        self.assertEqual(
+            _stored_daily_rows([_serialize_daily_row(row)]), {row.day: row}
+        )
+        self.assertEqual(_stored_daily_rows([{"day": "invalid"}]), {})
 
     def test_external_statistics_metadata_and_reimport_are_stable(self) -> None:
         from homeassistant.components.recorder.models import StatisticMeanType

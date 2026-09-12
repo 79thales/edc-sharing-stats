@@ -4,11 +4,15 @@
 
 ### Čeština
 
+- pět nových senzorů využití přetoku pro poslední dostupný den, aktuální týden, měsíc, rok a všechna uložená data; metrika počítá `nasdíleno / přetok výrobny × 100` a není zaměněna s pokrytím spotřeby,
+- vstupní hodnoty a skutečný rozsah dat jsou dostupné v atributech; denní agregace se ukládají bez duplicit, takže roční a celkový senzor přežijí restart a rozšíří se při backfillu,
 - společný přehled všech profilů reportů přímo v nastavení, včetně příjemců, období, rozvrhu, zapnuto/pozastaveno a výsledků i termínů odesílání,
 - označení nenalezených či nedostupných příjemců, časy v časovém pásmu HA a návrat z detailu na přehled; zobrazení nic neodesílá ani nenačítá z EDC.
 
 ### English
 
+- five new surplus-utilization sensors for the latest available day, current week, month, year and all retained data; the metric is `shared / production surplus × 100` and remains distinct from consumption coverage,
+- source values and the actual data range are exposed as attributes; daily aggregates are persisted by date without duplication, allowing yearly and total values to survive restarts and expand during backfill,
 - a shared report profile overview in integration options, showing recipients, periods, schedules, enabled/paused state, delivery results and attempt times,
 - missing or unavailable recipients are identified, times use the HA time zone, and profile details link back to the overview; viewing it does not send reports or fetch EDC data.
 

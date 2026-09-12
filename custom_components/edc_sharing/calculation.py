@@ -55,6 +55,19 @@ class HourlySharing:
 
 
 @dataclass(frozen=True, slots=True)
+class SurplusUtilization:
+    """Surplus utilization and the energy values used to calculate it."""
+
+    value: Decimal
+    shared: Decimal
+    production_surplus: Decimal
+    unused_surplus: Decimal
+    data_start: date | None
+    data_end: date | None
+    available_days: int
+
+
+@dataclass(frozen=True, slots=True)
 class SharingStatistics:
     """Statistics exposed by the integration."""
 
@@ -71,6 +84,11 @@ class SharingStatistics:
     month_revenue: Decimal
     today_revenue: Decimal
     sale_price: Decimal
+    surplus_utilization_latest_available_day: SurplusUtilization
+    surplus_utilization_this_week: SurplusUtilization
+    surplus_utilization_this_month: SurplusUtilization
+    surplus_utilization_this_year: SurplusUtilization
+    surplus_utilization_total: SurplusUtilization
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +112,30 @@ def _decimal(value: Any) -> Decimal:
     except (InvalidOperation, TypeError, ValueError) as err:
         raise ValueError("EDC vrátilo neplatnou číselnou hodnotu.") from err
     return parsed if parsed.is_finite() else ZERO
+
+
+def calculate_surplus_utilization(
+    days: tuple[DailySharing, ...],
+) -> SurplusUtilization:
+    """Calculate how much production surplus was used for sharing."""
+    ordered = tuple(sorted(days, key=lambda row: row.day))
+    shared = sum((row.shared for row in ordered), ZERO)
+    production_surplus = sum((row.producer_overflow for row in ordered), ZERO)
+    unused_surplus = sum((row.unused_overflow for row in ordered), ZERO)
+    value = (
+        shared / production_surplus * Decimal("100")
+        if shared > ZERO and production_surplus > ZERO
+        else ZERO
+    )
+    return SurplusUtilization(
+        value=value,
+        shared=shared,
+        production_surplus=production_surplus,
+        unused_surplus=unused_surplus,
+        data_start=ordered[0].day if ordered else None,
+        data_end=ordered[-1].day if ordered else None,
+        available_days=len(ordered),
+    )
 
 
 def two_calendar_month_start(today: date) -> date:
@@ -366,7 +408,14 @@ def calculate_statistics(
     available_rows = [row for row in daily if row.day <= today]
     latest_row = available_rows[-1] if available_rows else empty_today
     latest_day = latest_row.day if available_rows else None
-    month_rows = [row for row in daily if row.day.year == today.year and row.day.month == today.month]
+    week_start = today - timedelta(days=today.weekday())
+    week_rows = [row for row in available_rows if row.day >= week_start]
+    month_rows = [
+        row
+        for row in available_rows
+        if row.day.year == today.year and row.day.month == today.month
+    ]
+    year_rows = [row for row in available_rows if row.day.year == today.year]
     month_consumption = sum((row.consumption for row in month_rows), ZERO)
     month_shared = sum((row.shared for row in month_rows), ZERO)
     month_coverage = month_shared / month_consumption * Decimal("100") if month_consumption else ZERO
@@ -384,6 +433,21 @@ def calculate_statistics(
         month_revenue=month_shared * sale_price,
         today_revenue=today_row.shared * sale_price,
         sale_price=sale_price,
+        surplus_utilization_latest_available_day=calculate_surplus_utilization(
+            (latest_row,) if latest_day is not None else ()
+        ),
+        surplus_utilization_this_week=calculate_surplus_utilization(
+            tuple(week_rows)
+        ),
+        surplus_utilization_this_month=calculate_surplus_utilization(
+            tuple(month_rows)
+        ),
+        surplus_utilization_this_year=calculate_surplus_utilization(
+            tuple(year_rows)
+        ),
+        surplus_utilization_total=calculate_surplus_utilization(
+            tuple(available_rows)
+        ),
     )
 
 

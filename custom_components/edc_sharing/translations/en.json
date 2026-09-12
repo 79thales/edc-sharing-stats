@@ -214,6 +214,21 @@
       "sale_price": {
         "name": "Electricity sale price"
       },
+      "surplus_utilization_latest_available_day": {
+        "name": "Surplus utilization – latest available day"
+      },
+      "surplus_utilization_this_week": {
+        "name": "Surplus utilization this week"
+      },
+      "surplus_utilization_this_month": {
+        "name": "Surplus utilization this month"
+      },
+      "surplus_utilization_this_year": {
+        "name": "Surplus utilization this year"
+      },
+      "surplus_utilization_total": {
+        "name": "Surplus utilization – total"
+      },
       "last_update_attempt": {
         "name": "Last data fetch attempt"
       },

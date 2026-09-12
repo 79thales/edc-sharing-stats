@@ -75,6 +75,129 @@ def _dst_profile(day: str, starts: tuple[str, ...]) -> dict:
 
 
 class CalculationTests(unittest.TestCase):
+    @staticmethod
+    def _daily_row(
+        day: date,
+        *,
+        shared: str,
+        production_surplus: str,
+        unused_surplus: str = "0",
+        consumption: str = "0",
+    ):
+        consumption_value = Decimal(consumption)
+        shared_value = Decimal(shared)
+        return calculation.DailySharing(
+            day=day,
+            consumption=consumption_value,
+            grid_purchase=Decimal("0"),
+            shared=shared_value,
+            producer_overflow=Decimal(production_surplus),
+            used_overflow=shared_value,
+            unused_overflow=Decimal(unused_surplus),
+            coverage=(
+                shared_value / consumption_value * Decimal("100")
+                if consumption_value > 0
+                else Decimal("0")
+            ),
+            consistency_difference=Decimal("0"),
+        )
+
+    def test_surplus_utilization_reference_value(self) -> None:
+        result = calculation.calculate_surplus_utilization(
+            (
+                self._daily_row(
+                    date(2026, 9, 1),
+                    shared="6.74",
+                    production_surplus="10.96",
+                    unused_surplus="4.22",
+                    consumption="13.74",
+                ),
+            )
+        )
+
+        self.assertEqual(round(result.value, 1), Decimal("61.5"))
+        self.assertEqual(result.shared, Decimal("6.74"))
+        self.assertEqual(result.production_surplus, Decimal("10.96"))
+        self.assertEqual(result.unused_surplus, Decimal("4.22"))
+        self.assertNotEqual(
+            result.value,
+            Decimal("6.74") / Decimal("13.74") * Decimal("100"),
+        )
+
+    def test_surplus_utilization_zero_and_invalid_denominators(self) -> None:
+        zero_shared = calculation.calculate_surplus_utilization(
+            (
+                self._daily_row(
+                    date(2026, 9, 1), shared="0", production_surplus="10"
+                ),
+            )
+        )
+        zero_surplus = calculation.calculate_surplus_utilization(
+            (
+                self._daily_row(
+                    date(2026, 9, 1), shared="0", production_surplus="0"
+                ),
+            )
+        )
+        negative_values = calculation.calculate_surplus_utilization(
+            (
+                self._daily_row(
+                    date(2026, 9, 1), shared="-1", production_surplus="-10"
+                ),
+            )
+        )
+        no_history = calculation.calculate_surplus_utilization(())
+
+        self.assertEqual(zero_shared.value, Decimal("0"))
+        self.assertEqual(zero_surplus.value, Decimal("0"))
+        self.assertEqual(negative_values.value, Decimal("0"))
+        self.assertEqual(no_history.value, Decimal("0"))
+        self.assertIsNone(no_history.data_start)
+        self.assertEqual(no_history.available_days, 0)
+
+    def test_surplus_utilization_periods_use_the_correct_rows(self) -> None:
+        result = calculation.calculate_statistics(
+            (
+                self._daily_row(
+                    date(2025, 12, 31), shared="1", production_surplus="10"
+                ),
+                self._daily_row(
+                    date(2026, 8, 31), shared="8", production_surplus="10"
+                ),
+                self._daily_row(
+                    date(2026, 9, 1), shared="2", production_surplus="10"
+                ),
+                self._daily_row(
+                    date(2026, 9, 2), shared="3", production_surplus="10"
+                ),
+                self._daily_row(
+                    date(2026, 9, 3), shared="4", production_surplus="10"
+                ),
+                self._daily_row(
+                    date(2026, 9, 4), shared="10", production_surplus="10"
+                ),
+            ),
+            Decimal("2"),
+            date(2026, 9, 3),
+        )
+
+        self.assertEqual(
+            result.surplus_utilization_latest_available_day.value, Decimal("40")
+        )
+        self.assertEqual(
+            result.surplus_utilization_this_week.value, Decimal("42.5")
+        )
+        self.assertEqual(
+            result.surplus_utilization_this_month.value, Decimal("30")
+        )
+        self.assertEqual(
+            result.surplus_utilization_this_year.value, Decimal("42.5")
+        )
+        self.assertEqual(
+            result.surplus_utilization_total.value, Decimal("36")
+        )
+        self.assertEqual(result.surplus_utilization_total.available_days, 5)
+
     def test_spring_dst_hours_have_distinct_utc_timestamps(self) -> None:
         hours = calculation.parse_hourly_profile(
             _dst_profile("2026-03-29", ("01:00:00", "03:00:00")),
