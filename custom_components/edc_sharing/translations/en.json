@@ -41,6 +41,7 @@
         "title": "EDC settings",
         "menu_options": {
           "general": "General settings and original buttons",
+          "ean_settings": "EAN details and prices",
           "profiles": "Report profiles"
         }
       },
@@ -67,6 +68,25 @@
           "summary_report": "Sends one email containing the daily, weekly, monthly, and yearly sections every day at report time. It can be enabled together with any separate reports."
         }
       },
+      "ean_settings": {
+        "title": "EAN details",
+        "description": "Select a sharing or target EAN discovered in the latest EDC data."
+      },
+      "ean_edit": {
+        "title": "EAN details",
+        "description": "Set an optional local name and location for {role} EAN {ean}. A target EAN can use the group price or its own price.",
+        "data": {
+          "name": "Display name",
+          "location": "Location",
+          "use_group_price": "Use the group sale price",
+          "price": "Custom sale price (CZK/kWh)"
+        },
+        "data_description": {
+          "location": "Shown on the EAN device and in targeted reports. It does not assign a Home Assistant area.",
+          "use_group_price": "When enabled, this target EAN follows the existing group sale price.",
+          "price": "Used only when the group sale price option is disabled."
+        }
+      },
       "profiles": {
         "title": "Report profiles overview",
         "description": "{overview}\n\nTimes use the Home Assistant time zone. Reopen this page to refresh the overview. A successful SMTP handoff does not confirm inbox delivery.\n\nSelect a profile below to manage it, or add a new one.",
@@ -89,7 +109,7 @@
       },
       "profile_edit": {
         "title": "Report profile settings",
-        "description": "Reports contain totals for the configured group. The daily section always uses the latest available EDC day. Send now also works for paused profiles.",
+        "description": "Group scope keeps the original whole-group report. Target EAN scope reports each selected target supply point separately, using its configured price when set. The daily section always uses the latest available EDC day. Send now also works for paused profiles.",
         "data": {
           "name": "Profile name",
           "enabled": "Automatic sending enabled",
@@ -106,7 +126,9 @@
           "only_new": "Send only when data changes",
           "energy": "Include energy and coverage",
           "finance": "Include price and sharing value",
-          "ean_mode": "EAN visibility"
+          "ean_mode": "EAN visibility",
+          "report_scope": "Report scope",
+          "target_eans": "Target EANs"
         },
         "data_description": {
           "targets": "Create recipients under Settings > Devices & services > SMTP > Add recipient, then select their notify entities here.",
@@ -114,7 +136,9 @@
           "weekdays": "Used only for weekly sending.",
           "day": "Used for monthly and yearly sending.",
           "month": "Used only for yearly sending.",
-          "only_new": "Scheduled attempts skip unchanged data. Send now bypasses this check."
+          "only_new": "Scheduled attempts skip unchanged data. Send now bypasses this check.",
+          "report_scope": "Group reports retain the original totals. Target EAN reports contain a separate section for every selected target EAN; create separate profiles to use different recipients.",
+          "target_eans": "Used only for Target EAN scope. Their name, location and optional custom price come from EAN details."
         }
       },
       "profile_delete": {
@@ -140,7 +164,9 @@
     "error": {
       "already_configured": "This sharing group is already configured.",
       "invalid_profile": "Enter a name, select at least one recipient and period, include energy or finance, and check the schedule.",
-      "report_failed": "The report could not be prepared or handed off to all recipients. Check EDC availability and SMTP settings."
+      "report_failed": "The report could not be prepared or handed off to all recipients. Check EDC availability and SMTP settings.",
+      "no_eans": "No EANs have been returned by EDC yet. Fetch EDC data and try again.",
+      "invalid_ean_settings": "Enter a valid name, location and non-negative custom price."
     },
     "abort": {
       "cannot_connect": "Unable to connect to the EDC portal.",
@@ -250,6 +276,39 @@
       },
       "target_ean": {
         "name": "Target EAN {ean}"
+      },
+      "target_shared_latest_available_day": {
+        "name": "Target EAN shared electricity – latest available day"
+      },
+      "target_consumption_latest_available_day": {
+        "name": "Target EAN consumption – latest available day"
+      },
+      "target_grid_purchase_latest_available_day": {
+        "name": "Target EAN grid import – latest available day"
+      },
+      "target_sharing_coverage_latest_available_day": {
+        "name": "Target EAN sharing coverage – latest available day"
+      },
+      "target_sharing_value_latest_available_day": {
+        "name": "Target EAN shared electricity value – latest available day"
+      },
+      "target_shared_this_month": {
+        "name": "Target EAN shared electricity this month"
+      },
+      "target_consumption_this_month": {
+        "name": "Target EAN consumption this month"
+      },
+      "target_grid_purchase_this_month": {
+        "name": "Target EAN grid import this month"
+      },
+      "target_sharing_coverage_this_month": {
+        "name": "Target EAN sharing coverage this month"
+      },
+      "target_sharing_value_this_month": {
+        "name": "Target EAN shared electricity value this month"
+      },
+      "target_electricity_sale_price": {
+        "name": "Target EAN electricity sale price"
       }
     }
   },
@@ -272,6 +331,8 @@
         "current": "Current period",
         "previous": "Previous completed period",
         "legacy": "Legacy period ranges",
+        "group": "Whole sharing group",
+        "target": "Selected target EANs",
         "hidden": "Hide EANs",
         "masked": "Last 4 digits only",
         "full": "Full EANs"

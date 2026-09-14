@@ -11,6 +11,7 @@ from homeassistant.helpers import selector
 from homeassistant.util import dt as dt_util
 
 from .profile_overview import delivery_label, format_overview
+from .ean_settings import ean_location, ean_name
 
 from .report_profiles import (
     CONF_REPORT_PROFILES,
@@ -32,7 +33,9 @@ def _select(options: tuple | list, *, multiple: bool = False):
     )
 
 
-def profile_schema(profile: dict) -> vol.Schema:
+def profile_schema(
+    profile: dict, *, target_ean_options: tuple[dict, ...] = ()
+) -> vol.Schema:
     """Use native selectors; never ask for SMTP passwords here."""
     fields = {
         "name": selector.TextSelector(),
@@ -61,6 +64,14 @@ def profile_schema(profile: dict) -> vol.Schema:
         "energy": selector.BooleanSelector(),
         "finance": selector.BooleanSelector(),
         "ean_mode": _select(("hidden", "masked", "full")),
+        "report_scope": _select(("group", "target")),
+        "target_eans": selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=list(target_ean_options),
+                multiple=True,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        ),
     }
     return vol.Schema(
         {
@@ -88,6 +99,29 @@ class ProfileOptionsMixin:
         return self.async_create_entry(
             data=dict(self._entry.options) | {CONF_REPORT_PROFILES: profiles}
         )
+
+    def _target_ean_options(self) -> tuple[dict, ...]:
+        """Build stable, human-readable target-EAN choices for a profile."""
+        runtime = getattr(self._entry, "runtime_data", None)
+        coordinator = getattr(runtime, "coordinator", None)
+        current = {
+            item.ean
+            for item in getattr(coordinator, "eans", ())
+            if item.role == "target"
+        }
+        selected = set(getattr(self, "_selected_profile", {}).get("target_eans", []))
+        czech = (self.hass.config.language or "en").startswith("cs")
+        choices: list[dict] = []
+        for ean in sorted(current | selected):
+            label = ean_name(ean, self._entry.options)
+            if label != ean:
+                label = f"{label} ({ean})"
+            if location := ean_location(ean, self._entry.options):
+                label = f"{label} — {location}"
+            if ean not in current:
+                label += " — nedostupné" if czech else " — unavailable"
+            choices.append(selector.SelectOptionDict(value=ean, label=label))
+        return tuple(choices)
 
     async def async_step_profiles(self, user_input=None):
         if user_input is not None:
@@ -172,7 +206,10 @@ class ProfileOptionsMixin:
                 return self._save_profile(profile)
         return self.async_show_form(
             step_id="profile_edit",
-            data_schema=profile_schema(self._selected_profile),
+            data_schema=profile_schema(
+                self._selected_profile,
+                target_ean_options=self._target_ean_options(),
+            ),
             errors=errors,
         )
 

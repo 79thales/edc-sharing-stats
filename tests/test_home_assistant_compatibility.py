@@ -29,6 +29,7 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
             "custom_components.edc_sharing.calculation",
             "custom_components.edc_sharing.config_flow",
             "custom_components.edc_sharing.coordinator",
+            "custom_components.edc_sharing.ean_settings",
             "custom_components.edc_sharing.history",
             "custom_components.edc_sharing.report",
             "custom_components.edc_sharing.profile_report",
@@ -87,11 +88,37 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
             self.assertEqual(description.suggested_display_precision, 1)
             self.assertEqual(description.icon, "mdi:solar-power-variant")
 
+    def test_target_ean_sensor_metadata(self) -> None:
+        from homeassistant.components.sensor import SensorStateClass
+        from homeassistant.const import PERCENTAGE, UnitOfEnergy
+
+        from custom_components.edc_sharing.sensor import TARGET_SENSORS
+
+        descriptions = {description.key: description for description in TARGET_SENSORS}
+        self.assertEqual(len(descriptions), 11)
+        self.assertEqual(
+            descriptions["shared_latest_available_day"].native_unit_of_measurement,
+            UnitOfEnergy.KILO_WATT_HOUR,
+        )
+        self.assertEqual(
+            descriptions["sharing_coverage_this_month"].native_unit_of_measurement,
+            PERCENTAGE,
+        )
+        self.assertEqual(
+            descriptions["sharing_coverage_this_month"].state_class,
+            SensorStateClass.MEASUREMENT,
+        )
+
     def test_cached_daily_row_round_trip_preserves_precision(self) -> None:
-        from custom_components.edc_sharing.calculation import DailySharing
+        from custom_components.edc_sharing.calculation import (
+            DailySharing,
+            TargetDailySharing,
+        )
         from custom_components.edc_sharing.coordinator import (
             _serialize_daily_row,
+            _serialize_target_daily_row,
             _stored_daily_rows,
+            _stored_target_daily_rows,
         )
 
         row = DailySharing(
@@ -110,6 +137,20 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
             _stored_daily_rows([_serialize_daily_row(row)]), {row.day: row}
         )
         self.assertEqual(_stored_daily_rows([{"day": "invalid"}]), {})
+
+        target_row = TargetDailySharing(
+            "consumer-example",
+            date(2026, 9, 1),
+            Decimal("10.96"),
+            Decimal("4.22"),
+            Decimal("6.74"),
+            Decimal("61.49635036496350364963503650"),
+        )
+        self.assertEqual(
+            _stored_target_daily_rows([_serialize_target_daily_row(target_row)]),
+            {target_row.ean: {target_row.day: target_row}},
+        )
+        self.assertEqual(_stored_target_daily_rows([{"ean": "", "day": "invalid"}]), {})
 
     def test_external_statistics_metadata_and_reimport_are_stable(self) -> None:
         from homeassistant.components.recorder.models import StatisticMeanType
@@ -256,7 +297,9 @@ class ReportProfileFlowTests(unittest.IsolatedAsyncioTestCase):
         from custom_components.edc_sharing.report_profiles import default_profile
 
         menu = await self.flow.async_step_init()
-        self.assertEqual(menu["menu_options"], ["general", "profiles"])
+        self.assertEqual(
+            menu["menu_options"], ["general", "ean_settings", "profiles"]
+        )
         form = await self.flow.async_step_profiles({"profile": "new"})
         values = default_profile() | {
             "name": "Accountant",
@@ -273,6 +316,29 @@ class ReportProfileFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved["data"]["report_profiles"][0]["id"], "legacy_daily")
         self.assertEqual(
             saved["data"]["report_profiles"][1]["targets"], ["notify.accountant"]
+        )
+
+    async def test_ean_details_store_name_location_and_target_price(self):
+        from custom_components.edc_sharing.calculation import EanInfo
+
+        self.entry.runtime_data = SimpleNamespace(
+            coordinator=SimpleNamespace(
+                eans=(EanInfo("target-example", "target"),)
+            )
+        )
+        chosen = await self.flow.async_step_ean_settings({"ean": "target-example"})
+        values = chosen["data_schema"](
+            {
+                "name": "Flat 2",
+                "location": "Prague",
+                "use_group_price": False,
+                "price": 3.5,
+            }
+        )
+        saved = await self.flow.async_step_ean_edit(values)
+        self.assertEqual(
+            saved["data"]["ean_settings"]["target-example"],
+            {"name": "Flat 2", "location": "Prague", "price": "3.5"},
         )
 
     async def test_invalid_profile_stays_in_form(self):

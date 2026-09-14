@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from decimal import Decimal, InvalidOperation
@@ -37,6 +38,18 @@ class DailySharing:
     unused_overflow: Decimal
     coverage: Decimal
     consistency_difference: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class TargetDailySharing:
+    """Calculated consumption values for one target EAN and calendar day."""
+
+    ean: str
+    day: date
+    consumption: Decimal
+    grid_purchase: Decimal
+    shared: Decimal
+    coverage: Decimal
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +102,7 @@ class SharingStatistics:
     surplus_utilization_this_month: SurplusUtilization
     surplus_utilization_this_year: SurplusUtilization
     surplus_utilization_total: SurplusUtilization
+    target_statistics: tuple[TargetSharingStatistics, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +116,34 @@ class PeriodSummary:
     unused_overflow: Decimal
     coverage: Decimal
     revenue: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class TargetPeriodSummary:
+    """Aggregate values for one target EAN over an available period."""
+
+    consumption: Decimal
+    grid_purchase: Decimal
+    shared: Decimal
+    coverage: Decimal
+    revenue: Decimal
+    data_start: date | None
+    data_end: date | None
+    available_days: int
+
+
+@dataclass(frozen=True, slots=True)
+class TargetSharingStatistics:
+    """Current and historical summaries for one target EAN."""
+
+    ean: str
+    latest_day: date | None
+    latest: TargetPeriodSummary
+    week: TargetPeriodSummary
+    month: TargetPeriodSummary
+    year: TargetPeriodSummary
+    total: TargetPeriodSummary
+    sale_price: Decimal
 
 
 def _decimal(value: Any) -> Decimal:
@@ -282,6 +324,36 @@ def _sharing_values(
     )
 
 
+def _target_values(
+    values: list[Decimal], pair: dict[str, int]
+) -> tuple[Decimal, Decimal, Decimal, Decimal]:
+    """Calculate consumption and sharing values for one target EAN."""
+
+    def value(index: int | None) -> Decimal:
+        if index is None or index >= len(values):
+            return ZERO
+        return values[index]
+
+    consumption = abs(value(pair.get("IN")))
+    grid_purchase = abs(value(pair.get("OUT")))
+    shared = consumption - grid_purchase
+    coverage = shared / consumption * Decimal("100") if consumption else ZERO
+    return consumption, grid_purchase, shared, coverage
+
+
+def _daily_value_totals(
+    columns: list[dict[str, Any]], content: list[dict[str, Any]]
+) -> dict[date, list[Decimal]]:
+    """Aggregate every EDC interval into its local calendar day."""
+    values_by_day: dict[date, list[Decimal]] = {}
+    for item in content:
+        item_date = date.fromisoformat(str(item["date"])[:10])
+        values = item.get("values") or []
+        totals = values_by_day.setdefault(item_date, [ZERO] * len(columns))
+        _add_values(totals, values, len(columns))
+    return values_by_day
+
+
 def parse_daily_profile(response: dict[str, Any]) -> tuple[DailySharing, ...]:
     """Aggregate standard profile rows into calendar days."""
     columns, content, producers, consumers = _profile_layout(response)
@@ -292,12 +364,7 @@ def parse_daily_profile(response: dict[str, Any]) -> tuple[DailySharing, ...]:
     # requested. Aggregate every value column by calendar day before deriving
     # sharing totals; otherwise the coordinator would retain only the final
     # interval of each day.
-    values_by_day: dict[date, list[Decimal]] = {}
-    for item in content:
-        item_date = date.fromisoformat(str(item["date"])[:10])
-        values = item.get("values") or []
-        totals = values_by_day.setdefault(item_date, [ZERO] * len(columns))
-        _add_values(totals, values, len(columns))
+    values_by_day = _daily_value_totals(columns, content)
 
     daily: list[DailySharing] = []
     for item_date in sorted(values_by_day):
@@ -316,6 +383,33 @@ def parse_daily_profile(response: dict[str, Any]) -> tuple[DailySharing, ...]:
             )
         )
 
+    return tuple(daily)
+
+
+def parse_daily_target_profiles(
+    response: dict[str, Any],
+) -> tuple[TargetDailySharing, ...]:
+    """Return daily values for every target EAN in an EDC profile response."""
+    columns, content, _producers, consumers = _profile_layout(response)
+    if not content:
+        return ()
+
+    values_by_day = _daily_value_totals(columns, content)
+    daily: list[TargetDailySharing] = []
+    for item_date in sorted(values_by_day):
+        values = values_by_day[item_date]
+        for ean, pair in sorted(consumers.items()):
+            consumption, grid_purchase, shared, coverage = _target_values(values, pair)
+            daily.append(
+                TargetDailySharing(
+                    ean=ean,
+                    day=item_date,
+                    consumption=consumption,
+                    grid_purchase=grid_purchase,
+                    shared=shared,
+                    coverage=coverage,
+                )
+            )
     return tuple(daily)
 
 
@@ -398,8 +492,67 @@ def parse_hourly_profile(
     return tuple(hourly)
 
 
+def calculate_target_period_summary(
+    days: tuple[TargetDailySharing, ...], sale_price: Decimal
+) -> TargetPeriodSummary:
+    """Sum available rows for one target EAN without rounding inputs."""
+    ordered = tuple(sorted(days, key=lambda row: row.day))
+    consumption = sum((row.consumption for row in ordered), ZERO)
+    shared = sum((row.shared for row in ordered), ZERO)
+    return TargetPeriodSummary(
+        consumption=consumption,
+        grid_purchase=sum((row.grid_purchase for row in ordered), ZERO),
+        shared=shared,
+        coverage=shared / consumption * Decimal("100") if consumption else ZERO,
+        revenue=shared * sale_price,
+        data_start=ordered[0].day if ordered else None,
+        data_end=ordered[-1].day if ordered else None,
+        available_days=len(ordered),
+    )
+
+
+def calculate_target_statistics(
+    ean: str,
+    days: tuple[TargetDailySharing, ...],
+    sale_price: Decimal,
+    today: date,
+) -> TargetSharingStatistics:
+    """Calculate latest and calendar summaries for one target EAN."""
+    available = tuple(sorted((row for row in days if row.day <= today), key=lambda row: row.day))
+    latest = calculate_target_period_summary(
+        (available[-1],) if available else (), sale_price
+    )
+    week_start = today - timedelta(days=today.weekday())
+    return TargetSharingStatistics(
+        ean=ean,
+        latest_day=latest.data_end,
+        latest=latest,
+        week=calculate_target_period_summary(
+            tuple(row for row in available if row.day >= week_start), sale_price
+        ),
+        month=calculate_target_period_summary(
+            tuple(
+                row
+                for row in available
+                if row.day.year == today.year and row.day.month == today.month
+            ),
+            sale_price,
+        ),
+        year=calculate_target_period_summary(
+            tuple(row for row in available if row.day.year == today.year), sale_price
+        ),
+        total=calculate_target_period_summary(available, sale_price),
+        sale_price=sale_price,
+    )
+
+
 def calculate_statistics(
-    days: tuple[DailySharing, ...], sale_price: Decimal, today: date
+    days: tuple[DailySharing, ...],
+    sale_price: Decimal,
+    today: date,
+    *,
+    target_days: Mapping[str, tuple[TargetDailySharing, ...]] | None = None,
+    target_prices: Mapping[str, Decimal] | None = None,
 ) -> SharingStatistics:
     """Calculate current values from already parsed daily rows."""
     daily = sorted(days, key=lambda row: row.day)
@@ -419,6 +572,15 @@ def calculate_statistics(
     month_consumption = sum((row.consumption for row in month_rows), ZERO)
     month_shared = sum((row.shared for row in month_rows), ZERO)
     month_coverage = month_shared / month_consumption * Decimal("100") if month_consumption else ZERO
+    targets = tuple(
+        calculate_target_statistics(
+            ean,
+            rows,
+            (target_prices or {}).get(ean, sale_price),
+            today,
+        )
+        for ean, rows in sorted((target_days or {}).items())
+    )
     return SharingStatistics(
         days=tuple(daily),
         today=today_row,
@@ -448,6 +610,7 @@ def calculate_statistics(
         surplus_utilization_total=calculate_surplus_utilization(
             tuple(available_rows)
         ),
+        target_statistics=targets,
     )
 
 

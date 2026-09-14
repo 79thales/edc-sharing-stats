@@ -209,6 +209,46 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.hass.services.async_call.assert_not_awaited()
         self.assertIsNone(self.saved)
 
+    async def test_target_ean_profile_uses_its_metadata_and_own_price(self):
+        calculation = importlib.import_module(
+            "_edc_delivery_test.calculation"
+        )
+        target_day = calculation.TargetDailySharing(
+            "consumer-example",
+            self.day.day,
+            Decimal("10"),
+            Decimal("6"),
+            Decimal("4"),
+            Decimal("40"),
+        )
+        self.entry.options["ean_settings"] = {
+            "consumer-example": {
+                "name": "Flat 2",
+                "location": "Prague",
+                "price": "3.5",
+            }
+        }
+        profile = self.profile | {
+            "report_scope": "target",
+            "target_eans": ["consumer-example"],
+            "periods": ["daily"],
+            "combined": False,
+            "ean_mode": "hidden",
+        }
+        with patch.object(
+            self.runtime.ProfileRenderer,
+            "_async_fetch_target_days",
+            AsyncMock(return_value={"consumer-example": (target_day,)}),
+        ):
+            messages = await self.manager.preview(profile)
+        self.assertEqual(len(messages), 1)
+        body = messages[0][1]
+        self.assertIn("Cílové odběrné místo: Flat 2", body)
+        self.assertIn("Lokalita: Prague", body)
+        self.assertIn("Hodnota sdílení: 14.00 CZK", body)
+        self.assertNotIn("Přetok výrobny", body)
+        self.assertNotIn("consumer-example", body)
+
     async def test_only_new_ignores_advancing_calendar_heading(self):
         profile = self.profile | {"periods": ["monthly"], "only_new": True}
         with patch.object(

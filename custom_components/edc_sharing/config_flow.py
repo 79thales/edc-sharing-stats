@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from collections.abc import Mapping
 from typing import Any
 
@@ -18,6 +18,7 @@ from .api import EdcApiClient, EdcApiError, EdcAuthenticationError
 from .profile_options import ProfileOptionsMixin
 from .report_profiles import CONF_REPORT_PROFILES
 from .const import (
+    CONF_EAN_SETTINGS,
     CONF_SALE_PRICE,
     CONF_DAILY_REPORT,
     CONF_WEEKLY_REPORT,
@@ -36,6 +37,7 @@ from .const import (
     DOMAIN,
     config_entry_unique_id,
 )
+from .ean_settings import configured_ean_settings, ean_location, ean_name
 
 
 class EdcSharingConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -187,7 +189,156 @@ class EdcSharingOptionsFlow(ProfileOptionsMixin, OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         return self.async_show_menu(
-            step_id="init", menu_options=["general", "profiles"]
+            step_id="init", menu_options=["general", "ean_settings", "profiles"]
+        )
+
+    def _known_eans(self) -> tuple:
+        """Use EANs discovered by the current coordinator refresh only."""
+        runtime = getattr(self._entry, "runtime_data", None)
+        coordinator = getattr(runtime, "coordinator", None)
+        return tuple(getattr(coordinator, "eans", ()))
+
+    async def async_step_ean_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Choose an EAN whose local name, location or price should be edited."""
+        eans = self._known_eans()
+        if not eans:
+            return self.async_show_form(
+                step_id="ean_settings",
+                data_schema=vol.Schema({}),
+                errors={"base": "no_eans"},
+            )
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            selected = str(user_input.get("ean") or "")
+            self._selected_ean = next(
+                (item for item in eans if item.ean == selected), None
+            )
+            if self._selected_ean is not None:
+                return await self.async_step_ean_edit()
+            errors["ean"] = "invalid_ean_settings"
+
+        czech = (self.hass.config.language or "en").casefold().startswith("cs")
+        choices = []
+        for item in eans:
+            role = (
+                "Sdílející EAN" if item.role == "sharing" else "Cílový EAN"
+            ) if czech else ("Sharing EAN" if item.role == "sharing" else "Target EAN")
+            label = ean_name(item.ean, self._entry.options)
+            if label != item.ean:
+                label = f"{role}: {label} ({item.ean})"
+            else:
+                label = f"{role}: {item.ean}"
+            if location := ean_location(item.ean, self._entry.options):
+                label = f"{label} — {location}"
+            choices.append(selector.SelectOptionDict(value=item.ean, label=label))
+        return self.async_show_form(
+            step_id="ean_settings",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("ean"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=choices,
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_ean_edit(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Save optional local metadata for a discovered sharing-group EAN."""
+        selected = getattr(self, "_selected_ean", None)
+        if selected is None:
+            return await self.async_step_ean_settings()
+
+        current = configured_ean_settings(self._entry.options).get(
+            selected.ean, {}
+        )
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            name = str(user_input.get("name") or "").strip()
+            location = str(user_input.get("location") or "").strip()
+            if len(name) > 120 or len(location) > 120:
+                errors["base"] = "invalid_ean_settings"
+
+            price: Decimal | None = None
+            if selected.role == "target" and not user_input.get(
+                "use_group_price", True
+            ):
+                try:
+                    price = Decimal(str(user_input.get("price")))
+                except (InvalidOperation, TypeError, ValueError):
+                    errors["price"] = "invalid_ean_settings"
+                else:
+                    if not price.is_finite() or price < 0:
+                        errors["price"] = "invalid_ean_settings"
+
+            if not errors:
+                raw_settings = self._entry.options.get(CONF_EAN_SETTINGS, {})
+                settings = {
+                    str(ean): dict(value)
+                    for ean, value in raw_settings.items()
+                    if isinstance(ean, str) and isinstance(value, Mapping)
+                } if isinstance(raw_settings, Mapping) else {}
+                item: dict[str, Any] = {}
+                if name:
+                    item["name"] = name
+                if location:
+                    item["location"] = location
+                if selected.role == "target" and price is not None:
+                    item["price"] = str(price)
+                if item:
+                    settings[selected.ean] = item
+                else:
+                    settings.pop(selected.ean, None)
+                return self.async_create_entry(
+                    data=dict(self._entry.options) | {CONF_EAN_SETTINGS: settings}
+                )
+
+        use_group_price = "price" not in current
+        schema: dict[Any, Any] = {
+            vol.Optional("name", default=str(current.get("name") or "")):
+                selector.TextSelector(),
+            vol.Optional("location", default=str(current.get("location") or "")):
+                selector.TextSelector(),
+        }
+        if selected.role == "target":
+            schema[vol.Required("use_group_price", default=use_group_price)] = (
+                selector.BooleanSelector()
+            )
+            price_schema = selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0, max=100, step=0.01, mode=selector.NumberSelectorMode.BOX
+                )
+            )
+            if not use_group_price:
+                schema[vol.Optional("price", default=float(current["price"]))] = (
+                    price_schema
+                )
+            else:
+                schema[vol.Optional("price")] = price_schema
+        return self.async_show_form(
+            step_id="ean_edit",
+            data_schema=vol.Schema(schema),
+            errors=errors,
+            description_placeholders={
+                "ean": selected.ean,
+                "role": (
+                    (
+                        "sdílející"
+                        if selected.role == "sharing"
+                        else "cílový"
+                    )
+                    if (self.hass.config.language or "en").casefold().startswith("cs")
+                    else ("sharing" if selected.role == "sharing" else "target")
+                ),
+            },
         )
 
     async def async_step_general(

@@ -111,6 +111,29 @@ class ProfileCalendarTests(unittest.TestCase):
             {"month": 13},
             {"name": "Bad\nSubject"},
             {"time": "08:00:00+02:00"},
+            {"report_scope": "target", "target_eans": []},
         ):
             with self.subTest(values=values), self.assertRaises(ValueError):
                 profiles.validate_profile(profile | values)
+
+    def test_target_scope_is_backward_compatible_and_deduplicated(self):
+        old_profile = {
+            "id": "old",
+            "name": "Legacy profile",
+            "enabled": True,
+            "targets": ["notify.owner"],
+        }
+        restored = profiles.configured_profiles({"report_profiles": [old_profile]})
+        self.assertEqual(restored[0]["report_scope"], "group")
+        self.assertEqual(restored[0]["target_eans"], [])
+
+        target_profile = profiles.default_profile("targets") | {
+            "name": "Target report",
+            "targets": ["notify.owner"],
+            "report_scope": "target",
+            "target_eans": ["ean-a", "ean-a", "ean-b"],
+        }
+        self.assertEqual(
+            profiles.validate_profile(target_profile)["target_eans"],
+            ["ean-a", "ean-b"],
+        )
