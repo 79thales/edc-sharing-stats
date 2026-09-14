@@ -1,6 +1,6 @@
 # Přehled změn / Changelog
 
-## Unreleased
+## 0.1.22 – 2026-09-14
 
 ### Čeština
 
