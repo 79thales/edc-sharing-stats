@@ -18,8 +18,10 @@ from .calculation import (
     DailySharing,
     IncompleteProfileLayoutError,
     PeriodSummary,
+    TargetDailySharing,
     calculate_period_summary,
     parse_daily_profile,
+    parse_daily_target_profiles,
     profile_date_ranges,
     report_date_range,
 )
@@ -301,6 +303,50 @@ class EdcReportManager:
         except (EdcApiError, ValueError, KeyError) as err:
             raise HomeAssistantError(str(err)) from err
         return tuple(fetched[day] for day in sorted(fetched))
+
+    async def _async_fetch_target_days(
+        self, date_from: date, date_to: date
+    ) -> dict[str, tuple[TargetDailySharing, ...]]:
+        """Fetch daily profile rows separately for every target EAN.
+
+        This deliberately uses the same EDC request blocks as group reports.
+        It does not alter the existing group aggregation or long-term
+        statistics; it only makes individual recipient reports possible.
+        """
+        local_tz = dt_util.now().tzinfo
+        fetched: dict[str, dict[date, TargetDailySharing]] = {}
+        try:
+            for chunk_from, chunk_to in profile_date_ranges(date_from, date_to):
+                local_from = datetime.combine(chunk_from, time.min, tzinfo=local_tz)
+                local_to = datetime.combine(chunk_to, time.min, tzinfo=local_tz)
+                raw = await self.coordinator.api.async_get_daily_profile(
+                    int(self.entry.data[CONF_SSE_ID]),
+                    dt_util.as_utc(local_from).isoformat().replace("+00:00", "Z"),
+                    dt_util.as_utc(local_to).isoformat().replace("+00:00", "Z"),
+                )
+                try:
+                    rows = parse_daily_target_profiles(raw)
+                except IncompleteProfileLayoutError as err:
+                    _LOGGER.debug(
+                        "Skipping incomplete target EDC report block %s to %s: %s",
+                        chunk_from,
+                        chunk_to,
+                        err,
+                    )
+                    continue
+                for row in rows:
+                    if date_from <= row.day < date_to:
+                        fetched.setdefault(row.ean, {})[row.day] = row
+        except EdcAuthenticationError as err:
+            raise HomeAssistantError(
+                "Přihlášení k EDC již není platné."
+            ) from err
+        except (EdcApiError, ValueError, KeyError) as err:
+            raise HomeAssistantError(str(err)) from err
+        return {
+            ean: tuple(rows[day] for day in sorted(rows))
+            for ean, rows in fetched.items()
+        }
 
     def _format_unavailable_report(self, period: ReportPeriod) -> str:
         """Format a visible placeholder for a missing summary section."""

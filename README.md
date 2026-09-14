@@ -10,6 +10,8 @@ Historical EDC profile data is aggregated into hourly and daily Home Assistant l
 
 Named report profiles provide independent recipients, languages, schedules and a selection of daily, weekly, monthly or yearly sections, combined into one email or sent separately. Profiles support current or completed periods, previews, manual sending, optional financial details, masked EANs and delivery status.
 
+When EDC returns multiple target EANs, the integration also creates an individual device for each target supply point. You can assign a local name and location, optionally override the group electricity price for that target, and send either the original group report or target-specific report sections to different recipients.
+
 The EDC account email and password are stored in the Home Assistant config entry and may therefore be included in Home Assistant backups. Access and refresh tokens remain in memory only. Group names and full EANs are visible in diagnostic entities. New report profiles mask EANs by default; legacy reports include full EANs. Reports should only be sent through trusted notification targets.
 
 This is an independent integration and is not an official product of, or supported by, Elektroenergetické datové centrum, a. s. The EDC web API is not publicly guaranteed and may change without notice.
@@ -34,6 +36,7 @@ Vlastní integrace pro Home Assistant, která načítá vyhodnocení skupiny sd�
 - ruční pokus o okamžité načtení dat a diagnostika posledního i příštího pokusu,
 - opětovné zadání hesla, pokud EDC uložené údaje odmítne,
 - samostatné diagnostické entity pro všechny sdílející i cílové EANy ve skupině,
+- samostatné zařízení a hodnoty pro každý cílový EAN, s volitelným vlastním názvem, lokalitou a prodejní cenou,
 - ruční i automatické denní, týdenní, měsíční a roční reporty na jednu nebo více e-mailových adres,
 - volba češtiny nebo angličtiny pro předmět i obsah e-mailových reportů,
 - souhrnný report se všemi čtyřmi obdobími v jediném e-mailu.
@@ -64,7 +67,15 @@ Průvodce vyžaduje:
 
 Skupinu a cenu lze později změnit přes **Nastavení → Zařízení a služby → EDC Sharing Stats → Nastavit**. Přístupový i obnovovací token zůstává pouze v paměti; po restartu se integrace přihlásí znovu uloženými přístupovými údaji.
 
-Pokud účet obsahuje více skupin sdílení, lze integraci přidat opakovaně a při každém nastavení vybrat jinou skupinu podle názvu vráceného EDC. Každý nalezený sdílející a cílový EAN má vlastní diagnostickou entitu se stavem obsahujícím celé číslo EAN. Entit může být na obou stranách libovolný počet a jejich zobrazované názvy lze běžně změnit v nastavení entity Home Assistantu.
+Pokud účet obsahuje více skupin sdílení, lze integraci přidat opakovaně a při každém nastavení vybrat jinou skupinu podle názvu vráceného EDC. Každý nalezený sdílející a cílový EAN má vlastní diagnostickou entitu se stavem obsahujícím celé číslo EAN. Entit může být na obou stranách libovolný počet.
+
+### Detaily jednotlivých EANů
+
+EAN se nezadávají ručně. Stiskněte na zařízení skupiny **Načíst data EDC nyní**; integrace z aktuální odpovědi EDC automaticky zjistí všechny sdílející a cílové EANy. Potom otevřete **Nastavení → Zařízení a služby → EDC Sharing Stats → Nastavit → Detaily EAN a ceny** a vyberte EAN.
+
+Pro každý EAN lze uložit vlastní **zobrazovaný název** a **lokalitu**. Tyto údaje jsou vidět u diagnostické entity; u cílového EANu také pojmenují jeho samostatné zařízení a objeví se v cíleném reportu. Lokalita je popisek integrace, nikoli automatické přiřazení oblasti Home Assistantu — skutečnou oblast lze nadále vybrat běžně v registru zařízení.
+
+U každého **cílového** EANu lze ponechat prodejní cenu celé skupiny, nebo ji nahradit vlastní cenou. Vlastní cena ovlivní pouze nové individuální senzory a reporty daného cílového EANu. Stávající skupinové senzory, jejich hodnota sdílení a původní tlačítka reportů vždy používají beze změny výchozí cenu skupiny.
 
 ## E-mailové reporty
 
@@ -86,6 +97,8 @@ Po otevření **Profilů reportů** se zobrazí společný přehled všech profi
 | Pouze při změně dat | Při plánovaném pokusu se nezměněné hodnoty znovu neposílají; oprava dat EDC se počítá jako změna |
 | Energie / finance | Zvolte, které údaje příjemci dostanou; alespoň jedna skupina musí zůstat zapnutá |
 | EAN | Skrýt, poslední čtyři číslice (výchozí), nebo celé EAN |
+| Rozsah reportu | Celá skupina zachovává původní souhrn; vybrané cílové EANy přidají samostatnou část pro každé vybrané odběrné místo |
+| Cílové EANy | Použijí se jen pro rozsah cílových EANů; pro jiné příjemce vytvořte další profil |
 
 Například můžete sobě posílat každý den český souhrn dne, měsíce a aktuálního roku; účetní každý pátý den uzavřený předchozí měsíc; jinému příjemci v pondělí anglický týdenní přehled.
 Četnost odesílání je nezávislá na obsahu: aktuální rok lze posílat každý týden, uzavřený rok jednou ročně.
@@ -102,7 +115,8 @@ Zmeškané termíny při vypnutém HA se automaticky nedohánějí. Selhání se
 Pokud proces skončí přesně mezi předáním SMTP a uložením výsledku, nelze vyloučit opakované předání.
 
 Report ukazuje skutečný rozsah dostupných **denních** dat a počet dnů oproti požadovanému období. Neúplné období je označené, chybějící dny nejsou vydávány za nulovou spotřebu. Tento přehled neověřuje úplnost každého měřicího intervalu uvnitř dne.
-Výpočty jsou stále **za celou zvolenou skupinu**, nikoliv za jednotlivého příjemce nebo EAN.
+
+Report s rozsahem **Celá skupina** počítá původní hodnoty za celou zvolenou skupinu. Report s rozsahem **Vybrané cílové EANy** počítá samostatně spotřebu, nasdílenou energii, dokup ze sítě, pokrytí a hodnotu pro každý vybraný cílový EAN. Přetok výrobny a nevyužitý přetok jsou fyzikální hodnoty celé výrobní strany skupiny, proto se do individuálního reportu příjemce úmyslně nepřisuzují.
 
 Dosavadní zapnuté rozvrhy se zobrazí jako profily `EDC — daily/weekly/monthly/yearly/summary` se zachovanými příjemci, časy a jazykem. První uložení profilu je uloží do nového seznamu; dále se rozvrhy upravují už pouze přes profily. Prázdný seznam profilů automatické odesílání vypne.
 Původní tlačítka na zařízení nadále používají výchozí příjemce a jazyk v **Obecném nastavení a původních tlačítkách**; nastavení konkrétního profilu se na ně nevztahuje.
@@ -132,6 +146,8 @@ Reporty lze odeslat i ručně pomocí tlačítek **Odeslat denní report**, **Od
 
 Integrace vytváří 19 základních hodnotových senzorů. Nejde o duplicity: šest patří poslednímu dni dostupnému v EDC, sedm aktuálnímu měsíci, jeden představuje nastavenou prodejní cenu a pět zobrazuje využití přetoku v různých obdobích. Každý senzor má vlastní jedinečný identifikátor a lokalizovaný název. U šesti denních senzorů atribut `data_date` uvádí skutečné datum měření; EDC obvykle zveřejňuje vyhodnocení se zpožděním, takže nemusí jít o dnešní datum.
 
+Pro každý cílový EAN, který EDC vrátí, navíc vznikne samostatné zařízení s 11 hodnotami: nasdíleno, spotřeba, dokup, pokrytí a hodnota za poslední dostupný den i za aktuální měsíc a vlastní/zděděná prodejní cena. Měsíční hodnoty obsahují atributy skutečného dostupného rozsahu a cenu použitou ve výpočtu. Stabilní `unique_id` obsahuje ID skupiny, EAN a název hodnoty; uživatel si může výsledné `entity_id` v Home Assistantu dále upravit. Cílové EANy nemají vlastní senzor přetoku výrobny ani nevyužitého přetoku, protože tyto hodnoty patří celé výrobní straně skupiny.
+
 **Pokrytí spotřeby** udává, kolik procent spotřeby příjemce pokryla sdílená elektřina (`nasdíleno / spotřeba`). **Využití přetoku** naproti tomu udává, kolik procent celkového přetoku výrobny bylo skutečně využito pro sdílení (`nasdíleno / přetok výrobny`). Při nulovém nebo záporném přetoku je hodnota `0 %`, stejně jako u stávajících procentních výpočtů s nulovým jmenovatelem. Výpočet používá nezaokrouhlené agregované hodnoty a UI doporučuje jedno desetinné místo.
 
 Každý senzor využití přetoku obsahuje diagnostické atributy `shared_kwh`, `production_surplus_kwh`, `unused_surplus_kwh`, `data_start`, `data_end` a `available_days`. Hodnoty pro rok a celkem se počítají ze všech denních dat, která integrace dosud načetla a uložila; u nové instalace se rozsah rozšíří po spuštění ročního backfillu. Opakované načtení stejného dne uložený den nahradí, takže nedochází k dvojímu započtení.
@@ -148,7 +164,9 @@ Stejných šest senzorů uvádí v atributech také `daily_statistic_id` a `hour
 
 Při načtení integrace se automaticky stáhnou profilová data od prvního dne předchozího kalendářního měsíce do současnosti. EDC povoluje v přehledu nejvýše 31 dní, proto integrace delší období sama rozdělí na několik požadavků a výsledky sloučí bez duplicit. Zdrojové intervaly se sečtou po jednotlivých hodinách i kalendářních dnech. Jednou denně se celé období znovu načte, takže se doplní nově uzavřené intervaly i případné opravy na straně EDC.
 
-Historické hodnoty se zapisují podporovaným API jako externí dlouhodobé statistiky. Nevytvářejí falešné zpětně datované změny stavů v databázi Recorderu. Denní řady mají identifikátory ve tvaru `edc_sharing:<ID skupiny>_shared_daily`, `consumption_daily`, `grid_daily`, `unused_daily`, `coverage_daily` a `revenue_daily`. Stejné názvy s koncovkou `_hourly` obsahují hodinové hodnoty. Lze je vybrat v panelu Historie nebo v kartě **Graf statistik**; zobrazovaným typem je `mean`.
+Historické hodnoty celé skupiny se zapisují podporovaným API jako externí dlouhodobé statistiky. Nevytvářejí falešné zpětně datované změny stavů v databázi Recorderu. Denní řady mají identifikátory ve tvaru `edc_sharing:<ID skupiny>_shared_daily`, `consumption_daily`, `grid_daily`, `unused_daily`, `coverage_daily` a `revenue_daily`. Stejné názvy s koncovkou `_hourly` obsahují hodinové hodnoty. Lze je vybrat v panelu Historie nebo v kartě **Graf statistik**; zobrazovaným typem je `mean`.
+
+Denní agregace cílových EANů se při běžném načtení i při backfillu uchovávají v interní cache integrace. Díky tomu po restartu zůstávají individuální hodnoty za měsíc, rok a celkem správné pro reporty. Samostatné externí dlouhodobé statistiky pro každý cílový EAN tato verze nevytváří; existující dlouhodobé statistiky skupiny se tím nemění.
 
 Běžné senzory se nadále obnovují jednou za hodinu a Home Assistant jejich stavy ukládá od okamžiku instalace. Energetické senzory mají třídu stavu `total` a podporují také standardní dlouhodobé statistiky.
 
@@ -167,6 +185,7 @@ Hodinové body používají jednoznačné UTC časové značky. Při podzimním 
 - E-mail účtu EDC a heslo jsou uloženy v konfigurační položce Home Assistantu a mohou být součástí záloh. Chraňte přístup k adresáři konfigurace, skrytému úložišti `.storage` a zálohám.
 - Přístupový a obnovovací token jsou pouze v paměti API klienta. Integrace je neukládá do úložiště průběhu historie, atributů entit ani vlastních logů.
 - Diagnostické entity záměrně zobrazují celý EAN a název skupiny. Dlouhodobé statistiky obsahují energetické hodnoty a interní ID skupiny.
+- Volitelné názvy, lokality a vlastní ceny EANů jsou uloženy v možnostech integrace a mohou být součástí záloh Home Assistantu. Název a lokalita se zobrazí na zařízení a mohou být zahrnuty v cíleném reportu.
 - E-mailové reporty obsahují název skupiny a zvolené hodnoty. Nové profily standardně maskují EAN; celé EAN obsahují původní reporty a profily s výslovně zapnutým úplným zobrazením. Odesílají se výhradně přes vybrané Home Assistant `notify` entity; používejte pouze důvěryhodné příjemce a SMTP server.
 
 ## Podpora

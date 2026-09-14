@@ -76,6 +76,89 @@ def _dst_profile(day: str, starts: tuple[str, ...]) -> dict:
 
 class CalculationTests(unittest.TestCase):
     @staticmethod
+    def _target_daily_row(
+        ean: str,
+        day: date,
+        *,
+        consumption: str,
+        grid_purchase: str,
+    ):
+        consumption_value = Decimal(consumption)
+        grid_value = Decimal(grid_purchase)
+        shared = consumption_value - grid_value
+        return calculation.TargetDailySharing(
+            ean=ean,
+            day=day,
+            consumption=consumption_value,
+            grid_purchase=grid_value,
+            shared=shared,
+            coverage=(shared / consumption_value * Decimal("100"))
+            if consumption_value
+            else Decimal("0"),
+        )
+
+    def test_target_eans_are_calculated_individually_and_sum_to_group(self) -> None:
+        response = {
+            "valueColumns": [
+                {"ean": "producer", "type": "D", "dir": "IN"},
+                {"ean": "producer", "type": "D", "dir": "OUT"},
+                {"ean": "target-a", "type": "O", "dir": "IN"},
+                {"ean": "target-a", "type": "O", "dir": "OUT"},
+                {"ean": "target-b", "type": "O", "dir": "IN"},
+                {"ean": "target-b", "type": "O", "dir": "OUT"},
+            ],
+            "content": [
+                {
+                    "date": "2026-09-01",
+                    "values": [
+                        {"v": 14}, {"v": 4}, {"v": -8},
+                        {"v": -2}, {"v": -6}, {"v": -2},
+                    ],
+                }
+            ],
+        }
+
+        group = calculation.parse_daily_profile(response)
+        targets = calculation.parse_daily_target_profiles(response)
+
+        self.assertEqual(len(targets), 2)
+        target_a, target_b = targets
+        self.assertEqual((target_a.ean, target_a.shared), ("target-a", Decimal("6")))
+        self.assertEqual((target_b.ean, target_b.shared), ("target-b", Decimal("4")))
+        self.assertEqual(target_a.coverage, Decimal("75"))
+        self.assertEqual(target_b.coverage, Decimal("66.66666666666666666666666667"))
+        self.assertEqual(sum((row.shared for row in targets), Decimal("0")), group[0].shared)
+
+    def test_target_statistics_honor_each_target_price_and_period(self) -> None:
+        target_a = (
+            self._target_daily_row(
+                "target-a", date(2026, 8, 31), consumption="10", grid_purchase="4"
+            ),
+            self._target_daily_row(
+                "target-a", date(2026, 9, 1), consumption="8", grid_purchase="2"
+            ),
+            self._target_daily_row(
+                "target-a", date(2026, 9, 2), consumption="4", grid_purchase="1"
+            ),
+        )
+        result = calculation.calculate_statistics(
+            (),
+            Decimal("2"),
+            date(2026, 9, 2),
+            target_days={"target-a": target_a},
+            target_prices={"target-a": Decimal("3.5")},
+        )
+        target = result.target_statistics[0]
+
+        self.assertEqual(target.sale_price, Decimal("3.5"))
+        self.assertEqual(target.latest.shared, Decimal("3"))
+        self.assertEqual(target.latest.revenue, Decimal("10.5"))
+        self.assertEqual(target.week.shared, Decimal("15"))
+        self.assertEqual(target.month.shared, Decimal("9"))
+        self.assertEqual(target.year.shared, Decimal("15"))
+        self.assertEqual(target.total.revenue, Decimal("52.5"))
+
+    @staticmethod
     def _daily_row(
         day: date,
         *,

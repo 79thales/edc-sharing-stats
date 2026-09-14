@@ -1,6 +1,20 @@
 # Přehled změn / Changelog
 
-## Unreleased
+## 0.1.22 – 2026-09-14
+
+### Čeština
+
+- cílové EANy mohou mít vlastní zobrazovaný název, lokalitu a volitelnou prodejní cenu; EANy se automaticky zjistí po načtení dat EDC a spravují se v novém kroku **Detaily EAN a ceny**,
+- pro každý cílový EAN vznikne samostatné zařízení s denními a měsíčními hodnotami spotřeby, nasdílené elektřiny, dokupu, pokrytí, hodnoty sdílení a použité ceny,
+- profily reportů nyní volí mezi původním reportem celé skupiny a reportem vybraných cílových EANů; v jednom profilu lze odeslat samostatnou část pro více EANů, pro různé příjemce se vytvoří další profil,
+- individuální výpočty i reporty používají denní řady konkrétního cílového EANu a jeho vlastní cenu, zatímco všechny existující skupinové senzory, statistiky, tlačítka a ceny zůstávají beze změny.
+
+### English
+
+- target EANs can now have a local display name, location and optional sale-price override; EANs are discovered automatically after fetching EDC data and are managed through the new **EAN details and prices** step,
+- every target EAN receives a separate device with latest-day and current-month consumption, shared electricity, grid import, coverage, sharing value and effective price,
+- report profiles can select the original whole-group report or selected target EANs; one profile can include a separate section for multiple targets, while separate profiles support different recipients,
+- individual calculations and reports use the daily rows for the selected target EAN and its own price, while all existing group sensors, statistics, buttons and price behavior remain unchanged.
 
 ## 0.1.21 – 2026-09-12
 

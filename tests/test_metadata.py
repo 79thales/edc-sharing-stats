@@ -86,7 +86,10 @@ class TranslationMetadataTest(unittest.TestCase):
         self.assertEqual(set(source_entities), set(czech["entity"]["sensor"]))
         for translations in (english, czech):
             names = [item["name"] for item in translations["entity"]["sensor"].values()]
-            self.assertEqual(len(names), 24)
+            # 24 original/group and diagnostic sensors, plus 11 dynamic
+            # target-EAN descriptions. Dynamic instances are created only for
+            # EANs returned by EDC, but their translations must be packaged.
+            self.assertEqual(len(names), 35)
             self.assertEqual(len(names), len(set(names)))
 
         self.assertEqual(len(source["entity"]["button"]), 7)

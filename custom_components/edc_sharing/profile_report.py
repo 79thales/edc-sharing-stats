@@ -12,8 +12,9 @@ from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .calculation import calculate_period_summary
+from .calculation import TargetDailySharing, calculate_period_summary, calculate_target_period_summary
 from .const import CONF_SALE_PRICE, CONF_SSE_ID, CONF_SSE_NAME, DEFAULT_SALE_PRICE
+from .ean_settings import ean_location, ean_name, target_sale_price
 from .report import EdcReportManager, ReportPeriod
 from .report_profiles import configured_profiles, due_on, next_run, period_range
 
@@ -26,6 +27,9 @@ class ProfileRenderer(EdcReportManager):
         self.profile = profile
         self.today = dt_util.now().date()
         self._ranges: dict[tuple[date, date], tuple] = {}
+        self._target_ranges: dict[
+            tuple[date, date], dict[str, tuple[TargetDailySharing, ...]]
+        ] = {}
         self.fingerprints: list[str] = []
 
     @property
@@ -41,8 +45,163 @@ class ProfileRenderer(EdcReportManager):
             self._ranges[key] = await self._async_fetch_days(start, end)
         return start, end, self._ranges[key]
 
+    async def _async_target_report_days(
+        self, period: ReportPeriod
+    ) -> tuple[date, date, dict[str, tuple[TargetDailySharing, ...]]]:
+        """Return report rows separated by target EAN for a selected period."""
+        if period == ReportPeriod.DAILY:
+            latest_day = self.coordinator.data.latest_day
+            if latest_day is None:
+                return self.today, self.today + timedelta(days=1), {}
+            start, end = latest_day, latest_day + timedelta(days=1)
+            cached = getattr(self.coordinator, "target_days_for_range", None)
+            if callable(cached):
+                return start, end, cached(start, end)
+        else:
+            start, end = period_range(
+                period.value, self.profile["period_mode"], self.today
+            )
+        key = (start, end)
+        if key not in self._target_ranges:
+            self._target_ranges[key] = await self._async_fetch_target_days(start, end)
+        return start, end, self._target_ranges[key]
+
+    def _target_ean_text(self, ean: str) -> str | None:
+        """Return the configured privacy representation of one target EAN."""
+        mode = self.profile["ean_mode"]
+        if mode == "hidden":
+            return None
+        return ean if mode == "full" else "…" + ean[-4:]
+
+    def _target_display_name(self, ean: str) -> str:
+        """Use an alias, or honor EAN visibility when no alias exists."""
+        configured_name = ean_name(ean, self.entry.options)
+        if configured_name != ean:
+            return configured_name
+        if self.profile["ean_mode"] == "full":
+            return ean
+        if self.profile["ean_mode"] == "masked":
+            return "…" + ean[-4:]
+        return "Cílové odběrné místo" if self.use_czech else "Target supply point"
+
+    async def _render_target_reports(self) -> list[tuple[str, str]]:
+        """Render individual recipient reports without changing group reports."""
+        reports: list[tuple[str, str]] = []
+        fingerprints: list[str] = []
+        default_price = Decimal(
+            str(
+                self.entry.options.get(
+                    CONF_SALE_PRICE,
+                    self.entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE),
+                )
+            )
+        )
+        selected_eans = tuple(self.profile["target_eans"])
+        cs = self.use_czech
+        for value in self.profile["periods"]:
+            period = ReportPeriod(value)
+            start, end, all_rows = await self._async_target_report_days(period)
+            prices = {
+                ean: target_sale_price(ean, self.entry.options, default_price)
+                for ean in selected_eans
+            }
+            content_key = (
+                "target",
+                period.value,
+                start,
+                tuple((ean, all_rows.get(ean, ()), prices[ean]) for ean in selected_eans),
+                tuple(
+                    (
+                        ean,
+                        ean_name(ean, self.entry.options),
+                        ean_location(ean, self.entry.options),
+                    )
+                    for ean in selected_eans
+                ),
+                self.profile["language"],
+                self.profile["energy"],
+                self.profile["finance"],
+                self.profile["ean_mode"],
+                self.entry.data[CONF_SSE_ID],
+            )
+            fingerprints.append(sha256(repr(content_key).encode()).hexdigest())
+            title = self._report_title(period)
+            lines = [
+                title,
+                f"{'Skupina' if cs else 'Group'}: {self.entry.data[CONF_SSE_NAME]}",
+                f"{'Období' if cs else 'Period'}: {start} – {end - timedelta(days=1)}",
+            ]
+            for ean in selected_eans:
+                days = all_rows.get(ean, ())
+                name = self._target_display_name(ean)
+                lines.extend(
+                    (
+                        "",
+                        f"{'Cílové odběrné místo' if cs else 'Target supply point'}: {name}",
+                    )
+                )
+                if location := ean_location(ean, self.entry.options):
+                    lines.append(f"{'Lokalita' if cs else 'Location'}: {location}")
+                if visible_ean := self._target_ean_text(ean):
+                    lines.append(f"{'Cílový EAN' if cs else 'Target EAN'}: {visible_ean}")
+                if not days:
+                    lines.append(
+                        "Data pro toto odběrné místo nejsou v období dostupná."
+                        if cs
+                        else "Data for this supply point are not available for this period."
+                    )
+                    continue
+                actual_start, actual_end = min(d.day for d in days), max(
+                    d.day for d in days
+                )
+                count, expected = len({d.day for d in days}), (end - start).days
+                lines.append(
+                    f"{'Dostupná denní data' if cs else 'Available daily data'}: {actual_start} – {actual_end} ({count}/{expected})"
+                )
+                if count < expected:
+                    lines.append(
+                        "Neúplné období: součet pouze dostupných denních dat."
+                        if cs
+                        else "Incomplete period: totals include available daily data only."
+                    )
+                summary = calculate_target_period_summary(days, prices[ean])
+                if self.profile["energy"]:
+                    for label_cs, label_en, field in (
+                        ("Spotřeba", "Consumption", "consumption"),
+                        ("Nasdíleno", "Shared electricity", "shared"),
+                        ("Dokup ze sítě", "Grid import", "grid_purchase"),
+                    ):
+                        lines.append(
+                            f"{label_cs if cs else label_en}: {getattr(summary, field):.2f} kWh"
+                        )
+                    lines.append(
+                        f"{'Pokrytí sdílením' if cs else 'Sharing coverage'}: {summary.coverage:.1f} %"
+                    )
+                if self.profile["finance"]:
+                    lines.extend(
+                        (
+                            f"{'Cena' if cs else 'Price'}: {prices[ean]:.2f} CZK/kWh",
+                            f"{'Hodnota sdílení' if cs else 'Sharing value'}: {summary.revenue:.2f} CZK",
+                        )
+                    )
+            reports.append((title, "\n".join(lines)))
+        if self.profile["combined"]:
+            self.fingerprints = [sha256("".join(fingerprints).encode()).hexdigest()]
+            return [
+                (
+                    f"EDC – {self.profile['name']} – {self.entry.data[CONF_SSE_NAME]}",
+                    "\n\n--------------------\n\n".join(
+                        message for _, message in reports
+                    ),
+                )
+            ]
+        self.fingerprints = fingerprints
+        return reports
+
     async def render(self) -> list[tuple[str, str]]:
         """Build selected sections once, then reuse them for all recipients."""
+        if self.profile.get("report_scope") == "target":
+            return await self._render_target_reports()
         reports = []
         fingerprints = []
         for value in self.profile["periods"]:

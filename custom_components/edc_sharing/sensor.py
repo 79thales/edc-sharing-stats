@@ -18,15 +18,32 @@ from homeassistant.helpers.translation import async_get_translations
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import EdcConfigEntry
-from .calculation import EanInfo, SharingStatistics, SurplusUtilization
+from .calculation import (
+    EanInfo,
+    SharingStatistics,
+    SurplusUtilization,
+    TargetPeriodSummary,
+    TargetSharingStatistics,
+)
 from .const import CONF_SSE_ID, CONF_SSE_NAME, DOMAIN
 from .coordinator import EdcSharingCoordinator
+from .ean_settings import ean_location, ean_name
 
 
 @dataclass(frozen=True, kw_only=True)
 class EdcSensorDescription(SensorEntityDescription):
     value_fn: Callable[[SharingStatistics], Decimal]
     attributes_fn: Callable[[SharingStatistics], dict[str, Any]] | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class TargetSensorDescription(SensorEntityDescription):
+    """One value calculated independently for a target EAN."""
+
+    value_fn: Callable[[TargetSharingStatistics], Decimal]
+    attributes_fn: (
+        Callable[[TargetSharingStatistics], dict[str, Any]] | None
+    ) = None
 
 
 ENERGY_TOTAL = dict(
@@ -64,6 +81,30 @@ SURPLUS_UTILIZATION = dict(
     suggested_display_precision=1,
     icon="mdi:solar-power-variant",
 )
+
+
+def _target_latest_attributes(
+    statistics: TargetSharingStatistics,
+) -> dict[str, Any]:
+    """Describe the delayed EDC day behind a target EAN value."""
+    return {
+        "data_date": statistics.latest_day.isoformat()
+        if statistics.latest_day is not None
+        else None,
+        "sale_price_czk_per_kwh": float(statistics.sale_price),
+    }
+
+
+def _target_period_attributes(
+    summary: TargetPeriodSummary, price: Decimal
+) -> dict[str, Any]:
+    """Expose the actual available range for a target period."""
+    return {
+        "data_start": summary.data_start.isoformat() if summary.data_start else None,
+        "data_end": summary.data_end.isoformat() if summary.data_end else None,
+        "available_days": summary.available_days,
+        "sale_price_czk_per_kwh": float(price),
+    }
 
 
 SENSORS: tuple[EdcSensorDescription, ...] = (
@@ -146,6 +187,99 @@ SENSORS: tuple[EdcSensorDescription, ...] = (
     ),
 )
 
+
+TARGET_SENSORS: tuple[TargetSensorDescription, ...] = (
+    TargetSensorDescription(
+        key="shared_latest_available_day",
+        translation_key="target_shared_latest_available_day",
+        value_fn=lambda x: x.latest.shared,
+        attributes_fn=_target_latest_attributes,
+        **ENERGY_TOTAL,
+    ),
+    TargetSensorDescription(
+        key="consumption_latest_available_day",
+        translation_key="target_consumption_latest_available_day",
+        value_fn=lambda x: x.latest.consumption,
+        attributes_fn=_target_latest_attributes,
+        **ENERGY_TOTAL,
+    ),
+    TargetSensorDescription(
+        key="grid_purchase_latest_available_day",
+        translation_key="target_grid_purchase_latest_available_day",
+        value_fn=lambda x: x.latest.grid_purchase,
+        attributes_fn=_target_latest_attributes,
+        **ENERGY_TOTAL,
+    ),
+    TargetSensorDescription(
+        key="sharing_coverage_latest_available_day",
+        translation_key="target_sharing_coverage_latest_available_day",
+        value_fn=lambda x: x.latest.coverage,
+        attributes_fn=_target_latest_attributes,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    TargetSensorDescription(
+        key="sharing_value_latest_available_day",
+        translation_key="target_sharing_value_latest_available_day",
+        value_fn=lambda x: x.latest.revenue,
+        attributes_fn=_target_latest_attributes,
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="CZK",
+        state_class=SensorStateClass.TOTAL,
+        suggested_display_precision=2,
+    ),
+    TargetSensorDescription(
+        key="shared_this_month",
+        translation_key="target_shared_this_month",
+        value_fn=lambda x: x.month.shared,
+        attributes_fn=lambda x: _target_period_attributes(x.month, x.sale_price),
+        **ENERGY_TOTAL,
+    ),
+    TargetSensorDescription(
+        key="consumption_this_month",
+        translation_key="target_consumption_this_month",
+        value_fn=lambda x: x.month.consumption,
+        attributes_fn=lambda x: _target_period_attributes(x.month, x.sale_price),
+        **ENERGY_TOTAL,
+    ),
+    TargetSensorDescription(
+        key="grid_purchase_this_month",
+        translation_key="target_grid_purchase_this_month",
+        value_fn=lambda x: x.month.grid_purchase,
+        attributes_fn=lambda x: _target_period_attributes(x.month, x.sale_price),
+        **ENERGY_TOTAL,
+    ),
+    TargetSensorDescription(
+        key="sharing_coverage_this_month",
+        translation_key="target_sharing_coverage_this_month",
+        value_fn=lambda x: x.month.coverage,
+        attributes_fn=lambda x: _target_period_attributes(x.month, x.sale_price),
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    TargetSensorDescription(
+        key="sharing_value_this_month",
+        translation_key="target_sharing_value_this_month",
+        value_fn=lambda x: x.month.revenue,
+        attributes_fn=lambda x: _target_period_attributes(x.month, x.sale_price),
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="CZK",
+        state_class=SensorStateClass.TOTAL,
+        suggested_display_precision=2,
+    ),
+    TargetSensorDescription(
+        key="electricity_sale_price",
+        translation_key="target_electricity_sale_price",
+        value_fn=lambda x: x.sale_price,
+        native_unit_of_measurement="CZK/kWh",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        icon="mdi:currency-usd",
+    ),
+)
+
 HISTORY_KEYS: dict[str, str] = {
     "shared_today": "shared",
     "consumption_today": "consumption",
@@ -183,7 +317,16 @@ async def async_setup_entry(
         if not new_eans:
             return
         known_eans.update((item.role, item.ean) for item in new_eans)
-        async_add_entities([EdcEanSensor(entry, item) for item in new_eans])
+        entities: list[SensorEntity] = [
+            EdcEanSensor(entry, item) for item in new_eans
+        ]
+        for item in new_eans:
+            if item.role == "target":
+                entities.extend(
+                    EdcTargetSensor(entry, item.ean, description)
+                    for description in TARGET_SENSORS
+                )
+        async_add_entities(entities)
 
     async_add_new_eans()
     entry.async_on_unload(
@@ -297,8 +440,88 @@ class EdcEanSensor(CoordinatorEntity[EdcSharingCoordinator], SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, str]:
-        """Expose a stable machine-readable role."""
-        return {"role": self._ean_info.role}
+        """Expose the stable role and optional user-facing EAN metadata."""
+        attributes = {"role": self._ean_info.role}
+        name = ean_name(self._ean_info.ean, self.coordinator.config_entry.options)
+        if name != self._ean_info.ean:
+            attributes["name"] = name
+        if location := ean_location(
+            self._ean_info.ean, self.coordinator.config_entry.options
+        ):
+            attributes["location"] = location
+        return attributes
+
+
+class EdcTargetSensor(
+    CoordinatorEntity[EdcSharingCoordinator], SensorEntity
+):
+    """Expose calculated values independently for one target EAN."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        entry: EdcConfigEntry,
+        ean: str,
+        description: TargetSensorDescription,
+    ) -> None:
+        super().__init__(entry.runtime_data.coordinator)
+        self._ean = ean
+        self.entity_description = description
+        self._attr_unique_id = (
+            f"{entry.data[CONF_SSE_ID]}_target_{ean}_{description.key}"
+        )
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry.data[CONF_SSE_ID]}_target_{ean}")},
+            via_device=(DOMAIN, str(entry.data[CONF_SSE_ID])),
+            name=ean_name(ean, entry.options),
+            manufacturer="Elektroenergetické datové centrum, a. s.",
+            model="Cílové odběrné místo EDC",
+            configuration_url="https://portal.edc-cr.cz/sprava-dat/zobrazeni-dat",
+        )
+
+    @property
+    def _statistics(self) -> TargetSharingStatistics | None:
+        return next(
+            (
+                item
+                for item in self.coordinator.data.target_statistics
+                if item.ean == self._ean
+            ),
+            None,
+        )
+
+    @property
+    def native_value(self) -> Decimal | None:
+        statistics = self._statistics
+        if statistics is None:
+            return None
+        return self.entity_description.value_fn(statistics)
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and any(
+                item.role == "target" and item.ean == self._ean
+                for item in self.coordinator.eans
+            )
+            and self._statistics is not None
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        statistics = self._statistics
+        if statistics is None:
+            return None
+        attributes = (
+            self.entity_description.attributes_fn(statistics)
+            if self.entity_description.attributes_fn is not None
+            else {}
+        )
+        if location := ean_location(self._ean, self.coordinator.config_entry.options):
+            attributes["location"] = location
+        return attributes or None
 
 
 def _history_backfill_progress(coordinator: EdcSharingCoordinator) -> int:

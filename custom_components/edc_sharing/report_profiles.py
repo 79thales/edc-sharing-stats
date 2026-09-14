@@ -29,13 +29,22 @@ def default_profile(profile_id: str = "") -> dict[str, Any]:
         "energy": True,
         "finance": True,
         "ean_mode": "masked",
+        "report_scope": "group",
+        "target_eans": [],
     }
 
 
 def configured_profiles(options: dict, language: str = "en") -> list[dict]:
     """Adapt the old schedules without changing saved options or manual buttons."""
     if CONF_REPORT_PROFILES in options:
-        return [dict(p) for p in options[CONF_REPORT_PROFILES]]
+        profiles = options[CONF_REPORT_PROFILES]
+        if not isinstance(profiles, list):
+            return []
+        return [
+            default_profile(str(profile.get("id") or "")) | dict(profile)
+            for profile in profiles
+            if isinstance(profile, dict)
+        ]
     profiles = []
     for period in (*PERIODS, "summary"):
         if not options.get(f"{period}_report", False):
@@ -78,13 +87,14 @@ def validate_profile(profile: dict) -> dict:
         ("period_mode", ("current", "previous", "legacy")),
         ("frequency", ("daily", "weekly", "monthly", "yearly")),
         ("ean_mode", ("hidden", "masked", "full")),
+        ("report_scope", ("group", "target")),
     ):
         if result[key] not in choices:
             raise ValueError("invalid_profile")
     for key in ("enabled", "combined", "only_new", "energy", "finance"):
         if not isinstance(result[key], bool):
             raise TypeError("invalid_profile")
-    for key in ("periods", "targets", "weekdays"):
+    for key in ("periods", "targets", "weekdays", "target_eans"):
         if not isinstance(result[key], list):
             raise TypeError("invalid_profile")
         result[key] = list(dict.fromkeys(result[key]))
@@ -94,6 +104,13 @@ def validate_profile(profile: dict) -> dict:
         not isinstance(t, str) or not t.startswith("notify.") or len(t.split(".")) != 2
         for t in result["targets"]
     ):
+        raise ValueError("invalid_profile")
+    if any(
+        not isinstance(ean, str) or not ean.strip() or len(ean) > 32
+        for ean in result["target_eans"]
+    ):
+        raise ValueError("invalid_profile")
+    if result["report_scope"] == "target" and not result["target_eans"]:
         raise ValueError("invalid_profile")
     if not (result["energy"] or result["finance"]):
         raise ValueError("invalid_profile")

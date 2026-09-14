@@ -41,6 +41,7 @@
         "title": "Nastavení EDC",
         "menu_options": {
           "general": "Obecné nastavení a původní tlačítka",
+          "ean_settings": "Detaily EAN a ceny",
           "profiles": "Profily reportů"
         }
       },
@@ -67,6 +68,25 @@
           "summary_report": "Každý den v nastavený čas odešle jeden e-mail obsahující denní, týdenní, měsíční i roční část. Lze jej zapnout současně s libovolnými samostatnými reporty."
         }
       },
+      "ean_settings": {
+        "title": "Detaily EAN",
+        "description": "Vyberte sdílející nebo cílový EAN zjištěný při posledním načtení dat EDC."
+      },
+      "ean_edit": {
+        "title": "Detaily EAN",
+        "description": "Nastavte volitelný místní název a lokalitu pro {role} EAN {ean}. Cílový EAN může používat cenu skupiny nebo vlastní cenu.",
+        "data": {
+          "name": "Zobrazovaný název",
+          "location": "Lokalita",
+          "use_group_price": "Použít prodejní cenu skupiny",
+          "price": "Vlastní prodejní cena (Kč/kWh)"
+        },
+        "data_description": {
+          "location": "Zobrazí se u zařízení EAN a v cílených reportech. Nezařadí zařízení do oblasti Home Assistantu.",
+          "use_group_price": "Je-li zapnuto, tento cílový EAN používá stávající prodejní cenu celé skupiny.",
+          "price": "Použije se jen při vypnuté volbě prodejní ceny skupiny."
+        }
+      },
       "profiles": {
         "title": "Přehled profilů reportů",
         "description": "{overview}\n\nČasy odpovídají časovému pásmu Home Assistantu. Přehled se obnoví při opětovném otevření. Úspěšné předání SMTP nepotvrzuje doručení do schránky.\n\nNíže vyberte profil pro úpravu nebo přidejte nový.",
@@ -89,7 +109,7 @@
       },
       "profile_edit": {
         "title": "Nastavení profilu reportů",
-        "description": "Report obsahuje souhrn vybrané skupiny. Denní část vždy používá poslední dostupný den EDC. Odeslání nyní funguje i u pozastaveného profilu.",
+        "description": "Rozsah skupiny zachovává původní report za celou skupinu. Rozsah cílových EANů vytvoří samostatnou část pro každé vybrané odběrné místo a použije jeho vlastní cenu, pokud je nastavena. Denní část vždy používá poslední dostupný den EDC. Odeslání nyní funguje i u pozastaveného profilu.",
         "data": {
           "name": "Název profilu",
           "enabled": "Automatické odesílání zapnuto",
@@ -106,7 +126,9 @@
           "only_new": "Odeslat pouze při změně dat",
           "energy": "Zahrnout energii a pokrytí",
           "finance": "Zahrnout cenu a hodnotu sdílení",
-          "ean_mode": "Zobrazení EAN"
+          "ean_mode": "Zobrazení EAN",
+          "report_scope": "Rozsah reportu",
+          "target_eans": "Cílové EANy"
         },
         "data_description": {
           "targets": "Příjemce založte v Nastavení > Zařízení a služby > SMTP > Přidat příjemce. Zde vyberte jejich notify entity.",
@@ -114,7 +136,9 @@
           "weekdays": "Použije se jen při týdenním odesílání.",
           "day": "Použije se při měsíčním a ročním odesílání.",
           "month": "Použije se jen při ročním odesílání.",
-          "only_new": "Při plánovaném pokusu přeskočí nezměněná data. Odeslat nyní tuto kontrolu obejde."
+          "only_new": "Při plánovaném pokusu přeskočí nezměněná data. Odeslat nyní tuto kontrolu obejde.",
+          "report_scope": "Report skupiny zachová původní souhrny. Report cílových EANů obsahuje samostatnou část pro každý vybraný EAN; pro různé příjemce vytvořte samostatné profily.",
+          "target_eans": "Použije se pouze pro rozsah cílových EANů. Jejich název, lokalita a volitelná vlastní cena se nastavují v detailech EAN."
         }
       },
       "profile_delete": {
@@ -140,7 +164,9 @@
     "error": {
       "already_configured": "Tato skupina sdílení je již nastavená.",
       "invalid_profile": "Vyplňte název, alespoň jednoho příjemce a období, vyberte energii nebo finance a zkontrolujte rozvrh.",
-      "report_failed": "Report se nepodařilo připravit nebo předat všem příjemcům. Zkontrolujte dostupnost EDC a nastavení SMTP."
+      "report_failed": "Report se nepodařilo připravit nebo předat všem příjemcům. Zkontrolujte dostupnost EDC a nastavení SMTP.",
+      "no_eans": "EDC zatím nevrátilo žádný EAN. Načtěte data EDC a zkuste to znovu.",
+      "invalid_ean_settings": "Zadejte platný název, lokalitu a nezápornou vlastní cenu."
     },
     "abort": {
       "cannot_connect": "K portálu EDC se nelze připojit.",
@@ -250,6 +276,39 @@
       },
       "target_ean": {
         "name": "Cílový EAN {ean}"
+      },
+      "target_shared_latest_available_day": {
+        "name": "Cílový EAN – nasdíleno – poslední dostupný den"
+      },
+      "target_consumption_latest_available_day": {
+        "name": "Cílový EAN – spotřeba – poslední dostupný den"
+      },
+      "target_grid_purchase_latest_available_day": {
+        "name": "Cílový EAN – dokup ze sítě – poslední dostupný den"
+      },
+      "target_sharing_coverage_latest_available_day": {
+        "name": "Cílový EAN – pokrytí sdílením – poslední dostupný den"
+      },
+      "target_sharing_value_latest_available_day": {
+        "name": "Cílový EAN – hodnota sdílení – poslední dostupný den"
+      },
+      "target_shared_this_month": {
+        "name": "Cílový EAN – nasdíleno tento měsíc"
+      },
+      "target_consumption_this_month": {
+        "name": "Cílový EAN – spotřeba tento měsíc"
+      },
+      "target_grid_purchase_this_month": {
+        "name": "Cílový EAN – dokup ze sítě tento měsíc"
+      },
+      "target_sharing_coverage_this_month": {
+        "name": "Cílový EAN – pokrytí sdílením tento měsíc"
+      },
+      "target_sharing_value_this_month": {
+        "name": "Cílový EAN – hodnota sdílení tento měsíc"
+      },
+      "target_electricity_sale_price": {
+        "name": "Cílový EAN – prodejní cena elektřiny"
       }
     }
   },
@@ -272,6 +331,8 @@
         "current": "Probíhající období",
         "previous": "Předchozí uzavřené období",
         "legacy": "Původní rozsah období",
+        "group": "Celá skupina sdílení",
+        "target": "Vybrané cílové EANy",
         "hidden": "Skrýt EAN",
         "masked": "Jen poslední 4 číslice",
         "full": "Celý EAN"

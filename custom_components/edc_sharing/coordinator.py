@@ -22,10 +22,12 @@ from .calculation import (
     HourlySharing,
     IncompleteProfileLayoutError,
     SharingStatistics,
+    TargetDailySharing,
     calculate_statistics,
     extract_eans,
     one_calendar_year_ago,
     parse_daily_profile,
+    parse_daily_target_profiles,
     parse_hourly_profile,
     profile_date_ranges,
     profile_date_ranges_backwards,
@@ -39,6 +41,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
+from .ean_settings import target_sale_price
 from .history import async_import_daily_history, async_import_hourly_history
 
 _LOGGER = logging.getLogger(__name__)
@@ -86,6 +89,13 @@ _DAILY_DECIMAL_FIELDS = (
     "consistency_difference",
 )
 
+_TARGET_DAILY_DECIMAL_FIELDS = (
+    "consumption",
+    "grid_purchase",
+    "shared",
+    "coverage",
+)
+
 
 def _serialize_daily_row(row: DailySharing) -> dict[str, str]:
     """Serialize one aggregate without losing Decimal precision."""
@@ -118,6 +128,52 @@ def _stored_daily_rows(value: object) -> dict[date, DailySharing]:
     return restored
 
 
+def _serialize_target_daily_row(row: TargetDailySharing) -> dict[str, str]:
+    """Serialize one target EAN aggregate without losing Decimal precision."""
+    return {
+        "ean": row.ean,
+        "day": row.day.isoformat(),
+        **{
+            field: str(getattr(row, field))
+            for field in _TARGET_DAILY_DECIMAL_FIELDS
+        },
+    }
+
+
+def _stored_target_daily_rows(
+    value: object,
+) -> dict[str, dict[date, TargetDailySharing]]:
+    """Restore safe per-target daily cache entries from storage."""
+    if not isinstance(value, list):
+        return {}
+    restored: dict[str, dict[date, TargetDailySharing]] = {}
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        ean = item.get("ean")
+        day = _stored_date(item.get("day"))
+        if (
+            not isinstance(ean, str)
+            or not ean.strip()
+            or len(ean) > 32
+            or day is None
+        ):
+            continue
+        ean = ean.strip()
+        try:
+            values = {
+                field: Decimal(str(item[field]))
+                for field in _TARGET_DAILY_DECIMAL_FIELDS
+            }
+        except (InvalidOperation, KeyError, TypeError, ValueError):
+            continue
+        if not all(number.is_finite() for number in values.values()):
+            continue
+        row = TargetDailySharing(ean=ean, day=day, **values)
+        restored.setdefault(ean, {})[day] = row
+    return restored
+
+
 def _hour_start_utc(value: datetime, local_tz: tzinfo) -> datetime:
     """Return an hourly profile timestamp as an aware UTC datetime."""
     if value.tzinfo is None:
@@ -147,6 +203,8 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self.eans: tuple[EanInfo, ...] = ()
         self._days: dict[date, DailySharing] = {}
         self._history_days: dict[date, DailySharing] = {}
+        self._target_days: dict[str, dict[date, TargetDailySharing]] = {}
+        self._history_target_days: dict[str, dict[date, TargetDailySharing]] = {}
         self._hours: dict[datetime, HourlySharing] = {}
         self._history_refresh_date: date | None = None
         self._history_import_enabled = False
@@ -211,6 +269,45 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         error = stored.get("error")
         self.history_backfill_error = str(error) if error else None
         self._history_days = _stored_daily_rows(stored.get("daily_rows"))
+        self._history_target_days = _stored_target_daily_rows(
+            stored.get("target_daily_rows")
+        )
+
+    def _target_prices(self, default_price: Decimal) -> dict[str, Decimal]:
+        """Return safe per-target prices while preserving the group default."""
+        return {
+            ean: target_sale_price(ean, self.config_entry.options, default_price)
+            for ean in self._history_target_days
+        }
+
+    def _calculate_statistics(
+        self, sale_price: Decimal, today: date
+    ) -> SharingStatistics:
+        """Calculate group and optional individual-target values from one cache."""
+        return calculate_statistics(
+            tuple(self._history_days.values()),
+            sale_price,
+            today,
+            target_days={
+                ean: tuple(rows.values())
+                for ean, rows in self._history_target_days.items()
+            },
+            target_prices=self._target_prices(sale_price),
+        )
+
+    @callback
+    def target_days_for_range(
+        self, date_from: date, date_to: date
+    ) -> dict[str, tuple[TargetDailySharing, ...]]:
+        """Return cached target rows for a half-open range without an API call."""
+        return {
+            ean: tuple(
+                row
+                for day, row in sorted(rows.items())
+                if date_from <= day < date_to
+            )
+            for ean, rows in self._history_target_days.items()
+        }
 
     async def _async_update_data(self) -> SharingStatistics:
         now = dt_util.now()
@@ -229,6 +326,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         date_to = today + timedelta(days=1)
         try:
             fetched: dict[date, DailySharing] = {}
+            fetched_target_days: dict[str, dict[date, TargetDailySharing]] = {}
             fetched_hours: dict[datetime, HourlySharing] = {}
             fetched_eans: set[EanInfo] = set()
             for chunk_from, chunk_to in profile_date_ranges(date_from, date_to):
@@ -246,6 +344,9 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                         if date_from <= row.day < date_to
                     }
                 )
+                for row in parse_daily_target_profiles(raw):
+                    if date_from <= row.day < date_to:
+                        fetched_target_days.setdefault(row.ean, {})[row.day] = row
                 fetched_hours.update(
                     {
                         row.start: row
@@ -266,13 +367,29 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     for start, row in self._hours.items()
                     if _hour_local_date(start, local_tz) >= date_from
                 }
+                self._target_days = {
+                    ean: {
+                        day: row for day, row in rows.items() if day >= date_from
+                    }
+                    for ean, rows in self._target_days.items()
+                    if any(day >= date_from for day in rows)
+                }
                 self._history_refresh_date = today
             self._days.update(fetched)
             self._hours.update(fetched_hours)
+            for ean, rows in fetched_target_days.items():
+                self._target_days.setdefault(ean, {}).update(rows)
             history_changed = any(
                 self._history_days.get(day) != row for day, row in fetched.items()
             )
+            history_changed = history_changed or any(
+                self._history_target_days.get(ean, {}).get(day) != row
+                for ean, rows in fetched_target_days.items()
+                for day, row in rows.items()
+            )
             self._history_days.update(fetched)
+            for ean, rows in fetched_target_days.items():
+                self._history_target_days.setdefault(ean, {}).update(rows)
             if self._history_days:
                 earliest_known = min(self._history_days)
                 if (
@@ -288,9 +405,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 CONF_SALE_PRICE,
                 self.config_entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE),
             )))
-            result = calculate_statistics(
-                tuple(self._history_days.values()), price, today
-            )
+            result = self._calculate_statistics(price, today)
             if self._history_import_enabled:
                 self._async_import_history_if_changed(
                     result, tuple(self._hours.values()), now
@@ -430,6 +545,11 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                         <= _hour_local_date(row.start, local_tz)
                         < chunk_to
                     )
+                    target_days = tuple(
+                        row
+                        for row in parse_daily_target_profiles(raw)
+                        if chunk_from <= row.day < chunk_to
+                    )
                 except IncompleteProfileLayoutError as err:
                     # Before both EAN roles joined the sharing group, EDC can
                     # return a valid profile containing only one side. Such a
@@ -443,6 +563,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     )
                     days = ()
                     hours = ()
+                    target_days = ()
                 now = dt_util.now()
                 self.history_backfill_imported_days += async_import_daily_history(
                     self.hass,
@@ -470,14 +591,12 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                         or earliest < self.history_earliest_date
                     ):
                         self.history_earliest_date = earliest
+                for row in target_days:
+                    self._history_target_days.setdefault(row.ean, {})[row.day] = row
                 self.history_backfill_cursor = chunk_from
                 self.history_backfill_processed_chunks += 1
                 await self._async_save_history_backfill_state()
-                self.async_set_updated_data(
-                    calculate_statistics(
-                        tuple(self._history_days.values()), price, now.date()
-                    )
-                )
+                self.async_set_updated_data(self._calculate_statistics(price, now.date()))
                 await asyncio.sleep(_BACKFILL_REQUEST_DELAY)
 
             await self._async_finish_history_backfill()
@@ -544,6 +663,14 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     _serialize_daily_row(row)
                     for row in sorted(
                         self._history_days.values(), key=lambda item: item.day
+                    )
+                ],
+                "target_daily_rows": [
+                    _serialize_target_daily_row(row)
+                    for ean in sorted(self._history_target_days)
+                    for row in sorted(
+                        self._history_target_days[ean].values(),
+                        key=lambda item: item.day,
                     )
                 ],
             }
