@@ -28,6 +28,7 @@ def default_profile(profile_id: str = "") -> dict[str, Any]:
         "only_new": False,
         "energy": True,
         "finance": True,
+        "group_finance_mode": "group_price",
         "ean_mode": "masked",
         "report_scope": "group",
         "target_eans": [],
@@ -88,6 +89,7 @@ def validate_profile(profile: dict) -> dict:
         ("frequency", ("daily", "weekly", "monthly", "yearly")),
         ("ean_mode", ("hidden", "masked", "full")),
         ("report_scope", ("group", "target")),
+        ("group_finance_mode", ("group_price", "ean_prices")),
     ):
         if result[key] not in choices:
             raise ValueError("invalid_profile")

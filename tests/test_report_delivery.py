@@ -249,6 +249,41 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Přetok výrobny", body)
         self.assertNotIn("consumer-example", body)
 
+    async def test_group_finance_uses_target_prices_and_checks_completeness(self):
+        calculation = importlib.import_module("_edc_delivery_test.calculation")
+        rows = {
+            ean: (calculation.TargetDailySharing(
+                ean, self.day.day, Decimal("5"), Decimal("3"),
+                Decimal("2"), Decimal("40")),)
+            for ean in ("target-a", "target-b")
+        }
+        self.entry.options["ean_settings"] = {"target-a": {"price": "3", "name": "Flat A"}}
+        profile = self.profile | {"group_finance_mode": "ean_prices", "ean_mode": "hidden"}
+        with patch.object(self.runtime.ProfileRenderer, "_async_fetch_target_days", AsyncMock(return_value=rows)):
+            body = (await self.manager.preview(profile))[0][1]
+            self.assertIn("Hodnota sdílení celkem: 10.00 CZK", body)
+            self.assertIn("Flat A: 2.00 kWh × 3.00 CZK/kWh = 6.00 CZK", body)
+            self.assertNotIn("target-b", body)
+            del rows["target-b"]
+            body = (await self.manager.preview(profile))[0][1]
+            self.assertIn("Celkovou hodnotu nelze potvrdit", body)
+            self.assertNotIn("Hodnota sdílení celkem:", body)
+        with patch.object(self.runtime.ProfileRenderer, "_async_fetch_target_days", AsyncMock()) as fetch:
+            body = (await self.manager.preview(self.profile))[0][1]
+            self.assertIn("Hodnota sdílení: 8.00 CZK", body)
+            fetch.assert_not_awaited()
+
+    async def test_profile_overview_shows_scope_and_shared_audience(self):
+        overview = importlib.import_module("_edc_delivery_test.profile_overview")
+        profile = self.profile | {"report_scope": "target", "target_eans": ["target-a"]}
+        rendered = overview.format_overview(
+            [profile], {"notify.one": "Owner"}, {}, czech=True, local_tz=UTC,
+            ean_labels={"target-a": "Flat A — Prague"},
+        )
+        self.assertIn("Flat A", rendered)
+        self.assertIn("Owner", rendered)
+        self.assertIn("Všichni příjemci tohoto profilu dostanou stejný obsah", rendered)
+
     async def test_only_new_ignores_advancing_calendar_heading(self):
         profile = self.profile | {"periods": ["monthly"], "only_new": True}
         with patch.object(

@@ -1,5 +1,17 @@
 # Přehled změn / Changelog
 
+## 0.1.23 – 2026-09-15
+
+### Čeština
+
+- Volitelný finanční souhrn skupiny podle cen jednotlivých cílových EANů, včetně rozpisu a kontroly shody s denními souhrny skupiny.
+- Přehled profilů zobrazuje vybraná odběrná místa, příjemce a způsob výpočtu skupinových financí; upozorňuje na společný obsah pro všechny příjemce profilu.
+
+### English
+
+- Optional group financial totals using individual target EAN prices, with a breakdown and reconciliation against daily group totals.
+- The profile overview shows supply-point scope, recipients and the group financial calculation mode, and explains that all profile recipients receive the same content.
+
 ## 0.1.22 – 2026-09-14
 
 ### Čeština

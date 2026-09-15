@@ -58,6 +58,7 @@ def format_overview(
     *,
     czech: bool,
     local_tz: tzinfo,
+    ean_labels: dict[str, str] | None = None,
 ) -> str:
     """Describe every profile without sending mail, fetching data or saving state."""
     if not profiles:
@@ -104,6 +105,25 @@ def format_overview(
             "Nejsou vybraní příjemci" if czech else "No recipients selected"
         )
         lines.append(f"**{'Příjemci' if czech else 'Recipients'}:** {names}")
+        if profile.get("report_scope", "group") == "target":
+            scope = "; ".join(
+                _text((ean_labels or {}).get(ean, ean))
+                for ean in profile.get("target_eans", [])
+            ) or ("Žádná místa" if czech else "No supply points")
+        else:
+            scope = "Celá skupina sdílení" if czech else "Whole sharing group"
+        lines.append(f"**{'Odběrná místa' if czech else 'Supply points'}:** {scope}")
+        lines.append(
+            "Všichni příjemci tohoto profilu dostanou stejný obsah."
+            if czech else "All recipients of this profile receive the same content."
+        )
+        if profile.get("finance", True) and profile.get("report_scope", "group") == "group":
+            individual = profile.get("group_finance_mode") == "ean_prices"
+            finance = (
+                ("Součet podle cen jednotlivých EANů" if czech else "Sum using individual EAN prices")
+                if individual else ("Cena celé skupiny" if czech else "Group price")
+            )
+            lines.append(f"**{'Finance' if czech else 'Finance'}:** {finance}")
         periods = ", ".join(period_names[p] for p in profile["periods"])
         combined = "souhrn v jednom e-mailu" if czech else "summary in one email"
         if not profile["combined"]:
