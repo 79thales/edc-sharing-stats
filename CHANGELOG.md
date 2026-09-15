@@ -1,5 +1,17 @@
 # Přehled změn / Changelog
 
+## 0.1.24 – 2026-09-15
+
+### Čeština
+
+- Volba posledního dostupného dne jednotlivých cílových EANů s datem u každého místa; původní společný den skupiny zůstává výchozí.
+- Předměty reportů obsahují profil, skupinu nebo místo a období; souhrny uvádějí zahrnuté typy období. Skrytí EANů platí také v předmětu.
+
+### English
+
+- Optional latest available day per target EAN with an explicit date for each supply point; the shared group day remains the default.
+- Profile report subjects include the profile, group or supply point and period; summaries list included period types. EAN visibility also applies to subjects.
+
 ## 0.1.23 – 2026-09-15
 
 ### Čeština

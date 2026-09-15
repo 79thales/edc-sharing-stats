@@ -109,7 +109,7 @@
       },
       "profile_edit": {
         "title": "Nastavení profilu reportů",
-        "description": "Rozsah skupiny zachovává původní report za celou skupinu. Rozsah cílových EANů vytvoří samostatnou část pro každé vybrané odběrné místo a použije jeho vlastní cenu, pokud je nastavena. Denní část vždy používá poslední dostupný den EDC. Odeslání nyní funguje i u pozastaveného profilu.",
+        "description": "Report cílových EANů obsahuje samostatnou část pro každé vybrané místo s jeho cenou. Datum denního reportu lze zvolit společné podle skupiny, nebo poslední dostupné pro každý EAN. Všichni příjemci profilu dostanou stejný obsah. Odeslat nyní funguje i u pozastaveného profilu.",
         "data": {
           "name": "Název profilu",
           "enabled": "Automatické odesílání zapnuto",
@@ -127,6 +127,7 @@
           "energy": "Zahrnout energii a pokrytí",
           "finance": "Zahrnout cenu a hodnotu sdílení",
           "group_finance_mode": "Výpočet financí celé skupiny",
+          "target_daily_mode": "Datum denního reportu cílových EANů",
           "ean_mode": "Zobrazení EAN",
           "report_scope": "Rozsah reportu",
           "target_eans": "Cílové EANy"
@@ -335,6 +336,8 @@
         "legacy": "Původní rozsah období",
         "group": "Celá skupina sdílení",
         "group_price": "Výchozí cena skupiny",
+        "group_day": "Poslední den celé skupiny",
+        "per_ean_day": "Poslední dostupný den každého EANu",
         "ean_prices": "Součet podle cen jednotlivých EANů",
         "target": "Vybrané cílové EANy",
         "hidden": "Skrýt EAN",

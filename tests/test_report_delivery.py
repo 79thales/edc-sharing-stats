@@ -284,6 +284,33 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Owner", rendered)
         self.assertIn("Všichni příjemci tohoto profilu dostanou stejný obsah", rendered)
 
+    async def test_individual_daily_dates_and_private_subjects(self):
+        calculation = importlib.import_module("_edc_delivery_test.calculation")
+        def row(ean, day):
+            return calculation.TargetDailySharing(ean, day, Decimal(5), Decimal(3), Decimal(2), Decimal(40))
+        from unittest.mock import Mock
+        self.coordinator.target_days_for_range = Mock(return_value={
+            "target-a": (row("target-a", date(2026, 9, 1)), row("target-a", date(2026, 9, 3))),
+            "target-b": (row("target-b", date(2026, 9, 2)),),
+            "other": (row("other", date(2026, 8, 1)),),
+        })
+        profile = self.profile | {"report_scope": "target", "target_eans": ["target-a", "target-b", "missing"],
+                                  "target_daily_mode": "per_ean_day", "ean_mode": "hidden"}
+        subject, body = (await self.manager.preview(profile))[0]
+        self.assertIn("Owner", subject)
+        self.assertIn("2026-09-02 – 2026-09-03", subject)
+        self.assertIn("Datum dat: 2026-09-02", body)
+        self.assertIn("Datum dat: 2026-09-03", body)
+        self.assertNotIn("(1/2)", body)
+        self.assertIn("nejsou v období dostupná", body)
+        self.assertNotIn("target-a", subject)
+        self.assertNotIn("2026-08-01", body)
+        self.entry.options["ean_settings"] = {"target-a": {"name": "Flat\r\nA"}}
+        subject, _ = (await self.manager.preview(profile | {"target_eans": ["target-a"], "language": "en"}))[0]
+        self.assertIn("Flat A", subject)
+        self.assertIn("Daily: 2026-09-03", subject)
+        self.assertNotIn("\n", subject)
+
     async def test_only_new_ignores_advancing_calendar_heading(self):
         profile = self.profile | {"periods": ["monthly"], "only_new": True}
         with patch.object(

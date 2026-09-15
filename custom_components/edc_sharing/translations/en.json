@@ -109,7 +109,7 @@
       },
       "profile_edit": {
         "title": "Report profile settings",
-        "description": "Group scope keeps the original whole-group report. Target EAN scope reports each selected target supply point separately, using its configured price when set. The daily section always uses the latest available EDC day. Send now also works for paused profiles.",
+        "description": "Target EAN reports contain a separate section for each selected supply point using its price. Daily reports can use the latest group day or each EAN's latest available day. All profile recipients receive the same content. Send now also works for paused profiles.",
         "data": {
           "name": "Profile name",
           "enabled": "Automatic sending enabled",
@@ -127,6 +127,7 @@
           "energy": "Include energy and coverage",
           "finance": "Include price and sharing value",
           "group_finance_mode": "Whole-group financial calculation",
+          "target_daily_mode": "Target EAN daily report date",
           "ean_mode": "EAN visibility",
           "report_scope": "Report scope",
           "target_eans": "Target EANs"
@@ -335,6 +336,8 @@
         "legacy": "Legacy period ranges",
         "group": "Whole sharing group",
         "group_price": "Default group price",
+        "group_day": "Latest group day",
+        "per_ean_day": "Latest available day per EAN",
         "ean_prices": "Sum using individual EAN prices",
         "target": "Selected target EANs",
         "hidden": "Hide EANs",

@@ -135,6 +135,8 @@ def format_overview(
                 scope = (
                     "poslední dostupný den EDC" if czech else "latest available EDC day"
                 )
+                if profile.get("report_scope") == "target" and profile.get("target_daily_mode") == "per_ean_day":
+                    scope = "poslední dostupný den každého EANu" if czech else "latest available day per EAN"
             else:
                 current = profile["period_mode"] == "current" or (
                     profile["period_mode"] == "legacy" and period == "yearly"
