@@ -79,6 +79,14 @@ U každého **cílového** EANu lze ponechat prodejní cenu celé skupiny, nebo 
 
 ## E-mailové reporty
 
+### Datum jednotlivých míst a předměty e-mailů
+
+V profilu s rozsahem cílových EANů lze zvolit **Datum denního reportu cílových EANů → Poslední dostupný den každého EANu**. Každé místo pak použije nejnovější den ze své uložené historie a v reportu uvede jeho datum. Místa mohou mít rozdílná data; nejde o součet za společný den. EAN bez uložených dat zůstane označený jako nedostupný. Výchozí volba **Poslední den celé skupiny** zachovává dosavadní chování. Skupinové finanční souhrny nadále porovnávají shodné kalendářní dny.
+
+Předmět samostatného reportu obsahuje název profilu, skupinu nebo odběrné místo, typ reportu a datum či rozsah období, například `EDC | Majitel | Chata | Denní: 2026-09-14`. U více míst se zobrazí jejich počet; souhrnný e-mail uvádí vybrané typy období. Názvy míst respektují nastavené zobrazení EANů. Souhrn s jediným obdobím používá konkrétní datum stejně jako samostatný report.
+
+Target report profiles can optionally use each EAN's latest cached day, with an explicit date per supply point. The default remains the latest group day. Profile email subjects now include the profile name, supply-point or group scope and report period; multi-period summaries list their included period types.
+
 V profilu s rozsahem **Celá skupina** lze zvolit **Výpočet financí celé skupiny**:
 
 - **Výchozí cena skupiny** zachovává dosavadní výpočet nasdílené energie cenou skupiny.

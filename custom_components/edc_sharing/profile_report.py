@@ -50,6 +50,22 @@ class ProfileRenderer(EdcReportManager):
     ) -> tuple[date, date, dict[str, tuple[TargetDailySharing, ...]]]:
         """Return report rows separated by target EAN for a selected period."""
         if period == ReportPeriod.DAILY:
+            if (self.profile.get("report_scope") == "target"
+                    and self.profile.get("target_daily_mode") == "per_ean_day"):
+                cached = self.coordinator.target_days_for_range(
+                    date.min, self.today + timedelta(days=1)
+                )
+                latest = {
+                    ean: (max(rows, key=lambda row: row.day),)
+                    for ean, rows in cached.items()
+                    if rows and ean in self.profile["target_eans"]
+                }
+                dates = [rows[0].day for rows in latest.values()]
+                return (
+                    min(dates) if dates else self.today,
+                    (max(dates) if dates else self.today) + timedelta(days=1),
+                    latest,
+                )
             latest_day = self.coordinator.data.latest_day
             if latest_day is None:
                 return self.today, self.today + timedelta(days=1), {}
@@ -83,6 +99,32 @@ class ProfileRenderer(EdcReportManager):
         if self.profile["ean_mode"] == "masked":
             return "…" + ean[-4:]
         return "Cílové odběrné místo" if self.use_czech else "Target supply point"
+
+    def _profile_subject(self, label: str) -> str:
+        """Build a single-line subject respecting EAN visibility."""
+        scope = str(self.entry.data[CONF_SSE_NAME])
+        if self.profile.get("report_scope") == "target":
+            eans = self.profile["target_eans"]
+            scope = (self._target_display_name(eans[0]) if len(eans) == 1 else
+                     f"{len(eans)} {'odběrná místa' if self.use_czech else 'supply points'}")
+        parts = ("EDC", self.profile["name"], scope, label)
+        return " | ".join(" ".join(str(part).split()) for part in parts)
+
+    def _period_subject(self, period: ReportPeriod, start: date, end: date) -> str:
+        labels = {
+            "daily": ("Denní", "Daily"), "weekly": ("Týdenní", "Weekly"),
+            "monthly": ("Měsíční", "Monthly"), "yearly": ("Roční", "Yearly"),
+        }
+        label = labels[period.value][0 if self.use_czech else 1]
+        last = end - timedelta(days=1)
+        date_text = str(start) if start == last else f"{start} – {last}"
+        return self._profile_subject(f"{label}: {date_text}")
+
+    def _summary_subject(self) -> str:
+        labels = {"daily": ("denní", "daily"), "weekly": ("týdenní", "weekly"),
+                  "monthly": ("měsíční", "monthly"), "yearly": ("roční", "yearly")}
+        periods = ", ".join(labels[p][0 if self.use_czech else 1] for p in self.profile["periods"])
+        return self._profile_subject(f"{'Souhrn' if self.use_czech else 'Summary'}: {periods}")
 
     async def _render_target_reports(self) -> list[tuple[str, str]]:
         """Render individual recipient reports without changing group reports."""
@@ -125,7 +167,7 @@ class ProfileRenderer(EdcReportManager):
                 self.entry.data[CONF_SSE_ID],
             )
             fingerprints.append(sha256(repr(content_key).encode()).hexdigest())
-            title = self._report_title(period)
+            title = self._period_subject(period, start, end)
             lines = [
                 title,
                 f"{'Skupina' if cs else 'Group'}: {self.entry.data[CONF_SSE_NAME]}",
@@ -154,7 +196,10 @@ class ProfileRenderer(EdcReportManager):
                 actual_start, actual_end = min(d.day for d in days), max(
                     d.day for d in days
                 )
-                count, expected = len({d.day for d in days}), (end - start).days
+                individual_day = period == ReportPeriod.DAILY and self.profile.get("target_daily_mode") == "per_ean_day"
+                count, expected = len({d.day for d in days}), 1 if individual_day else (end - start).days
+                if individual_day:
+                    lines.append(f"{'Datum dat' if cs else 'Data date'}: {actual_end}")
                 lines.append(
                     f"{'Dostupná denní data' if cs else 'Available daily data'}: {actual_start} – {actual_end} ({count}/{expected})"
                 )
@@ -189,7 +234,7 @@ class ProfileRenderer(EdcReportManager):
             self.fingerprints = [sha256("".join(fingerprints).encode()).hexdigest()]
             return [
                 (
-                    f"EDC – {self.profile['name']} – {self.entry.data[CONF_SSE_NAME]}",
+                    reports[0][0] if len(reports) == 1 else self._summary_subject(),
                     "\n\n--------------------\n\n".join(
                         message for _, message in reports
                     ),
@@ -270,7 +315,7 @@ class ProfileRenderer(EdcReportManager):
             )
             fingerprints.append(sha256(repr(content_key).encode()).hexdigest())
             cs = self.use_czech
-            title = self._report_title(period)
+            title = self._period_subject(period, start, end)
             lines = [
                 title,
                 f"{'Období' if cs else 'Period'}: {start} – {end - timedelta(days=1)}",
@@ -347,7 +392,7 @@ class ProfileRenderer(EdcReportManager):
             self.fingerprints = [sha256("".join(fingerprints).encode()).hexdigest()]
             return [
                 (
-                    f"EDC – {self.profile['name']} – {self.entry.data[CONF_SSE_NAME]}",
+                    reports[0][0] if len(reports) == 1 else self._summary_subject(),
                     "\n\n--------------------\n\n".join(
                         message for _, message in reports
                     ),

@@ -64,6 +64,7 @@ def profile_schema(
         "energy": selector.BooleanSelector(),
         "finance": selector.BooleanSelector(),
         "group_finance_mode": _select(("group_price", "ean_prices")),
+        "target_daily_mode": _select(("group_day", "per_ean_day")),
         "ean_mode": _select(("hidden", "masked", "full")),
         "report_scope": _select(("group", "target")),
         "target_eans": selector.SelectSelector(
