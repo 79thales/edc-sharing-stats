@@ -79,6 +79,15 @@ U každého **cílového** EANu lze ponechat prodejní cenu celé skupiny, nebo 
 
 ## E-mailové reporty
 
+V profilu s rozsahem **Celá skupina** lze zvolit **Výpočet financí celé skupiny**:
+
+- **Výchozí cena skupiny** zachovává dosavadní výpočet nasdílené energie cenou skupiny.
+- **Součet podle cen jednotlivých EANů** přidá rozpis nasdílené energie, použité ceny a částky pro každé odběrné místo. EAN bez vlastní ceny použije cenu skupiny. Celková částka se potvrdí pouze tehdy, když součet individuální nasdílené energie souhlasí s hodnotou skupiny v každém zahrnutém dni; jinak je rozpis označený jako částečný. Kontrola neověřuje úplnost intervalů uvnitř dne. Ceny jsou aktuálně nastavené ceny, nikoli historický ceník.
+
+Přehled profilů ukazuje příjemce, rozsah celé skupiny nebo konkrétní vybraná odběrná místa a zvolený výpočet skupinových financí. **Všichni příjemci jednoho profilu dostávají stejný obsah.** Pro příjemce, který smí vidět pouze své odběrné místo, vytvořte samostatný profil s jeho EANem.
+
+Group report profiles can optionally calculate financial totals using individual target EAN prices, with a per-supply-point breakdown. The default remains the group price. Totals are confirmed only when individual shared energy matches group data for every included day; this does not verify intraday interval completeness. Prices are the current configured prices. The profile overview shows recipients and supply-point scope; all recipients of one profile receive the same content.
+
 ### Samostatné profily příjemců a rozvrhů
 
 Otevřete **Nastavení → Zařízení a služby → EDC Sharing Stats → Nastavit → Profily reportů → ＋**.

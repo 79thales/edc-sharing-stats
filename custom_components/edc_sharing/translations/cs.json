@@ -126,6 +126,7 @@
           "only_new": "Odeslat pouze při změně dat",
           "energy": "Zahrnout energii a pokrytí",
           "finance": "Zahrnout cenu a hodnotu sdílení",
+          "group_finance_mode": "Výpočet financí celé skupiny",
           "ean_mode": "Zobrazení EAN",
           "report_scope": "Rozsah reportu",
           "target_eans": "Cílové EANy"
@@ -138,7 +139,8 @@
           "month": "Použije se jen při ročním odesílání.",
           "only_new": "Při plánovaném pokusu přeskočí nezměněná data. Odeslat nyní tuto kontrolu obejde.",
           "report_scope": "Report skupiny zachová původní souhrny. Report cílových EANů obsahuje samostatnou část pro každý vybraný EAN; pro různé příjemce vytvořte samostatné profily.",
-          "target_eans": "Použije se pouze pro rozsah cílových EANů. Jejich název, lokalita a volitelná vlastní cena se nastavují v detailech EAN."
+          "target_eans": "Použije se pouze pro rozsah cílových EANů. Jejich název, lokalita a volitelná vlastní cena se nastavují v detailech EAN.",
+          "group_finance_mode": "Platí pouze pro report celé skupiny se zapnutými financemi. Součet podle EANů použije vlastní cenu každého místa, jinak cenu skupiny. Všichni příjemci profilu obdrží celý rozpis."
         }
       },
       "profile_delete": {
@@ -332,6 +334,8 @@
         "previous": "Předchozí uzavřené období",
         "legacy": "Původní rozsah období",
         "group": "Celá skupina sdílení",
+        "group_price": "Výchozí cena skupiny",
+        "ean_prices": "Součet podle cen jednotlivých EANů",
         "target": "Vybrané cílové EANy",
         "hidden": "Skrýt EAN",
         "masked": "Jen poslední 4 číslice",

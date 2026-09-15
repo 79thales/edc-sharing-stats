@@ -126,6 +126,7 @@
           "only_new": "Send only when data changes",
           "energy": "Include energy and coverage",
           "finance": "Include price and sharing value",
+          "group_finance_mode": "Whole-group financial calculation",
           "ean_mode": "EAN visibility",
           "report_scope": "Report scope",
           "target_eans": "Target EANs"
@@ -138,7 +139,8 @@
           "month": "Used only for yearly sending.",
           "only_new": "Scheduled attempts skip unchanged data. Send now bypasses this check.",
           "report_scope": "Group reports retain the original totals. Target EAN reports contain a separate section for every selected target EAN; create separate profiles to use different recipients.",
-          "target_eans": "Used only for Target EAN scope. Their name, location and optional custom price come from EAN details."
+          "target_eans": "Used only for Target EAN scope. Their name, location and optional custom price come from EAN details.",
+          "group_finance_mode": "Applies only to whole-group reports with finance enabled. Per-EAN totals use each supply point's price override or the group price. Every profile recipient receives the full breakdown."
         }
       },
       "profile_delete": {
@@ -332,6 +334,8 @@
         "previous": "Previous completed period",
         "legacy": "Legacy period ranges",
         "group": "Whole sharing group",
+        "group_price": "Default group price",
+        "ean_prices": "Sum using individual EAN prices",
         "target": "Selected target EANs",
         "hidden": "Hide EANs",
         "masked": "Last 4 digits only",

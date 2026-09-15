@@ -198,6 +198,46 @@ class ProfileRenderer(EdcReportManager):
         self.fingerprints = fingerprints
         return reports
 
+    async def _group_ean_finance(self, period, days):
+        """Value each target separately and verify coverage against group days."""
+        _, _, all_rows = await self._async_target_report_days(period)
+        default_price = Decimal(str(self.entry.options.get(
+            CONF_SALE_PRICE, self.entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE)
+        )))
+        dates = {row.day for row in days}
+        cs = self.use_czech
+        lines = ["Rozpis podle odběrných míst:" if cs else "Breakdown by supply point:"]
+        total = Decimal("0")
+        by_day = {}
+        evidence = []
+        for ean, rows in sorted(all_rows.items()):
+            rows = tuple(row for row in rows if row.day in dates)
+            if not rows:
+                continue
+            price = target_sale_price(ean, self.entry.options, default_price)
+            summary = calculate_target_period_summary(rows, price)
+            name = self._target_display_name(ean)
+            location = ean_location(ean, self.entry.options)
+            if location:
+                name += f" — {location}"
+            lines.append(f"{name}: {summary.shared:.2f} kWh × {price:.2f} CZK/kWh = {summary.revenue:.2f} CZK")
+            total += summary.revenue
+            for row in rows:
+                by_day[row.day] = by_day.get(row.day, Decimal("0")) + row.shared
+            evidence.append((ean, rows, price, name))
+        complete = bool(days) and all(
+            row.day in by_day and abs(by_day[row.day] - row.shared) <= Decimal("0.000001")
+            for row in days
+        )
+        if complete:
+            lines.append(f"{'Hodnota sdílení celkem' if cs else 'Total sharing value'}: {total:.2f} CZK")
+        else:
+            lines.append(
+                "Celkovou hodnotu nelze potvrdit: individuální data nejsou dostupná nebo nesouhlasí se skupinou. Rozpis je pouze částečný."
+                if cs else "The total cannot be confirmed: individual data is unavailable or does not match group data. The breakdown is partial."
+            )
+        return lines, (tuple(evidence), complete)
+
     async def render(self) -> list[tuple[str, str]]:
         """Build selected sections once, then reuse them for all recipients."""
         if self.profile.get("report_scope") == "target":
@@ -207,12 +247,17 @@ class ProfileRenderer(EdcReportManager):
         for value in self.profile["periods"]:
             period = ReportPeriod(value)
             start, end, days = await self._async_report_days(period)
+            ean_finance = None
+            finance_evidence = None
+            if self.profile["finance"] and self.profile.get("group_finance_mode") == "ean_prices":
+                ean_finance, finance_evidence = await self._group_ean_finance(period, days)
             # Base change detection on data, not the moving end date of a
             # current-period heading. Revised EDC values still trigger sending.
             content_key = (
                 period.value,
                 start,
                 days,
+                finance_evidence,
                 self.profile["language"],
                 self.profile["energy"],
                 self.profile["finance"],
@@ -275,7 +320,9 @@ class ProfileRenderer(EdcReportManager):
                     lines.append(
                         f"{'Pokrytí sdílením' if cs else 'Sharing coverage'}: {summary.coverage:.1f} %"
                     )
-                if self.profile["finance"]:
+                if ean_finance is not None:
+                    lines.extend(ean_finance)
+                elif self.profile["finance"]:
                     lines.extend(
                         (
                             f"{'Cena' if cs else 'Price'}: {price:.2f} CZK/kWh",

@@ -63,6 +63,7 @@ def profile_schema(
         "only_new": selector.BooleanSelector(),
         "energy": selector.BooleanSelector(),
         "finance": selector.BooleanSelector(),
+        "group_finance_mode": _select(("group_price", "ean_prices")),
         "ean_mode": _select(("hidden", "masked", "full")),
         "report_scope": _select(("group", "target")),
         "target_eans": selector.SelectSelector(
@@ -153,6 +154,7 @@ class ProfileOptionsMixin:
                     recipients[target] = name
         runtime = getattr(self._entry, "runtime_data", None)
         reporter = getattr(runtime, "reporter", None)
+        coordinator = getattr(runtime, "coordinator", None)
         manager = getattr(reporter, "profiles", None)
         statuses = {p["id"]: manager.status(p) for p in profiles} if manager else {}
         overview = format_overview(
@@ -161,6 +163,12 @@ class ProfileOptionsMixin:
             statuses,
             czech=czech,
             local_tz=dt_util.now().tzinfo,
+            ean_labels={
+                item.ean: ean_name(item.ean, self._entry.options)
+                + (f" — {ean_location(item.ean, self._entry.options)}"
+                   if ean_location(item.ean, self._entry.options) else "")
+                for item in getattr(coordinator, "eans", ())
+            },
         )
         choices = [
             selector.SelectOptionDict(
