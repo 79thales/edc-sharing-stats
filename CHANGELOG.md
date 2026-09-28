@@ -1,5 +1,15 @@
 # Přehled změn / Changelog
 
+## 0.1.27 – 2026-09-28
+
+### Čeština
+
+- Stabilizační vydání: testování QR e-mailu již nevyžaduje lokálně nainstalovaný QR balíček v běžném validačním jobu.
+
+### English
+
+- Stabilization release: QR email tests no longer require a locally installed QR package in the regular validation job.
+
 ## 0.1.26 – 2026-09-28
 
 ### Čeština

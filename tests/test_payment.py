@@ -8,6 +8,7 @@ import unittest
 from base64 import b64decode
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 
 spec = importlib.util.spec_from_file_location(
@@ -58,7 +59,18 @@ class PaymentTests(unittest.TestCase):
         self.assertEqual(payment.payment_amount(Decimal("1.005")), Decimal("1.00"))
 
     def test_payment_qr_is_an_inline_png_data_uri(self):
-        image = payment.payment_qr_data_uri("SPD*1.0*ACC:CZ0000000000000000000000")
+        testcase = self
+
+        class FakeQrImage:
+            def save(self, output, *, format):
+                testcase.assertEqual(format, "PNG")
+                output.write(b"\x89PNG\r\n\x1a\n")
+
+        qrcode = SimpleNamespace(make=lambda _payload: FakeQrImage())
+        with unittest.mock.patch.dict(sys.modules, {"qrcode": qrcode}):
+            image = payment.payment_qr_data_uri(
+                "SPD*1.0*ACC:CZ0000000000000000000000"
+            )
         self.assertTrue(image.startswith("data:image/png;base64,"))
         self.assertTrue(b64decode(image.partition(",")[2]).startswith(b"\x89PNG\r\n\x1a\n"))
 
