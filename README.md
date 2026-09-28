@@ -8,7 +8,7 @@ EDC Sharing Stats is a custom Home Assistant integration for electricity-sharing
 
 Historical EDC profile data is aggregated into hourly and daily Home Assistant long-term statistics. The integration supports a resumable, one-year history backfill, refresh and backfill diagnostics, and optional on-demand or scheduled email reports in Czech or English through Home Assistant `notify` entities.
 
-Named report profiles provide independent recipients, languages, schedules and a selection of daily, weekly, monthly or yearly sections, combined into one email or sent separately. Profiles support current or completed periods, previews, manual sending, optional financial details, masked EANs and delivery status.
+Named report profiles provide independent recipients, languages, schedules and a selection of daily, weekly, monthly or yearly sections, combined into one email or sent separately. Profiles support current or completed periods, previews, manual sending, optional financial details, masked EANs and delivery status. With Home Assistant 2026.8 or newer and SMTP, a profile can also include a locally generated Czech QR payment request for a positive, complete monthly or yearly amount.
 
 When EDC returns multiple target EANs, the integration also creates an individual device for each target supply point. You can assign a local name and location, optionally override the group electricity price for that target, and send either the original group report or target-specific report sections to different recipients.
 
@@ -40,6 +40,7 @@ Vlastní integrace pro Home Assistant, která načítá vyhodnocení skupiny sd�
 - ruční i automatické denní, týdenní, měsíční a roční reporty na jednu nebo více e-mailových adres,
 - volba češtiny nebo angličtiny pro předmět i obsah e-mailových reportů,
 - souhrnný report se všemi čtyřmi obdobími v jediném e-mailu.
+- volitelná QR platba podle českého formátu SPAYD pro úplný měsíční nebo roční report s kladnou částkou.
 
 > [!IMPORTANT]
 > Hodnota sdílení neodečítá investiční ani provozní náklady a nepředstavuje čistý zisk. Jde o hodnotu skutečně nasdílené energie při nastavené ceně.
@@ -95,6 +96,16 @@ V profilu s rozsahem **Celá skupina** lze zvolit **Výpočet financí celé sku
 Přehled profilů ukazuje příjemce, rozsah celé skupiny nebo konkrétní vybraná odběrná místa a zvolený výpočet skupinových financí. **Všichni příjemci jednoho profilu dostávají stejný obsah.** Pro příjemce, který smí vidět pouze své odběrné místo, vytvořte samostatný profil s jeho EANem.
 
 Group report profiles can optionally calculate financial totals using individual target EAN prices, with a per-supply-point breakdown. The default remains the group price. Totals are confirmed only when individual shared energy matches group data for every included day; this does not verify intraday interval completeness. Prices are the current configured prices. The profile overview shows recipients and supply-point scope; all recipients of one profile receive the same content.
+
+### QR platba v měsíčních a ročních reportech
+
+Pro každou skupinu lze v **Nastavit → Účet pro QR platby** uložit české číslo účtu a čtyřmístný kód banky. Volitelné předčíslí účtu se zadává ve tvaru `předčíslí-číslo`; IBAN se pro QR platbu dopočítá lokálně. Tento účet patří právě otevřené skupině a při změně skupiny v obecném nastavení se z bezpečnostních důvodů odstraní.
+
+Potom v konkrétním profilu zapněte **Přiložit výzvu k platbě QR kódem**. QR obsahuje lokálně vytvořený text SPAYD 1.0, částku v Kč, účet skupiny a zprávu ve tvaru `EDC sdileni <název skupiny> – mesic YYYY-MM` nebo `… – rok YYYY`. V e-mailu SMTP je QR vložen přímo do HTML obsahu a současně přiložen jako PNG. Žádný údaj se neposílá službě pro generování QR kódů.
+
+Výzva k platbě vznikne pouze tehdy, když report obsahuje **úplný kalendářní měsíc nebo rok**, výsledná hodnota sdílení je kladná a jsou zapnuté finance. Denní, týdenní, nulové a neúplné reporty QR platbu úmyslně neobsahují. U skupinového součtu podle individuálních cen EANů musí být navíc potvrzena shoda individuálních denních hodnot se souhrnem skupiny. Pro konečný měsíční nebo roční výkaz proto obvykle zvolte rozsah **Uzavřené období**.
+
+QR platba vyžaduje Home Assistant **2026.8 nebo novější** a příjemce z integrace **SMTP**; ostatní reporty i běžné `notify.send_message` zůstávají beze změny. Dočasný soubor QR je uložen pouze při odesílání pod `media/edc_sharing` a po předání SMTP se odstraní.
 
 ### Samostatné profily příjemců a rozvrhů
 
@@ -203,6 +214,7 @@ Hodinové body používají jednoznačné UTC časové značky. Při podzimním 
 - Přístupový a obnovovací token jsou pouze v paměti API klienta. Integrace je neukládá do úložiště průběhu historie, atributů entit ani vlastních logů.
 - Diagnostické entity záměrně zobrazují celý EAN a název skupiny. Dlouhodobé statistiky obsahují energetické hodnoty a interní ID skupiny.
 - Volitelné názvy, lokality a vlastní ceny EANů jsou uloženy v možnostech integrace a mohou být součástí záloh Home Assistantu. Název a lokalita se zobrazí na zařízení a mohou být zahrnuty v cíleném reportu.
+- Volitelný účet QR platby je uložen v možnostech konkrétní skupiny a může být součástí záloh Home Assistantu. IBAN a QR obrázek se z něj vytvářejí lokálně pouze při odesílání; dočasný QR soubor se po předání SMTP odstraní.
 - E-mailové reporty obsahují název skupiny a zvolené hodnoty. Nové profily standardně maskují EAN; celé EAN obsahují původní reporty a profily s výslovně zapnutým úplným zobrazením. Odesílají se výhradně přes vybrané Home Assistant `notify` entity; používejte pouze důvěryhodné příjemce a SMTP server.
 
 ## Podpora

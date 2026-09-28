@@ -69,7 +69,8 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.error = HomeAssistantError
         self.hass = SimpleNamespace(
             services=SimpleNamespace(async_call=AsyncMock()),
-            config=SimpleNamespace(language="cs"),
+            config=SimpleNamespace(language="cs", path=lambda *parts: str(Path(*parts))),
+            async_add_executor_job=AsyncMock(),
         )
         self.entry = SimpleNamespace(
             entry_id="test",
@@ -272,6 +273,56 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
             body = (await self.manager.preview(self.profile))[0][1]
             self.assertIn("Hodnota sdílení: 8.00 CZK", body)
             fetch.assert_not_awaited()
+
+    async def test_qr_payment_uses_smtp_only_for_complete_monthly_value(self):
+        from dataclasses import replace
+
+        self.entry.options.update(
+            {"payment_account_number": "120000001", "payment_bank_code": "9999"}
+        )
+        profile = self.profile | {
+            "periods": ["monthly"],
+            "combined": False,
+            "payment_qr": True,
+        }
+        complete_days = tuple(
+            replace(self.day, day=date(2026, 9, number)) for number in range(1, 6)
+        )
+        attachment = {
+            "media_source": {"media_content_id": "media-source://test", "media_content_type": "image/png"},
+            "filename": "qr.png",
+            "content_id": "edc_payment_qr_1",
+        }
+        with patch.object(
+            self.runtime.ProfileRenderer,
+            "_async_fetch_days",
+            AsyncMock(return_value=complete_days),
+        ), patch.object(
+            self.runtime.ProfileReportManager,
+            "_async_create_payment_attachment",
+            AsyncMock(return_value=(Path("qr.png"), attachment)),
+        ):
+            await self.manager.async_send(profile)
+        calls = self.hass.services.async_call.call_args_list
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all(call.args[:2] == ("smtp", "send_message") for call in calls))
+        data = calls[0].args[2]
+        self.assertIn("Platba QR:", data["message"])
+        self.assertIn("cid:edc_payment_qr_1", data["html"])
+        self.assertEqual(len(data["attachments"]), 1)
+
+    async def test_qr_payment_is_absent_for_incomplete_period(self):
+        self.entry.options.update(
+            {"payment_account_number": "120000001", "payment_bank_code": "9999"}
+        )
+        profile = self.profile | {"periods": ["monthly"], "payment_qr": True}
+        with patch.object(
+            self.runtime.ProfileRenderer,
+            "_async_fetch_days",
+            AsyncMock(return_value=(self.day,)),
+        ):
+            _title, body = (await self.manager.preview(profile))[0]
+        self.assertNotIn("Platba QR:", body)
 
     async def test_profile_overview_shows_scope_and_shared_audience(self):
         overview = importlib.import_module("_edc_delivery_test.profile_overview")

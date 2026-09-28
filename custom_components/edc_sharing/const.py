@@ -17,6 +17,8 @@ CONF_SUMMARY_REPORT = "summary_report"
 CONF_REPORT_TIME = "report_time"
 CONF_REPORT_DAY = "report_day"
 CONF_REPORT_LANGUAGE = "report_language"
+CONF_PAYMENT_ACCOUNT_NUMBER = "payment_account_number"
+CONF_PAYMENT_BANK_CODE = "payment_bank_code"
 
 DEFAULT_SALE_PRICE = 2.0
 DEFAULT_SCAN_INTERVAL = timedelta(hours=1)

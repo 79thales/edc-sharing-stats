@@ -42,6 +42,7 @@
         "menu_options": {
           "general": "Obecné nastavení a původní tlačítka",
           "ean_settings": "Detaily EAN a ceny",
+          "payment_settings": "Účet pro QR platby",
           "profiles": "Profily reportů"
         }
       },
@@ -87,6 +88,18 @@
           "price": "Použije se jen při vypnuté volbě prodejní ceny skupiny."
         }
       },
+      "payment_settings": {
+        "title": "Účet pro QR platby",
+        "description": "Volitelný místní účet pro tuto skupinu sdílení. Použijí jej pouze profily reportů se zapnutou QR platbou. Chcete-li účet odstranit, nechte obě pole prázdná.",
+        "data": {
+          "payment_account_number": "Číslo českého účtu",
+          "payment_bank_code": "Kód banky"
+        },
+        "data_description": {
+          "payment_account_number": "Zadejte číslo účtu; volitelné předčíslí lze uvést ve tvaru předčíslí-číslo. IBAN pro QR platbu se dopočítá lokálně.",
+          "payment_bank_code": "Přesně čtyři číslice. Účet patří této skupině sdílení a při změně skupiny se odstraní."
+        }
+      },
       "profiles": {
         "title": "Přehled profilů reportů",
         "description": "{overview}\n\nČasy odpovídají časovému pásmu Home Assistantu. Přehled se obnoví při opětovném otevření. Úspěšné předání SMTP nepotvrzuje doručení do schránky.\n\nNíže vyberte profil pro úpravu nebo přidejte nový.",
@@ -127,6 +140,7 @@
           "energy": "Zahrnout energii a pokrytí",
           "finance": "Zahrnout cenu a hodnotu sdílení",
           "group_finance_mode": "Výpočet financí celé skupiny",
+          "payment_qr": "Přiložit výzvu k platbě QR kódem",
           "target_daily_mode": "Datum denního reportu cílových EANů",
           "ean_mode": "Zobrazení EAN",
           "report_scope": "Rozsah reportu",
@@ -141,7 +155,8 @@
           "only_new": "Při plánovaném pokusu přeskočí nezměněná data. Odeslat nyní tuto kontrolu obejde.",
           "report_scope": "Report skupiny zachová původní souhrny. Report cílových EANů obsahuje samostatnou část pro každý vybraný EAN; pro různé příjemce vytvořte samostatné profily.",
           "target_eans": "Použije se pouze pro rozsah cílových EANů. Jejich název, lokalita a volitelná vlastní cena se nastavují v detailech EAN.",
-          "group_finance_mode": "Platí pouze pro report celé skupiny se zapnutými financemi. Součet podle EANů použije vlastní cenu každého místa, jinak cenu skupiny. Všichni příjemci profilu obdrží celý rozpis."
+          "group_finance_mode": "Platí pouze pro report celé skupiny se zapnutými financemi. Součet podle EANů použije vlastní cenu každého místa, jinak cenu skupiny. Všichni příjemci profilu obdrží celý rozpis.",
+          "payment_qr": "Vyžaduje účet pro QR platby v nastavení této integrace, SMTP a Home Assistant 2026.8 nebo novější. Výzva k platbě vznikne jen pro kladnou částku za úplný měsíční nebo roční rozsah; pro denní, týdenní ani neúplná data se nevytvoří."
         }
       },
       "profile_delete": {
@@ -169,7 +184,9 @@
       "invalid_profile": "Vyplňte název, alespoň jednoho příjemce a období, vyberte energii nebo finance a zkontrolujte rozvrh.",
       "report_failed": "Report se nepodařilo připravit nebo předat všem příjemcům. Zkontrolujte dostupnost EDC a nastavení SMTP.",
       "no_eans": "EDC zatím nevrátilo žádný EAN. Načtěte data EDC a zkuste to znovu.",
-      "invalid_ean_settings": "Zadejte platný název, lokalitu a nezápornou vlastní cenu."
+      "invalid_ean_settings": "Zadejte platný název, lokalitu a nezápornou vlastní cenu.",
+      "invalid_payment_settings": "Zadejte platné číslo českého účtu a čtyřmístný kód banky, nebo nechte obě pole prázdná pro odstranění účtu QR plateb.",
+      "payment_not_configured": "Před zapnutím QR platby v profilu reportu nastavte účet QR plateb pro tuto skupinu sdílení."
     },
     "abort": {
       "cannot_connect": "K portálu EDC se nelze připojit.",

@@ -12,6 +12,8 @@ from homeassistant.util import dt as dt_util
 
 from .profile_overview import delivery_label, format_overview
 from .ean_settings import ean_location, ean_name
+from .payment import PaymentConfigurationError, parse_czech_account
+from .const import CONF_PAYMENT_ACCOUNT_NUMBER, CONF_PAYMENT_BANK_CODE
 
 from .report_profiles import (
     CONF_REPORT_PROFILES,
@@ -64,6 +66,7 @@ def profile_schema(
         "energy": selector.BooleanSelector(),
         "finance": selector.BooleanSelector(),
         "group_finance_mode": _select(("group_price", "ean_prices")),
+        "payment_qr": selector.BooleanSelector(),
         "target_daily_mode": _select(("group_day", "per_ean_day")),
         "ean_mode": _select(("hidden", "masked", "full")),
         "report_scope": _select(("group", "target")),
@@ -212,7 +215,19 @@ class ProfileOptionsMixin:
                 errors["base"] = "invalid_profile"
                 self._selected_profile.update(user_input)
             else:
-                return self._save_profile(profile)
+                if profile["payment_qr"]:
+                    try:
+                        parse_czech_account(
+                            self._entry.options.get(CONF_PAYMENT_ACCOUNT_NUMBER),
+                            self._entry.options.get(CONF_PAYMENT_BANK_CODE),
+                        )
+                    except PaymentConfigurationError:
+                        errors["base"] = "payment_not_configured"
+                        self._selected_profile.update(user_input)
+                    else:
+                        return self._save_profile(profile)
+                else:
+                    return self._save_profile(profile)
         return self.async_show_form(
             step_id="profile_edit",
             data_schema=profile_schema(

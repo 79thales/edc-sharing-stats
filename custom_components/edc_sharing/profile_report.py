@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from html import escape
 from hashlib import sha256
+from pathlib import Path
+from secrets import token_hex
 
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_time_change
@@ -13,8 +16,23 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .calculation import TargetDailySharing, calculate_period_summary, calculate_target_period_summary
-from .const import CONF_SALE_PRICE, CONF_SSE_ID, CONF_SSE_NAME, DEFAULT_SALE_PRICE
+from .const import (
+    CONF_PAYMENT_ACCOUNT_NUMBER,
+    CONF_PAYMENT_BANK_CODE,
+    CONF_SALE_PRICE,
+    CONF_SSE_ID,
+    CONF_SSE_NAME,
+    DEFAULT_SALE_PRICE,
+)
 from .ean_settings import ean_location, ean_name, target_sale_price
+from .payment import (
+    CzechBankAccount,
+    PaymentRequest,
+    parse_czech_account,
+    payment_amount,
+    payment_message,
+    write_payment_qr,
+)
 from .report import EdcReportManager, ReportPeriod
 from .report_profiles import configured_profiles, due_on, next_run, period_range
 
@@ -31,6 +49,13 @@ class ProfileRenderer(EdcReportManager):
             tuple[date, date], dict[str, tuple[TargetDailySharing, ...]]
         ] = {}
         self.fingerprints: list[str] = []
+        self.payment_requests: list[tuple[PaymentRequest, ...]] = []
+        self._payment_account: CzechBankAccount | None = None
+        if self.profile.get("payment_qr", False):
+            self._payment_account = parse_czech_account(
+                self.entry.options.get(CONF_PAYMENT_ACCOUNT_NUMBER),
+                self.entry.options.get(CONF_PAYMENT_BANK_CODE),
+            )
 
     @property
     def use_czech(self) -> bool:
@@ -126,10 +151,65 @@ class ProfileRenderer(EdcReportManager):
         periods = ", ".join(labels[p][0 if self.use_czech else 1] for p in self.profile["periods"])
         return self._profile_subject(f"{'Souhrn' if self.use_czech else 'Summary'}: {periods}")
 
+    @staticmethod
+    def _complete_period(days: tuple, start: date, end: date) -> bool:
+        """Payment requests need every calendar day of their requested range."""
+        return {row.day for row in days} == {
+            start + timedelta(days=offset) for offset in range((end - start).days)
+        }
+
+    def _payment_request(
+        self,
+        period: ReportPeriod,
+        start: date,
+        end: date,
+        days: tuple,
+        value: Decimal,
+    ) -> PaymentRequest | None:
+        """Return a safe payment request only for complete monthly/yearly data."""
+        if (
+            self._payment_account is None
+            or period not in (ReportPeriod.MONTHLY, ReportPeriod.YEARLY)
+            or not self._complete_period(days, start, end)
+            or (amount := payment_amount(value)) is None
+        ):
+            return None
+        period_text = (
+            f"mesic {start:%Y-%m}"
+            if period == ReportPeriod.MONTHLY
+            else f"rok {start:%Y}"
+        )
+        return PaymentRequest(
+            account=self._payment_account,
+            amount=amount,
+            message=payment_message(self.entry.data[CONF_SSE_NAME], period_text),
+        )
+
+    def _payment_lines(self, request: PaymentRequest) -> list[str]:
+        """Keep the payment transparent in both previews and text-only mail."""
+        if self.use_czech:
+            return [
+                "",
+                "Platba QR:",
+                f"Částka k úhradě: {request.amount:.2f} CZK",
+                f"Účet: {request.account.domestic}",
+                f"Zpráva pro příjemce: {request.message}",
+                "QR kód bude vložen do e-mailu a přiložen jako PNG.",
+            ]
+        return [
+            "",
+            "QR payment:",
+            f"Amount due: {request.amount:.2f} CZK",
+            f"Account: {request.account.domestic}",
+            f"Recipient message: {request.message}",
+            "The QR code will be embedded in the email and attached as PNG.",
+        ]
+
     async def _render_target_reports(self) -> list[tuple[str, str]]:
         """Render individual recipient reports without changing group reports."""
         reports: list[tuple[str, str]] = []
         fingerprints: list[str] = []
+        report_payments: list[tuple[PaymentRequest, ...]] = []
         default_price = Decimal(
             str(
                 self.entry.options.get(
@@ -163,8 +243,10 @@ class ProfileRenderer(EdcReportManager):
                 self.profile["language"],
                 self.profile["energy"],
                 self.profile["finance"],
+                self.profile.get("payment_qr", False),
                 self.profile["ean_mode"],
                 self.entry.data[CONF_SSE_ID],
+                self._payment_account.iban if self._payment_account else None,
             )
             fingerprints.append(sha256(repr(content_key).encode()).hexdigest())
             title = self._period_subject(period, start, end)
@@ -173,6 +255,7 @@ class ProfileRenderer(EdcReportManager):
                 f"{'Skupina' if cs else 'Group'}: {self.entry.data[CONF_SSE_NAME]}",
                 f"{'Období' if cs else 'Period'}: {start} – {end - timedelta(days=1)}",
             ]
+            payments: list[PaymentRequest] = []
             for ean in selected_eans:
                 days = all_rows.get(ean, ())
                 name = self._target_display_name(ean)
@@ -229,9 +312,18 @@ class ProfileRenderer(EdcReportManager):
                             f"{'Hodnota sdílení' if cs else 'Sharing value'}: {summary.revenue:.2f} CZK",
                         )
                     )
+                    if request := self._payment_request(
+                        period, start, end, days, summary.revenue
+                    ):
+                        lines.extend(self._payment_lines(request))
+                        payments.append(request)
             reports.append((title, "\n".join(lines)))
+            report_payments.append(tuple(payments))
         if self.profile["combined"]:
             self.fingerprints = [sha256("".join(fingerprints).encode()).hexdigest()]
+            self.payment_requests = [
+                tuple(payment for payments in report_payments for payment in payments)
+            ]
             return [
                 (
                     reports[0][0] if len(reports) == 1 else self._summary_subject(),
@@ -241,6 +333,7 @@ class ProfileRenderer(EdcReportManager):
                 )
             ]
         self.fingerprints = fingerprints
+        self.payment_requests = report_payments
         return reports
 
     async def _group_ean_finance(self, period, days):
@@ -281,7 +374,7 @@ class ProfileRenderer(EdcReportManager):
                 "Celkovou hodnotu nelze potvrdit: individuální data nejsou dostupná nebo nesouhlasí se skupinou. Rozpis je pouze částečný."
                 if cs else "The total cannot be confirmed: individual data is unavailable or does not match group data. The breakdown is partial."
             )
-        return lines, (tuple(evidence), complete)
+        return lines, (tuple(evidence), complete, total)
 
     async def render(self) -> list[tuple[str, str]]:
         """Build selected sections once, then reuse them for all recipients."""
@@ -289,6 +382,7 @@ class ProfileRenderer(EdcReportManager):
             return await self._render_target_reports()
         reports = []
         fingerprints = []
+        report_payments: list[tuple[PaymentRequest, ...]] = []
         for value in self.profile["periods"]:
             period = ReportPeriod(value)
             start, end, days = await self._async_report_days(period)
@@ -306,8 +400,10 @@ class ProfileRenderer(EdcReportManager):
                 self.profile["language"],
                 self.profile["energy"],
                 self.profile["finance"],
+                self.profile.get("payment_qr", False),
                 self.profile["ean_mode"],
                 self.entry.data[CONF_SSE_ID],
+                self._payment_account.iban if self._payment_account else None,
                 self.entry.options.get(
                     CONF_SALE_PRICE,
                     self.entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE),
@@ -320,6 +416,7 @@ class ProfileRenderer(EdcReportManager):
                 title,
                 f"{'Období' if cs else 'Period'}: {start} – {end - timedelta(days=1)}",
             ]
+            payments: list[PaymentRequest] = []
             if not days:
                 lines.append(
                     "Data pro toto období nejsou dostupná."
@@ -367,6 +464,14 @@ class ProfileRenderer(EdcReportManager):
                     )
                 if ean_finance is not None:
                     lines.extend(ean_finance)
+                    _evidence, complete, total = finance_evidence
+                    if complete and (
+                        request := self._payment_request(
+                            period, start, end, days, total
+                        )
+                    ):
+                        lines.extend(self._payment_lines(request))
+                        payments.append(request)
                 elif self.profile["finance"]:
                     lines.extend(
                         (
@@ -374,6 +479,11 @@ class ProfileRenderer(EdcReportManager):
                             f"{'Hodnota sdílení' if cs else 'Sharing value'}: {summary.revenue:.2f} CZK",
                         )
                     )
+                    if request := self._payment_request(
+                        period, start, end, days, summary.revenue
+                    ):
+                        lines.extend(self._payment_lines(request))
+                        payments.append(request)
                 if self.profile["ean_mode"] != "hidden":
                     for role, label in (
                         ("sharing", "Sdílející EAN" if cs else "Sharing EAN"),
@@ -388,8 +498,12 @@ class ProfileRenderer(EdcReportManager):
                         ]
                         lines.append(f"{label}: {', '.join(eans) or '–'}")
             reports.append((title, "\n".join(lines)))
+            report_payments.append(tuple(payments))
         if self.profile["combined"]:
             self.fingerprints = [sha256("".join(fingerprints).encode()).hexdigest()]
+            self.payment_requests = [
+                tuple(payment for payments in report_payments for payment in payments)
+            ]
             return [
                 (
                     reports[0][0] if len(reports) == 1 else self._summary_subject(),
@@ -399,6 +513,7 @@ class ProfileRenderer(EdcReportManager):
                 )
             ]
         self.fingerprints = fingerprints
+        self.payment_requests = report_payments
         return reports
 
 
@@ -470,6 +585,113 @@ class ProfileReportManager:
         async with self.lock:
             return await ProfileRenderer(self.reporter, profile).render()
 
+    async def _async_create_payment_attachment(
+        self, request: PaymentRequest, content_id: str
+    ) -> tuple[Path, dict]:
+        """Create one transient local QR image for SMTP's media-source API."""
+        filename = f"edc_payment_qr_{token_hex(16)}.png"
+        path = Path(self.hass.config.path("media", "edc_sharing", filename))
+        await self.hass.async_add_executor_job(
+            self._write_payment_qr_file, path, request.spd
+        )
+        return path, {
+            "media_source": {
+                "media_content_id": (
+                    f"media-source://media_source/local/edc_sharing/{filename}"
+                ),
+                "media_content_type": "image/png",
+            },
+            "filename": filename,
+            "content_id": content_id,
+        }
+
+    @staticmethod
+    def _write_payment_qr_file(path: Path, payload: str) -> None:
+        """Perform QR PNG creation outside Home Assistant's event loop."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_payment_qr(str(path), payload)
+
+    @staticmethod
+    def _remove_payment_qr_files(paths: tuple[Path, ...]) -> None:
+        """Discard temporary payment images as soon as SMTP has read them."""
+        for path in paths:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
+    @staticmethod
+    def _payment_html(
+        body: str, requests: tuple[PaymentRequest, ...], *, czech: bool
+    ) -> str:
+        """Render plain report content with CID-backed QR images for SMTP."""
+        sections = ["<html><body><pre>", escape(body), "</pre>"]
+        payment_label = "Platba QR" if czech else "QR payment"
+        account_label = "Účet" if czech else "Account"
+        message_label = "Zpráva pro příjemce" if czech else "Recipient message"
+        for index, request in enumerate(requests, start=1):
+            sections.extend(
+                (
+                    "<hr>",
+                    f"<p><strong>{payment_label}: {request.amount:.2f} CZK</strong><br>",
+                    f"{account_label}: {escape(request.account.domestic)}<br>",
+                    f"{message_label}: {escape(request.message)}</p>",
+                    f'<img src="cid:edc_payment_qr_{index}" '
+                    f'alt="QR payment {index}">',
+                )
+            )
+        sections.append("</body></html>")
+        return "".join(sections)
+
+    async def _async_send_to_recipient(
+        self,
+        target: str,
+        title: str,
+        body: str,
+        requests: tuple[PaymentRequest, ...],
+        *,
+        czech: bool,
+    ) -> None:
+        """Use generic notify delivery unless an inline SMTP QR is requested."""
+        if not requests:
+            await self.hass.services.async_call(
+                "notify",
+                "send_message",
+                {"title": title, "message": body},
+                target={"entity_id": target},
+                blocking=True,
+            )
+            return
+        has_service = getattr(self.hass.services, "has_service", None)
+        if callable(has_service) and not has_service("smtp", "send_message"):
+            raise HomeAssistantError("The SMTP send_message action is unavailable")
+        paths: list[Path] = []
+        try:
+            attachments = []
+            for index, request in enumerate(requests, start=1):
+                path, attachment = await self._async_create_payment_attachment(
+                    request, f"edc_payment_qr_{index}"
+                )
+                paths.append(path)
+                attachments.append(attachment)
+            await self.hass.services.async_call(
+                "smtp",
+                "send_message",
+                {
+                    "title": title,
+                    "message": body,
+                    "html": self._payment_html(body, requests, czech=czech),
+                    "attachments": attachments,
+                },
+                target={"entity_id": target},
+                blocking=True,
+            )
+        finally:
+            if paths:
+                await self.hass.async_add_executor_job(
+                    self._remove_payment_qr_files, tuple(paths)
+                )
+
     async def async_send(self, profile: dict, *, scheduled: bool = False) -> None:
         if self.closed:
             raise HomeAssistantError("Report settings are reloading. Try again.")
@@ -506,12 +728,12 @@ class ProfileReportManager:
                         ):
                             continue
                         try:
-                            await self.hass.services.async_call(
-                                "notify",
-                                "send_message",
-                                {"title": title, "message": body},
-                                target={"entity_id": target},
-                                blocking=True,
+                            await self._async_send_to_recipient(
+                                target,
+                                title,
+                                body,
+                                renderer.payment_requests[index],
+                                czech=renderer.use_czech,
                             )
                         except Exception:  # noqa: BLE001 -- isolate arbitrary notify integrations and redact their errors
                             # SMTP exceptions may include addresses or credentials.
