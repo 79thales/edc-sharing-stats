@@ -285,22 +285,18 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
             "combined": False,
             "payment_qr": True,
         }
+        self.hass.async_add_executor_job.side_effect = lambda job, *args: job(*args)
         complete_days = tuple(
             replace(self.day, day=date(2026, 9, number)) for number in range(1, 6)
         )
-        attachment = {
-            "media_source": {"media_content_id": "media-source://test", "media_content_type": "image/png"},
-            "filename": "qr.png",
-            "content_id": "edc_payment_qr_1",
-        }
         with patch.object(
             self.runtime.ProfileRenderer,
             "_async_fetch_days",
             AsyncMock(return_value=complete_days),
         ), patch.object(
-            self.runtime.ProfileReportManager,
-            "_async_create_payment_attachment",
-            AsyncMock(return_value=(Path("qr.png"), attachment)),
+            self.runtime,
+            "payment_qr_data_uri",
+            return_value="data:image/png;base64,cXItcG5n",
         ):
             await self.manager.async_send(profile)
         calls = self.hass.services.async_call.call_args_list
@@ -308,8 +304,8 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(call.args[:2] == ("smtp", "send_message") for call in calls))
         data = calls[0].args[2]
         self.assertIn("Platba QR:", data["message"])
-        self.assertIn("cid:edc_payment_qr_1", data["html"])
-        self.assertEqual(len(data["attachments"]), 1)
+        self.assertIn("data:image/png;base64,cXItcG5n", data["html"])
+        self.assertNotIn("attachments", data)
 
     async def test_qr_payment_is_absent_for_incomplete_period(self):
         self.entry.options.update(

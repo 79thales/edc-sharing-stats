@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 import unittest
+from base64 import b64decode
 from decimal import Decimal
 from pathlib import Path
 
@@ -55,6 +56,11 @@ class PaymentTests(unittest.TestCase):
         self.assertEqual(payment.payment_amount(Decimal("0")), None)
         self.assertEqual(payment.payment_amount(Decimal("-0.01")), None)
         self.assertEqual(payment.payment_amount(Decimal("1.005")), Decimal("1.00"))
+
+    def test_payment_qr_is_an_inline_png_data_uri(self):
+        image = payment.payment_qr_data_uri("SPD*1.0*ACC:CZ0000000000000000000000")
+        self.assertTrue(image.startswith("data:image/png;base64,"))
+        self.assertTrue(b64decode(image.partition(",")[2]).startswith(b"\x89PNG\r\n\x1a\n"))
 
 
 if __name__ == "__main__":

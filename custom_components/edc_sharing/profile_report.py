@@ -7,8 +7,6 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from html import escape
 from hashlib import sha256
-from pathlib import Path
-from secrets import token_hex
 
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_time_change
@@ -31,7 +29,7 @@ from .payment import (
     parse_czech_account,
     payment_amount,
     payment_message,
-    write_payment_qr,
+    payment_qr_data_uri,
 )
 from .report import EdcReportManager, ReportPeriod
 from .report_profiles import configured_profiles, due_on, next_run, period_range
@@ -194,7 +192,7 @@ class ProfileRenderer(EdcReportManager):
                 f"Částka k úhradě: {request.amount:.2f} CZK",
                 f"Účet: {request.account.domestic}",
                 f"Zpráva pro příjemce: {request.message}",
-                "QR kód bude vložen do e-mailu a přiložen jako PNG.",
+                "QR kód bude součástí HTML obsahu e-mailu.",
             ]
         return [
             "",
@@ -202,7 +200,7 @@ class ProfileRenderer(EdcReportManager):
             f"Amount due: {request.amount:.2f} CZK",
             f"Account: {request.account.domestic}",
             f"Recipient message: {request.message}",
-            "The QR code will be embedded in the email and attached as PNG.",
+            "The QR code is included directly in the HTML email body.",
         ]
 
     async def _render_target_reports(self) -> list[tuple[str, str]]:
@@ -585,58 +583,27 @@ class ProfileReportManager:
         async with self.lock:
             return await ProfileRenderer(self.reporter, profile).render()
 
-    async def _async_create_payment_attachment(
-        self, request: PaymentRequest, content_id: str
-    ) -> tuple[Path, dict]:
-        """Create one transient local QR image for SMTP's media-source API."""
-        filename = f"edc_payment_qr_{token_hex(16)}.png"
-        path = Path(self.hass.config.path("media", "edc_sharing", filename))
-        await self.hass.async_add_executor_job(
-            self._write_payment_qr_file, path, request.spd
-        )
-        return path, {
-            "media_source": {
-                "media_content_id": (
-                    f"media-source://media_source/local/edc_sharing/{filename}"
-                ),
-                "media_content_type": "image/png",
-            },
-            "filename": filename,
-            "content_id": content_id,
-        }
-
-    @staticmethod
-    def _write_payment_qr_file(path: Path, payload: str) -> None:
-        """Perform QR PNG creation outside Home Assistant's event loop."""
-        path.parent.mkdir(parents=True, exist_ok=True)
-        write_payment_qr(str(path), payload)
-
-    @staticmethod
-    def _remove_payment_qr_files(paths: tuple[Path, ...]) -> None:
-        """Discard temporary payment images as soon as SMTP has read them."""
-        for path in paths:
-            try:
-                path.unlink()
-            except OSError:
-                pass
-
     @staticmethod
     def _payment_html(
-        body: str, requests: tuple[PaymentRequest, ...], *, czech: bool
+        body: str,
+        requests: tuple[PaymentRequest, ...],
+        images: tuple[str, ...],
+        *,
+        czech: bool,
     ) -> str:
-        """Render plain report content with CID-backed QR images for SMTP."""
+        """Render report content with in-memory QR images for SMTP HTML."""
         sections = ["<html><body><pre>", escape(body), "</pre>"]
         payment_label = "Platba QR" if czech else "QR payment"
         account_label = "Účet" if czech else "Account"
         message_label = "Zpráva pro příjemce" if czech else "Recipient message"
-        for index, request in enumerate(requests, start=1):
+        for index, (request, image) in enumerate(zip(requests, images), start=1):
             sections.extend(
                 (
                     "<hr>",
                     f"<p><strong>{payment_label}: {request.amount:.2f} CZK</strong><br>",
                     f"{account_label}: {escape(request.account.domestic)}<br>",
                     f"{message_label}: {escape(request.message)}</p>",
-                    f'<img src="cid:edc_payment_qr_{index}" '
+                    f'<img src="{image}" '
                     f'alt="QR payment {index}">',
                 )
             )
@@ -665,32 +632,26 @@ class ProfileReportManager:
         has_service = getattr(self.hass.services, "has_service", None)
         if callable(has_service) and not has_service("smtp", "send_message"):
             raise HomeAssistantError("The SMTP send_message action is unavailable")
-        paths: list[Path] = []
-        try:
-            attachments = []
-            for index, request in enumerate(requests, start=1):
-                path, attachment = await self._async_create_payment_attachment(
-                    request, f"edc_payment_qr_{index}"
-                )
-                paths.append(path)
-                attachments.append(attachment)
-            await self.hass.services.async_call(
-                "smtp",
-                "send_message",
-                {
-                    "title": title,
-                    "message": body,
-                    "html": self._payment_html(body, requests, czech=czech),
-                    "attachments": attachments,
-                },
-                target={"entity_id": target},
-                blocking=True,
-            )
-        finally:
-            if paths:
+        images: list[str] = []
+        for request in requests:
+            images.append(
                 await self.hass.async_add_executor_job(
-                    self._remove_payment_qr_files, tuple(paths)
+                    payment_qr_data_uri, request.spd
                 )
+            )
+        await self.hass.services.async_call(
+            "smtp",
+            "send_message",
+            {
+                "title": title,
+                "message": body,
+                "html": self._payment_html(
+                    body, requests, tuple(images), czech=czech
+                ),
+            },
+            target={"entity_id": target},
+            blocking=True,
+        )
 
     async def async_send(self, profile: dict, *, scheduled: bool = False) -> None:
         if self.closed:

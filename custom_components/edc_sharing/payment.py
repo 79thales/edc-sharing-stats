@@ -6,8 +6,10 @@ financial payload can be tested independently from e-mail delivery.
 
 from __future__ import annotations
 
+from base64 import b64encode
 from dataclasses import dataclass
 from decimal import Decimal
+from io import BytesIO
 import re
 import unicodedata
 
@@ -84,9 +86,16 @@ def payment_amount(value: Decimal) -> Decimal | None:
     return amount if amount > 0 else None
 
 
-def write_payment_qr(path: str, payload: str) -> None:
-    """Write a normal black-and-white QR PNG locally without a web service."""
+def payment_qr_data_uri(payload: str) -> str:
+    """Return a local QR PNG as an inline HTML data URI.
+
+    The image is generated solely in memory.  This avoids both an SMTP
+    attachment and a temporary file or media-source entry in Home Assistant.
+    """
     import qrcode  # Installed by the integration manifest only when needed.
 
     image = qrcode.make(payload)
-    image.save(path)
+    output = BytesIO()
+    image.save(output, format="PNG")
+    encoded = b64encode(output.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"

@@ -101,11 +101,11 @@ Group report profiles can optionally calculate financial totals using individual
 
 Pro každou skupinu lze v **Nastavit → Účet pro QR platby** uložit české číslo účtu a čtyřmístný kód banky. Volitelné předčíslí účtu se zadává ve tvaru `předčíslí-číslo`; IBAN se pro QR platbu dopočítá lokálně. Tento účet patří právě otevřené skupině a při změně skupiny v obecném nastavení se z bezpečnostních důvodů odstraní.
 
-Potom v konkrétním profilu zapněte **Přiložit výzvu k platbě QR kódem**. QR obsahuje lokálně vytvořený text SPAYD 1.0, částku v Kč, účet skupiny a zprávu ve tvaru `EDC sdileni <název skupiny> – mesic YYYY-MM` nebo `… – rok YYYY`. V e-mailu SMTP je QR vložen přímo do HTML obsahu a současně přiložen jako PNG. Žádný údaj se neposílá službě pro generování QR kódů.
+Potom v konkrétním profilu zapněte **Přiložit výzvu k platbě QR kódem**. QR obsahuje lokálně vytvořený text SPAYD 1.0, částku v Kč, účet skupiny a zprávu ve tvaru `EDC sdileni <název skupiny> – mesic YYYY-MM` nebo `… – rok YYYY`. V e-mailu SMTP je QR vložen přímo do HTML obsahu, bez přílohy. Žádný údaj se neposílá službě pro generování QR kódů.
 
 Výzva k platbě vznikne pouze tehdy, když report obsahuje **úplný kalendářní měsíc nebo rok**, výsledná hodnota sdílení je kladná a jsou zapnuté finance. Denní, týdenní, nulové a neúplné reporty QR platbu úmyslně neobsahují. U skupinového součtu podle individuálních cen EANů musí být navíc potvrzena shoda individuálních denních hodnot se souhrnem skupiny. Pro konečný měsíční nebo roční výkaz proto obvykle zvolte rozsah **Uzavřené období**.
 
-QR platba vyžaduje Home Assistant **2026.8 nebo novější** a příjemce z integrace **SMTP**; ostatní reporty i běžné `notify.send_message` zůstávají beze změny. Dočasný soubor QR je uložen pouze při odesílání pod `media/edc_sharing` a po předání SMTP se odstraní.
+QR platba vyžaduje Home Assistant **2026.8 nebo novější** a příjemce z integrace **SMTP**; ostatní reporty i běžné `notify.send_message` zůstávají beze změny. QR PNG vzniká jen v paměti a žádný soubor se do Home Assistantu neukládá.
 
 ### Samostatné profily příjemců a rozvrhů
 

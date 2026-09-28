@@ -1,5 +1,15 @@
 # Přehled změn / Changelog
 
+## 0.1.26 – 2026-09-28
+
+### Čeština
+
+- QR platební kód je nyní vložen jako datový obrázek přímo v HTML e-mailu. Nepoužívá SMTP přílohy, media source ani dočasné soubory.
+
+### English
+
+- The payment QR code is now an inline data image in the HTML email body. It does not use SMTP attachments, media source or temporary files.
+
 ## 0.1.25 – 2026-09-28
 
 ### Čeština
