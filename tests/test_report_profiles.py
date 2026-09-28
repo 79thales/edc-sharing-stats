@@ -106,6 +106,7 @@ class ProfileCalendarTests(unittest.TestCase):
             {"targets": []},
             {"periods": []},
             {"energy": False, "finance": False},
+            {"finance": False, "payment_qr": True},
             {"frequency": "weekly", "weekdays": []},
             {"day": 31},
             {"month": 13},

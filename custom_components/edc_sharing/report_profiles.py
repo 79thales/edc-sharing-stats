@@ -29,6 +29,7 @@ def default_profile(profile_id: str = "") -> dict[str, Any]:
         "energy": True,
         "finance": True,
         "group_finance_mode": "group_price",
+        "payment_qr": False,
         "target_daily_mode": "group_day",
         "ean_mode": "masked",
         "report_scope": "group",
@@ -95,7 +96,14 @@ def validate_profile(profile: dict) -> dict:
     ):
         if result[key] not in choices:
             raise ValueError("invalid_profile")
-    for key in ("enabled", "combined", "only_new", "energy", "finance"):
+    for key in (
+        "enabled",
+        "combined",
+        "only_new",
+        "energy",
+        "finance",
+        "payment_qr",
+    ):
         if not isinstance(result[key], bool):
             raise TypeError("invalid_profile")
     for key in ("periods", "targets", "weekdays", "target_eans"):
@@ -117,6 +125,8 @@ def validate_profile(profile: dict) -> dict:
     if result["report_scope"] == "target" and not result["target_eans"]:
         raise ValueError("invalid_profile")
     if not (result["energy"] or result["finance"]):
+        raise ValueError("invalid_profile")
+    if result["payment_qr"] and not result["finance"]:
         raise ValueError("invalid_profile")
     if any(d not in tuple(str(i) for i in range(7)) for d in result["weekdays"]):
         raise ValueError("invalid_profile")

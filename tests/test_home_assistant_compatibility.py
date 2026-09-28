@@ -298,7 +298,8 @@ class ReportProfileFlowTests(unittest.IsolatedAsyncioTestCase):
 
         menu = await self.flow.async_step_init()
         self.assertEqual(
-            menu["menu_options"], ["general", "ean_settings", "profiles"]
+            menu["menu_options"],
+            ["general", "ean_settings", "payment_settings", "profiles"],
         )
         form = await self.flow.async_step_profiles({"profile": "new"})
         values = default_profile() | {
@@ -340,6 +341,20 @@ class ReportProfileFlowTests(unittest.IsolatedAsyncioTestCase):
             saved["data"]["ean_settings"]["target-example"],
             {"name": "Flat 2", "location": "Prague", "price": "3.5"},
         )
+
+    async def test_payment_account_is_scoped_to_options_and_validated(self):
+        form = await self.flow.async_step_payment_settings()
+        values = form["data_schema"](
+            {"payment_account_number": "12-34", "payment_bank_code": "9999"}
+        )
+        saved = await self.flow.async_step_payment_settings(values)
+        self.assertEqual(saved["data"]["payment_account_number"], "12-34")
+        self.assertEqual(saved["data"]["payment_bank_code"], "9999")
+
+        invalid = await self.flow.async_step_payment_settings(
+            {"payment_account_number": "bad", "payment_bank_code": "9999"}
+        )
+        self.assertEqual(invalid["errors"]["base"], "invalid_payment_settings")
 
     async def test_invalid_profile_stays_in_form(self):
         await self.flow.async_step_profiles({"profile": "new"})

@@ -15,6 +15,7 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import EdcApiClient, EdcApiError, EdcAuthenticationError
+from .payment import PaymentConfigurationError, parse_czech_account
 from .profile_options import ProfileOptionsMixin
 from .report_profiles import CONF_REPORT_PROFILES
 from .const import (
@@ -23,6 +24,8 @@ from .const import (
     CONF_DAILY_REPORT,
     CONF_WEEKLY_REPORT,
     CONF_MONTHLY_REPORT,
+    CONF_PAYMENT_ACCOUNT_NUMBER,
+    CONF_PAYMENT_BANK_CODE,
     CONF_REPORT_DAY,
     CONF_REPORT_LANGUAGE,
     CONF_REPORT_TARGETS,
@@ -189,7 +192,8 @@ class EdcSharingOptionsFlow(ProfileOptionsMixin, OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         return self.async_show_menu(
-            step_id="init", menu_options=["general", "ean_settings", "profiles"]
+            step_id="init",
+            menu_options=["general", "ean_settings", "payment_settings", "profiles"],
         )
 
     def _known_eans(self) -> tuple:
@@ -341,6 +345,54 @@ class EdcSharingOptionsFlow(ProfileOptionsMixin, OptionsFlow):
             },
         )
 
+    async def async_step_payment_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Configure the optional Czech bank account for this sharing group."""
+        errors: dict[str, str] = {}
+        current_account = str(
+            self._entry.options.get(CONF_PAYMENT_ACCOUNT_NUMBER) or ""
+        )
+        current_bank = str(self._entry.options.get(CONF_PAYMENT_BANK_CODE) or "")
+        if user_input is not None:
+            account = str(user_input.get(CONF_PAYMENT_ACCOUNT_NUMBER) or "").strip()
+            bank = str(user_input.get(CONF_PAYMENT_BANK_CODE) or "").strip()
+            if account or bank:
+                try:
+                    parsed = parse_czech_account(account, bank)
+                except PaymentConfigurationError:
+                    errors["base"] = "invalid_payment_settings"
+                else:
+                    return self.async_create_entry(
+                        data=dict(self._entry.options)
+                        | {
+                            CONF_PAYMENT_ACCOUNT_NUMBER: (
+                                (f"{parsed.prefix}-" if parsed.prefix else "")
+                                + parsed.number
+                            ),
+                            CONF_PAYMENT_BANK_CODE: parsed.bank_code,
+                        }
+                    )
+            else:
+                options = dict(self._entry.options)
+                options.pop(CONF_PAYMENT_ACCOUNT_NUMBER, None)
+                options.pop(CONF_PAYMENT_BANK_CODE, None)
+                return self.async_create_entry(data=options)
+        return self.async_show_form(
+            step_id="payment_settings",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_PAYMENT_ACCOUNT_NUMBER, default=current_account
+                    ): selector.TextSelector(),
+                    vol.Optional(
+                        CONF_PAYMENT_BANK_CODE, default=current_bank
+                    ): selector.TextSelector(),
+                }
+            ),
+            errors=errors,
+        )
+
     async def async_step_general(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -388,6 +440,7 @@ class EdcSharingOptionsFlow(ProfileOptionsMixin, OptionsFlow):
             if duplicate:
                 errors[CONF_SSE_ID] = "already_configured"
             else:
+                previous_sse_id = str(self._entry.data[CONF_SSE_ID])
                 new_data = self._entry.data | {
                     CONF_SSE_ID: sse_id,
                     CONF_SSE_NAME: choices[sse_id],
@@ -395,8 +448,14 @@ class EdcSharingOptionsFlow(ProfileOptionsMixin, OptionsFlow):
                 self.hass.config_entries.async_update_entry(
                     self._entry, data=new_data, unique_id=unique_id
                 )
+                options = dict(self._entry.options)
+                if sse_id != previous_sse_id:
+                    # A bank account belongs to one sharing group. Do not
+                    # accidentally carry it over when the group is changed.
+                    options.pop(CONF_PAYMENT_ACCOUNT_NUMBER, None)
+                    options.pop(CONF_PAYMENT_BANK_CODE, None)
                 return self.async_create_entry(
-                    data=dict(self._entry.options)
+                    data=options
                     | {
                         CONF_SALE_PRICE: user_input[CONF_SALE_PRICE],
                         CONF_REPORT_TARGETS: user_input.get(CONF_REPORT_TARGETS, []),

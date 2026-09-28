@@ -42,6 +42,7 @@
         "menu_options": {
           "general": "General settings and original buttons",
           "ean_settings": "EAN details and prices",
+          "payment_settings": "QR payment account",
           "profiles": "Report profiles"
         }
       },
@@ -87,6 +88,18 @@
           "price": "Used only when the group sale price option is disabled."
         }
       },
+      "payment_settings": {
+        "title": "QR payment account",
+        "description": "Optional local account for this sharing group. It is used only by report profiles with QR payment enabled. Leave both fields empty to remove it.",
+        "data": {
+          "payment_account_number": "Czech account number",
+          "payment_bank_code": "Bank code"
+        },
+        "data_description": {
+          "payment_account_number": "Enter the domestic account number; an optional prefix may use the prefix-number format. The IBAN is calculated locally for the QR payment.",
+          "payment_bank_code": "Exactly four digits. The account is tied to this sharing group and is removed if you select another group."
+        }
+      },
       "profiles": {
         "title": "Report profiles overview",
         "description": "{overview}\n\nTimes use the Home Assistant time zone. Reopen this page to refresh the overview. A successful SMTP handoff does not confirm inbox delivery.\n\nSelect a profile below to manage it, or add a new one.",
@@ -127,6 +140,7 @@
           "energy": "Include energy and coverage",
           "finance": "Include price and sharing value",
           "group_finance_mode": "Whole-group financial calculation",
+          "payment_qr": "Include QR payment request",
           "target_daily_mode": "Target EAN daily report date",
           "ean_mode": "EAN visibility",
           "report_scope": "Report scope",
@@ -141,7 +155,8 @@
           "only_new": "Scheduled attempts skip unchanged data. Send now bypasses this check.",
           "report_scope": "Group reports retain the original totals. Target EAN reports contain a separate section for every selected target EAN; create separate profiles to use different recipients.",
           "target_eans": "Used only for Target EAN scope. Their name, location and optional custom price come from EAN details.",
-          "group_finance_mode": "Applies only to whole-group reports with finance enabled. Per-EAN totals use each supply point's price override or the group price. Every profile recipient receives the full breakdown."
+          "group_finance_mode": "Applies only to whole-group reports with finance enabled. Per-EAN totals use each supply point's price override or the group price. Every profile recipient receives the full breakdown.",
+          "payment_qr": "Requires the QR payment account in this integration's settings and Home Assistant 2026.8 or newer with SMTP. A QR payment is sent only for a positive, complete monthly or yearly period; daily, weekly and incomplete data never create a payment request."
         }
       },
       "profile_delete": {
@@ -169,7 +184,9 @@
       "invalid_profile": "Enter a name, select at least one recipient and period, include energy or finance, and check the schedule.",
       "report_failed": "The report could not be prepared or handed off to all recipients. Check EDC availability and SMTP settings.",
       "no_eans": "No EANs have been returned by EDC yet. Fetch EDC data and try again.",
-      "invalid_ean_settings": "Enter a valid name, location and non-negative custom price."
+      "invalid_ean_settings": "Enter a valid name, location and non-negative custom price.",
+      "invalid_payment_settings": "Enter a valid Czech account number and four-digit bank code, or leave both fields empty to remove the QR payment account.",
+      "payment_not_configured": "Configure a QR payment account for this sharing group before enabling QR payment in a report profile."
     },
     "abort": {
       "cannot_connect": "Unable to connect to the EDC portal.",

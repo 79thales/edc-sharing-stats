@@ -3,11 +3,11 @@
   "name": "EDC Sharing Stats",
   "codeowners": ["@79thales"],
   "config_flow": true,
-  "dependencies": ["recorder"],
+  "dependencies": ["recorder", "media_source"],
   "documentation": "https://github.com/79thales/edc-sharing-stats",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/79thales/edc-sharing-stats/issues",
-  "requirements": [],
-  "version": "0.1.24"
+  "requirements": ["qrcode==8.2"],
+  "version": "0.1.25"
 }

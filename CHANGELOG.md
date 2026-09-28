@@ -1,5 +1,17 @@
 # Přehled změn / Changelog
 
+## 0.1.25 – 2026-09-28
+
+### Čeština
+
+- Volitelný účet pro QR platby pro každou skupinu sdílení a QR kód SPAYD 1.0 přímo v e-mailu SMTP; platba se vytváří jen pro kladnou hodnotu úplného měsíčního nebo ročního období.
+- QR kód, včetně dopočtu IBAN a zprávy pro příjemce, vzniká pouze lokálně a dočasný PNG soubor se po předání SMTP odstraní.
+
+### English
+
+- Optional per-group Czech QR payment account and an inline SMTP SPAYD 1.0 QR code; a payment request is created only for a positive value from a complete monthly or yearly period.
+- The IBAN, payment message and QR image are generated locally, and the temporary PNG is removed after SMTP handoff.
+
 ## 0.1.24 – 2026-09-15
 
 ### Čeština

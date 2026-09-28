@@ -124,6 +124,12 @@ def format_overview(
                 if individual else ("Cena celé skupiny" if czech else "Group price")
             )
             lines.append(f"**{'Finance' if czech else 'Finance'}:** {finance}")
+        if profile.get("payment_qr", False):
+            lines.append(
+                "**QR platba:** zapnuta — pouze úplný měsíční/roční report"
+                if czech
+                else "**QR payment:** enabled — complete monthly/yearly reports only"
+            )
         periods = ", ".join(period_names[p] for p in profile["periods"])
         combined = "souhrn v jednom e-mailu" if czech else "summary in one email"
         if not profile["combined"]:
