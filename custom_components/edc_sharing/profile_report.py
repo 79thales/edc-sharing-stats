@@ -123,6 +123,27 @@ class ProfileRenderer(EdcReportManager):
             return "…" + ean[-4:]
         return "Cílové odběrné místo" if self.use_czech else "Target supply point"
 
+    def _payment_target_context(self, ean: str) -> tuple[str | None, str]:
+        """Return local target metadata for a QR message, never for storage."""
+        name = ean_name(ean, self.entry.options)
+        location = ean_location(ean, self.entry.options)
+        if name == ean:
+            name = None
+        if location:
+            name = f"{name} {location}" if name else location
+        return name, ean
+
+    def _group_payment_context(self) -> tuple[str | None, str | None]:
+        """Identify a group QR only when it has exactly one target EAN."""
+        targets = tuple(
+            dict.fromkeys(
+                item.ean for item in self.coordinator.eans if item.role == "target"
+            )
+        )
+        if len(targets) != 1:
+            return None, None
+        return self._payment_target_context(targets[0])
+
     def _profile_subject(self, label: str) -> str:
         """Build a single-line subject respecting EAN visibility."""
         scope = str(self.entry.data[CONF_SSE_NAME])
@@ -163,24 +184,51 @@ class ProfileRenderer(EdcReportManager):
         end: date,
         days: tuple,
         value: Decimal,
+        *,
+        target_name: str | None = None,
+        target_ean: str | None = None,
     ) -> PaymentRequest | None:
-        """Return a safe payment request only for complete monthly/yearly data."""
+        """Return a payment request for closed periods or current-year data."""
         if (
             self._payment_account is None
             or period not in (ReportPeriod.MONTHLY, ReportPeriod.YEARLY)
-            or not self._complete_period(days, start, end)
             or (amount := payment_amount(value)) is None
         ):
             return None
-        period_text = (
-            f"mesic {start:%Y-%m}"
-            if period == ReportPeriod.MONTHLY
-            else f"rok {start:%Y}"
-        )
+        if period == ReportPeriod.YEARLY and self.profile["period_mode"] in (
+            "current",
+            "legacy",
+        ):
+            if not days:
+                return None
+            available_start = min(row.day for row in days)
+            available_end = max(row.day for row in days)
+            if not self._complete_period(
+                days, available_start, available_end + timedelta(days=1)
+            ):
+                return None
+            period_text = (
+                f"rok {start:%Y} do {available_end:%m-%d}"
+                if available_start == start
+                else f"rok {start:%Y} od {available_start:%m-%d} do {available_end:%m-%d}"
+            )
+        else:
+            if not self._complete_period(days, start, end):
+                return None
+            period_text = (
+                f"mesic {start:%Y-%m}"
+                if period == ReportPeriod.MONTHLY
+                else f"rok {start:%Y}"
+            )
         return PaymentRequest(
             account=self._payment_account,
             amount=amount,
-            message=payment_message(self.entry.data[CONF_SSE_NAME], period_text),
+            message=payment_message(
+                self.entry.data[CONF_SSE_NAME],
+                period_text,
+                target_name=target_name,
+                target_ean=target_ean,
+            ),
         )
 
     def _payment_lines(self, request: PaymentRequest) -> list[str]:
@@ -257,6 +305,9 @@ class ProfileRenderer(EdcReportManager):
             for ean in selected_eans:
                 days = all_rows.get(ean, ())
                 name = self._target_display_name(ean)
+                payment_target_name, payment_target_ean = self._payment_target_context(
+                    ean
+                )
                 lines.extend(
                     (
                         "",
@@ -311,7 +362,13 @@ class ProfileRenderer(EdcReportManager):
                         )
                     )
                     if request := self._payment_request(
-                        period, start, end, days, summary.revenue
+                        period,
+                        start,
+                        end,
+                        days,
+                        summary.revenue,
+                        target_name=payment_target_name,
+                        target_ean=payment_target_ean,
                     ):
                         lines.extend(self._payment_lines(request))
                         payments.append(request)
@@ -381,6 +438,7 @@ class ProfileRenderer(EdcReportManager):
         reports = []
         fingerprints = []
         report_payments: list[tuple[PaymentRequest, ...]] = []
+        group_payment_name, group_payment_ean = self._group_payment_context()
         for value in self.profile["periods"]:
             period = ReportPeriod(value)
             start, end, days = await self._async_report_days(period)
@@ -406,6 +464,8 @@ class ProfileRenderer(EdcReportManager):
                     CONF_SALE_PRICE,
                     self.entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE),
                 ),
+                group_payment_name,
+                group_payment_ean,
             )
             fingerprints.append(sha256(repr(content_key).encode()).hexdigest())
             cs = self.use_czech
@@ -465,7 +525,13 @@ class ProfileRenderer(EdcReportManager):
                     _evidence, complete, total = finance_evidence
                     if complete and (
                         request := self._payment_request(
-                            period, start, end, days, total
+                            period,
+                            start,
+                            end,
+                            days,
+                            total,
+                            target_name=group_payment_name,
+                            target_ean=group_payment_ean,
                         )
                     ):
                         lines.extend(self._payment_lines(request))
@@ -478,7 +544,13 @@ class ProfileRenderer(EdcReportManager):
                         )
                     )
                     if request := self._payment_request(
-                        period, start, end, days, summary.revenue
+                        period,
+                        start,
+                        end,
+                        days,
+                        summary.revenue,
+                        target_name=group_payment_name,
+                        target_ean=group_payment_ean,
                     ):
                         lines.extend(self._payment_lines(request))
                         payments.append(request)

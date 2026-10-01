@@ -58,6 +58,19 @@ class PaymentTests(unittest.TestCase):
         self.assertEqual(payment.payment_amount(Decimal("-0.01")), None)
         self.assertEqual(payment.payment_amount(Decimal("1.005")), Decimal("1.00"))
 
+    def test_target_payment_message_keeps_full_ean_and_period(self):
+        ean = "859000000" + "000000001"
+        message = payment.payment_message(
+            "Test group",
+            "rok 2026 do 09-02",
+            target_name="Flat 2 Prague with a deliberately long description",
+            target_ean=ean,
+        )
+        self.assertTrue(message.isascii())
+        self.assertLessEqual(len(message), 60)
+        self.assertIn("rok 2026 do 09-02", message)
+        self.assertTrue(message.endswith(f"EAN {ean}"))
+
     def test_payment_qr_is_an_inline_png_data_uri(self):
         testcase = self
 

@@ -1,5 +1,17 @@
 # Přehled změn / Changelog
 
+## 0.1.28 – 2026-10-01
+
+### Čeština
+
+- QR platba nyní podporuje také průběžný aktuální rok, pokud jsou dostupná souvislá denní data. Zpráva v QR uvádí přesný rozsah dat.
+- U profilů jednotlivých odběrných míst obsahuje zpráva QR lokální název, lokaci a celý cílový EAN; společný QR za skupinu s více místy zůstává skupinový.
+
+### English
+
+- QR payments now also support the current year when a continuous range of daily data is available. The QR reference states the exact covered range.
+- Target-specific QR references include the local name, location and full target EAN; a shared QR for a multi-target group remains group-level.
+
 ## 0.1.27 – 2026-09-28
 
 ### Čeština

@@ -320,6 +320,54 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
             _title, body = (await self.manager.preview(profile))[0]
         self.assertNotIn("Platba QR:", body)
 
+    async def test_current_year_qr_uses_contiguous_available_data_and_target_identity(self):
+        calculation = importlib.import_module("_edc_delivery_test.calculation")
+        ean = "859000000" + "000000001"
+        self.entry.options.update(
+            {
+                "payment_account_number": "120000001",
+                "payment_bank_code": "9999",
+                "ean_settings": {ean: {"name": "Flat 2", "location": "Prague"}},
+            }
+        )
+        profile = self.profile | {
+            "report_scope": "target",
+            "target_eans": [ean],
+            "periods": ["yearly"],
+            "combined": False,
+            "payment_qr": True,
+            "ean_mode": "hidden",
+        }
+        rows = tuple(
+            calculation.TargetDailySharing(
+                ean,
+                date(2026, 1, day),
+                Decimal("10"),
+                Decimal("6"),
+                Decimal("4"),
+                Decimal("60"),
+            )
+            for day in range(1, 4)
+        )
+        with patch.object(
+            self.runtime.ProfileRenderer,
+            "_async_fetch_target_days",
+            AsyncMock(return_value={ean: rows}),
+        ):
+            _title, body = (await self.manager.preview(profile))[0]
+        self.assertIn("Platba QR:", body)
+        self.assertIn("EDC rok 2026 do 01-03 Flat 2 Prague", body)
+        self.assertIn(f"EAN {ean}", body)
+
+        incomplete = rows[:1] + rows[2:]
+        with patch.object(
+            self.runtime.ProfileRenderer,
+            "_async_fetch_target_days",
+            AsyncMock(return_value={ean: incomplete}),
+        ):
+            _title, body = (await self.manager.preview(profile))[0]
+        self.assertNotIn("Platba QR:", body)
+
     async def test_profile_overview_shows_scope_and_shared_audience(self):
         overview = importlib.import_module("_edc_delivery_test.profile_overview")
         profile = self.profile | {"report_scope": "target", "target_eans": ["target-a"]}

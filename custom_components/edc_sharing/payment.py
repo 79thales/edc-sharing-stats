@@ -71,13 +71,35 @@ def parse_czech_account(account_number: object, bank_code: object) -> CzechBankA
     return CzechBankAccount(prefix=prefix, number=number, bank_code=raw_bank)
 
 
-def payment_message(group_name: object, period: object) -> str:
-    """Build a compact, QR-safe payment note without control characters."""
-    text = unicodedata.normalize("NFKD", str(group_name)).encode(
+def _payment_text(value: object) -> str:
+    """Normalize free text for a compact SPAYD payment message."""
+    text = unicodedata.normalize("NFKD", str(value or "")).encode(
         "ascii", "ignore"
     ).decode("ascii")
-    text = " ".join(text.replace("*", " ").split())
-    return f"EDC sdileni {text} - {period}"[:60].rstrip()
+    return " ".join(text.replace("*", " ").split())
+
+
+def payment_message(
+    group_name: object,
+    period: object,
+    *,
+    target_name: object | None = None,
+    target_ean: object | None = None,
+) -> str:
+    """Build a QR-safe reference while preserving a target EAN when supplied."""
+    period_text = _payment_text(period)
+    ean = _payment_text(target_ean)
+    if not ean:
+        return f"EDC sdileni {_payment_text(group_name)} - {period_text}"[:60].rstrip()
+
+    # SPAYD limits MSG to 60 characters.  For target reports, the period and
+    # complete EAN are more important than a long user alias, so only the
+    # alias is shortened when needed.
+    prefix = f"EDC {period_text} "
+    suffix = f" EAN {ean}"
+    available = max(0, 60 - len(prefix) - len(suffix))
+    name = _payment_text(target_name) or "odberatel"
+    return f"{prefix}{name[:available].rstrip()}{suffix}"[:60].strip()
 
 
 def payment_amount(value: Decimal) -> Decimal | None:
