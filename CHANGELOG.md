@@ -1,5 +1,17 @@
 # Přehled změn / Changelog
 
+## 0.1.30 – 2026-10-03
+
+### Čeština
+
+- Integrace se nyní úspěšně spustí i u nového sdílení, pokud EDC ve starším bloku úvodního dvouměsíčního načítání ještě nevrací výrobní i odběrný EAN. Neúplný historický blok se pouze přeskočí; kompletní novější data se nadále načtou.
+- Děkujeme [@jirisida](https://github.com/jirisida) za nahlášení a návrh opravy v PR [#6](https://github.com/79thales/edc-sharing-stats/pull/6).
+
+### English
+
+- The integration now starts successfully for a newly active sharing group when an older block in the initial two-month refresh does not yet contain both the production and target EANs. The incomplete historical block is skipped while complete recent data continues to load.
+- Thanks to [@jirisida](https://github.com/jirisida) for reporting the issue and proposing the fix in PR [#6](https://github.com/79thales/edc-sharing-stats/pull/6).
+
 ## 0.1.29 – 2026-10-03
 
 ### Čeština

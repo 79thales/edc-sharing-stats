@@ -337,26 +337,38 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     dt_util.as_utc(local_from).isoformat().replace("+00:00", "Z"),
                     dt_util.as_utc(local_to).isoformat().replace("+00:00", "Z"),
                 )
-                fetched.update(
-                    {
-                        row.day: row
-                        for row in parse_daily_profile(raw)
-                        if date_from <= row.day < date_to
-                    }
-                )
-                for row in parse_daily_target_profiles(raw):
-                    if date_from <= row.day < date_to:
-                        fetched_target_days.setdefault(row.ean, {})[row.day] = row
-                fetched_hours.update(
-                    {
-                        row.start: row
-                        for row in parse_hourly_profile(raw, local_tz=local_tz)
-                        if date_from
-                        <= _hour_local_date(row.start, local_tz)
-                        < date_to
-                    }
-                )
-                fetched_eans.update(extract_eans(raw))
+                try:
+                    fetched.update(
+                        {
+                            row.day: row
+                            for row in parse_daily_profile(raw)
+                            if date_from <= row.day < date_to
+                        }
+                    )
+                    for row in parse_daily_target_profiles(raw):
+                        if date_from <= row.day < date_to:
+                            fetched_target_days.setdefault(row.ean, {})[row.day] = row
+                    fetched_hours.update(
+                        {
+                            row.start: row
+                            for row in parse_hourly_profile(raw, local_tz=local_tz)
+                            if date_from
+                            <= _hour_local_date(row.start, local_tz)
+                            < date_to
+                        }
+                    )
+                    fetched_eans.update(extract_eans(raw))
+                except IncompleteProfileLayoutError as err:
+                    # Before both EAN roles joined the sharing group, EDC can
+                    # return a valid profile containing only one side. This
+                    # historical block must not prevent the integration from
+                    # starting with the complete, more recent data.
+                    _LOGGER.debug(
+                        "Skipping incomplete EDC coordinator block %s to %s: %s",
+                        chunk_from,
+                        chunk_to,
+                        err,
+                    )
 
             if full_history_refresh:
                 self._days = {

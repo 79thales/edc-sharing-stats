@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import importlib.util
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 
 HOME_ASSISTANT_INSTALLED = importlib.util.find_spec("homeassistant") is not None
@@ -130,6 +131,48 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
 
         self.assertEqual(sensor.device_info["via_device_id"], "group-device-id")
         self.assertNotIn("via_device", sensor.device_info)
+
+    def test_coordinator_skips_incomplete_initial_history_block(self) -> None:
+        """An older pre-sharing profile must not prevent initial setup."""
+        from custom_components.edc_sharing.coordinator import EdcSharingCoordinator
+
+        incomplete_profile = {
+            "valueColumns": [{"ean": "producer", "type": "D", "dir": "IN"}],
+            "content": [{"date": "2026-09-01", "values": [{"v": 1}]}],
+        }
+        api = SimpleNamespace(async_get_daily_profile=AsyncMock(return_value=incomplete_profile))
+        entry = SimpleNamespace(
+            data={"sse_id": "1", "sse_name": "Test group", "sale_price": 2},
+            options={},
+        )
+        coordinator = object.__new__(EdcSharingCoordinator)
+        coordinator.api = api
+        coordinator.config_entry = entry
+        coordinator.eans = ()
+        coordinator._days = {}
+        coordinator._history_days = {}
+        coordinator._target_days = {}
+        coordinator._history_target_days = {}
+        coordinator._hours = {}
+        coordinator._history_refresh_date = None
+        coordinator._history_import_enabled = False
+        coordinator.history_earliest_date = None
+        coordinator._calculate_statistics = Mock(return_value=Mock())
+
+        fixed_now = datetime(2026, 10, 3, 12, tzinfo=UTC)
+        with (
+            patch("custom_components.edc_sharing.coordinator.dt_util.now", return_value=fixed_now),
+            patch(
+                "custom_components.edc_sharing.coordinator.profile_date_ranges",
+                return_value=((date(2026, 9, 1), date(2026, 9, 2)),),
+            ),
+        ):
+            result = asyncio.run(coordinator._async_update_data())
+
+        self.assertIsNotNone(result)
+        self.assertEqual(coordinator.last_attempt_result, "success")
+        self.assertEqual(coordinator._days, {})
+        api.async_get_daily_profile.assert_awaited_once()
 
     def test_cached_daily_row_round_trip_preserves_precision(self) -> None:
         from custom_components.edc_sharing.calculation import (
