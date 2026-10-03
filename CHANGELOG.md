@@ -1,5 +1,15 @@
 # Přehled změn / Changelog
 
+## 0.1.29 – 2026-10-03
+
+### Čeština
+
+- Cílová odběrná místa nyní používají aktuální Home Assistant API `via_device_id` pro vazbu na skupinu sdílení. Odstraňuje to deprekační varování a zachovává strom zařízení i v budoucích verzích Home Assistantu.
+
+### English
+
+- Target supply-point devices now use Home Assistant's current `via_device_id` API to link to their sharing group. This removes the deprecation warning while preserving the device hierarchy for future Home Assistant releases.
+
 ## 0.1.28 – 2026-10-01
 
 ### Čeština

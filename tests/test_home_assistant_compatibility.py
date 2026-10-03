@@ -109,6 +109,28 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
             SensorStateClass.MEASUREMENT,
         )
 
+    def test_target_ean_uses_supported_via_device_id(self) -> None:
+        from custom_components.edc_sharing.sensor import (
+            EdcTargetSensor,
+            TARGET_SENSORS,
+        )
+
+        coordinator = Mock()
+        entry = SimpleNamespace(
+            data={"sse_id": "test"},
+            options={},
+            runtime_data=SimpleNamespace(coordinator=coordinator),
+        )
+        sensor = EdcTargetSensor(
+            entry,
+            "target-example",
+            TARGET_SENSORS[0],
+            "group-device-id",
+        )
+
+        self.assertEqual(sensor.device_info["via_device_id"], "group-device-id")
+        self.assertNotIn("via_device", sensor.device_info)
+
     def test_cached_daily_row_round_trip_preserves_precision(self) -> None:
         from custom_components.edc_sharing.calculation import (
             DailySharing,

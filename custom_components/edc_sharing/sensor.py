@@ -11,7 +11,7 @@ from typing import Any
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.const import EntityCategory, PERCENTAGE, Platform, UnitOfEnergy
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.translation import async_get_translations
@@ -297,6 +297,14 @@ async def async_setup_entry(
 ) -> None:
     """Set up all EDC sensors."""
     await _async_refresh_existing_entity_names(hass, entry)
+    group_device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, str(entry.data[CONF_SSE_ID]))},
+        name=str(entry.data[CONF_SSE_NAME]),
+        manufacturer="Elektroenergetické datové centrum, a. s.",
+        model="Skupina sdílení elektřiny",
+        configuration_url="https://portal.edc-cr.cz/sprava-dat/zobrazeni-dat",
+    )
     async_add_entities(
         [EdcSharingSensor(entry, description) for description in SENSORS]
         + [
@@ -323,7 +331,12 @@ async def async_setup_entry(
         for item in new_eans:
             if item.role == "target":
                 entities.extend(
-                    EdcTargetSensor(entry, item.ean, description)
+                    EdcTargetSensor(
+                        entry,
+                        item.ean,
+                        description,
+                        group_device.id,
+                    )
                     for description in TARGET_SENSORS
                 )
         async_add_entities(entities)
@@ -464,6 +477,7 @@ class EdcTargetSensor(
         entry: EdcConfigEntry,
         ean: str,
         description: TargetSensorDescription,
+        group_device_id: str,
     ) -> None:
         super().__init__(entry.runtime_data.coordinator)
         self._ean = ean
@@ -473,7 +487,7 @@ class EdcTargetSensor(
         )
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.data[CONF_SSE_ID]}_target_{ean}")},
-            via_device=(DOMAIN, str(entry.data[CONF_SSE_ID])),
+            via_device_id=group_device_id,
             name=ean_name(ean, entry.options),
             manufacturer="Elektroenergetické datové centrum, a. s.",
             model="Cílové odběrné místo EDC",
