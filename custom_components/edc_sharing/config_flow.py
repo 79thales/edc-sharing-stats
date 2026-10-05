@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
 from collections.abc import Mapping
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
@@ -15,14 +14,10 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import EdcApiClient, EdcApiError, EdcAuthenticationError
-from .payment import PaymentConfigurationError, parse_czech_account
-from .profile_options import ProfileOptionsMixin
-from .report_profiles import CONF_REPORT_PROFILES
 from .const import (
-    CONF_EAN_SETTINGS,
-    CONF_SALE_PRICE,
     CONF_DAILY_REPORT,
-    CONF_WEEKLY_REPORT,
+    CONF_EAN_SETTINGS,
+    CONF_ENERGY_TARGETS,
     CONF_MONTHLY_REPORT,
     CONF_PAYMENT_ACCOUNT_NUMBER,
     CONF_PAYMENT_BANK_CODE,
@@ -30,9 +25,11 @@ from .const import (
     CONF_REPORT_LANGUAGE,
     CONF_REPORT_TARGETS,
     CONF_REPORT_TIME,
+    CONF_SALE_PRICE,
     CONF_SSE_ID,
     CONF_SSE_NAME,
     CONF_SUMMARY_REPORT,
+    CONF_WEEKLY_REPORT,
     CONF_YEARLY_REPORT,
     DEFAULT_REPORT_DAY,
     DEFAULT_REPORT_TIME,
@@ -41,6 +38,9 @@ from .const import (
     config_entry_unique_id,
 )
 from .ean_settings import configured_ean_settings, ean_location, ean_name
+from .payment import PaymentConfigurationError, parse_czech_account
+from .profile_options import ProfileOptionsMixin
+from .report_profiles import CONF_REPORT_PROFILES
 
 
 class EdcSharingConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -193,7 +193,44 @@ class EdcSharingOptionsFlow(ProfileOptionsMixin, OptionsFlow):
     ) -> ConfigFlowResult:
         return self.async_show_menu(
             step_id="init",
-            menu_options=["general", "ean_settings", "payment_settings", "profiles"],
+            menu_options=["general", "ean_settings", "energy_settings", "payment_settings", "profiles"],
+        )
+
+    async def async_step_energy_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Choose the target EANs whose income is exported to Energy."""
+        runtime = getattr(self._entry, "runtime_data", None)
+        coordinator = getattr(runtime, "coordinator", None)
+        known = {item.ean for item in self._known_eans() if item.role == "target"}
+        known.update(getattr(coordinator, "_history_target_days", {}))
+        saved = self._entry.options.get(CONF_ENERGY_TARGETS, [])
+        if isinstance(saved, list):
+            known.update(item for item in saved if isinstance(item, str))
+        errors = {}
+        if user_input is not None:
+            selected = user_input.get(CONF_ENERGY_TARGETS, [])
+            if not isinstance(selected, list) or any(
+                not isinstance(item, str) or item not in known for item in selected
+            ):
+                errors["base"] = "invalid_ean_settings"
+            else:
+                return self.async_create_entry(data=dict(self._entry.options) | {
+                    CONF_ENERGY_TARGETS: sorted(set(selected)),
+                })
+        return self.async_show_form(
+            step_id="energy_settings",
+            data_schema=vol.Schema({
+                vol.Optional(CONF_ENERGY_TARGETS, default=saved if isinstance(saved, list) else []):
+                    selector.SelectSelector(selector.SelectSelectorConfig(
+                        options=[selector.SelectOptionDict(
+                            value=ean, label=ean_name(ean, self._entry.options)
+                        ) for ean in sorted(known)],
+                        multiple=True,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )),
+            }),
+            errors=errors,
         )
 
     def _known_eans(self) -> tuple:

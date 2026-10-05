@@ -8,6 +8,8 @@ EDC Sharing Stats is a custom Home Assistant integration for electricity-sharing
 
 Historical EDC profile data is aggregated into hourly and daily Home Assistant long-term statistics. The integration supports a resumable, one-year history backfill, refresh and backfill diagnostics, and optional on-demand or scheduled email reports in Czech or English through Home Assistant `notify` entities.
 
+An optional paid-target selection exports cumulative CZK income and kWh statistics for the Energy dashboard, separately for each selected target and their combined selection. Delayed daily totals are attributed to the actual EDC day using each target's configured price; the daily amount is booked in that day's final hour rather than representing an hourly income profile.
+
 Named report profiles provide independent recipients, languages, schedules and a selection of daily, weekly, monthly or yearly sections, combined into one email or sent separately. Profiles support current or completed periods, previews, manual sending, optional financial details, masked EANs and delivery status. With Home Assistant 2026.8 or newer and SMTP, a profile can also include a locally generated Czech QR payment request for a positive, complete monthly amount or the continuous currently available range of annual data.
 
 When EDC returns multiple target EANs, the integration also creates an individual device for each target supply point. You can assign a local name and location, optionally override the group electricity price for that target, and send either the original group report or target-specific report sections to different recipients. Target-specific QR payment references include the recipient name and full target EAN.
@@ -17,6 +19,18 @@ The EDC account email and password are stored in the Home Assistant config entry
 This is an independent integration and is not an official product of, or supported by, Elektroenergetické datové centrum, a. s. The EDC web API is not publicly guaranteed and may change without notice.
 
 ## Česká dokumentace
+
+### Příjem ze sdílení v Energy dashboardu
+
+V nastavení integrace otevřete **Příjem ze sdílení v Energy dashboardu** a vyberte placené cílové EANy. Výchozí výběr je prázdný. Nově nalezené EANy se do příjmu nepřidávají automaticky; neplacená místa ponechte nevybraná. Cena každého vybraného EANu odpovídá nastavení **Detaily EAN a ceny**, případně ceně skupiny.
+
+Integrace vytvoří externí dlouhodobé statistiky **Příjem ze sdílení (Energy)** v CZK a **Placená sdílená energie (Energy)** v kWh pro vybranou kombinaci míst i pro každé vybrané místo jednotlivě. V nastavení Energy připojení k síti vyberte pro kompenzaci exportu možnost **Použít entitu sledující celkovou kompenzaci** a příslušnou statistiku příjmu. Jde o externí statistiky, nikoli o živé senzory: ID společného výběru najdete v atributech diagnostického senzoru dostupnosti historie, ID jednotlivého místa v atributech jeho diagnostického EAN senzoru. Použijte společný součet nebo jednotlivá místa podle požadovaného přehledu; jejich současné započtení by příjem zdvojilo. Volba představuje hodnotu sdílení, nikoli čistý zisk nebo potvrzenou úhradu.
+
+Příjem se importuje ke skutečnému kalendářnímu dni EDC, i pokud data přišla o den nebo více později. Podklad tvoří uložené denní součty jednotlivých míst; celá denní částka je zaúčtovaná do poslední skutečné hodiny daného dne. Hodinový graf proto neukazuje skutečný průběh sdílení. Dnešní data se neimportují. Společný výběr obsahuje pouze dny, které mají uložené záznamy všech vybraných míst; období s chybějícími záznamy se nevydává za nulový příjem. U míst přidaných později může být společná historie kratší než historie původního místa.
+
+Opakované načtení, restart, překryv historie a opravy EDC přepočítají součty ze stejné uložené historie místo přičítání nového příjmu ke starému. Změna ceny přepočítá dostupnou historii podle aktuální ceny; časový ceník není podporován. Změna kombinace vybraných EANů vytvoří jinou společnou statistiku, kterou je potřeba znovu vybrat v Energy. Staré statistiky se nemažou; prázdný výběr zastaví nové importy a případnou starou volbu odstraňte také z Energy. Nastavení se provádí samostatně pro každou skupinu sdílení.
+
+Energy používá součtové dlouhodobé statistiky; denní a měsíční živé senzory tržby kvůli zpoždění EDC pro toto nastavení nepoužívejte. Viz [dokumentace statistik Home Assistantu](https://data.home-assistant.io/docs/statistics/).
 
 Vlastní integrace pro Home Assistant, která načítá vyhodnocení skupiny sdílení elektřiny z českého portálu EDC.
 

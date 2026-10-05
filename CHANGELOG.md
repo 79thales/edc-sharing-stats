@@ -1,5 +1,21 @@
 # Přehled změn / Changelog
 
+## 0.1.31 – 2026-10-05
+
+### Čeština
+
+- Volitelný výběr placených cílových EANů pro Energy dashboard, s individuálními cenami a samostatnými i společnými součtovými statistikami příjmu a placené sdílené energie.
+- Zpožděná denní data se zapisují ke skutečnému dni EDC. Součty se obnovují z uložené historie také po restartu, opravách dat a doplnění starších období.
+- V nastavení integrace otevřete „Příjem ze sdílení v Energy dashboardu“. Vyberte placená místa a v Energy zvolte jejich společnou nebo jednotlivou externí statistiku příjmu. Výchozí výběr je prázdný.
+- Denní příjem se účtuje do poslední hodiny dne; hodinový graf nepředstavuje skutečný průběh příjmu. Změna ceny přepočítá dostupnou historii. Po změně výběru míst zvolte novou společnou statistiku v Energy.
+
+### English
+
+- Optional paid-target selection for the Energy dashboard, using individual prices and separate per-target and combined cumulative statistics for sharing income and paid shared energy.
+- Delayed daily values are assigned to their actual EDC day. Totals are rebuilt from retained history after restarts, revised data and older history backfill.
+- Open "Sharing income in the Energy dashboard" in the integration options. Select paid supply points and choose their combined or individual external income statistic in Energy. The default selection is empty.
+- Daily income is booked in the day's final hour; the hourly chart does not represent an actual hourly income profile. Price changes recalculate available history. After changing the selected targets, select the new combined statistic in Energy.
+
 ## 0.1.30 – 2026-10-03
 
 ### Čeština

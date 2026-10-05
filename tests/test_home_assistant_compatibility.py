@@ -31,6 +31,7 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
             "custom_components.edc_sharing.config_flow",
             "custom_components.edc_sharing.coordinator",
             "custom_components.edc_sharing.ean_settings",
+            "custom_components.edc_sharing.energy",
             "custom_components.edc_sharing.history",
             "custom_components.edc_sharing.report",
             "custom_components.edc_sharing.profile_report",
@@ -173,6 +174,34 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
         self.assertEqual(coordinator.last_attempt_result, "success")
         self.assertEqual(coordinator._days, {})
         api.async_get_daily_profile.assert_awaited_once()
+
+    def test_energy_export_passes_real_recorder_validation(self) -> None:
+        from custom_components.edc_sharing.calculation import TargetDailySharing
+        from custom_components.edc_sharing.history import async_import_energy_history
+
+        day = date(2026, 10, 1)
+        row = TargetDailySharing(
+            "paid-example", day, Decimal(10), Decimal(6), Decimal(4), Decimal(40)
+        )
+        recorder = Mock()
+        with patch(
+            "homeassistant.components.recorder.statistics.get_instance", return_value=recorder
+        ):
+            async_import_energy_history(
+                SimpleNamespace(config=SimpleNamespace(language="en")),
+                sse_id=1,
+                sse_name="Example group",
+                target_days={"paid-example": {day: row}},
+                options={"energy_targets": ["paid-example"]},
+                sale_price=Decimal(2),
+                today=date(2026, 10, 2),
+                local_tz=UTC,
+            )
+        self.assertEqual(recorder.async_import_statistics.call_count, 2)
+        revenue_metadata, points, _table = recorder.async_import_statistics.call_args_list[0].args
+        self.assertTrue(revenue_metadata["has_sum"])
+        self.assertEqual(revenue_metadata["unit_of_measurement"], "CZK")
+        self.assertEqual(points[-1]["sum"], 8)
 
     def test_cached_daily_row_round_trip_preserves_precision(self) -> None:
         from custom_components.edc_sharing.calculation import (
@@ -358,13 +387,26 @@ class ReportProfileFlowTests(unittest.IsolatedAsyncioTestCase):
         self.flow.async_show_menu = lambda **kwargs: kwargs
         self.flow.async_create_entry = lambda **kwargs: kwargs
 
+    async def test_energy_selection_preserves_existing_options(self):
+        self.entry.runtime_data = SimpleNamespace(coordinator=SimpleNamespace(
+            eans=[SimpleNamespace(role="target", ean="paid-example"),
+                  SimpleNamespace(role="sharing", ean="producer-example")],
+            _history_target_days={},
+        ))
+        result = await self.flow.async_step_energy_settings({"energy_targets": ["paid-example"]})
+        self.assertEqual(result["data"]["energy_targets"], ["paid-example"])
+        self.assertEqual(result["data"]["sale_price"], 2)
+        self.assertEqual(result["data"]["report_targets"], ["notify.owner"])
+        invalid = await self.flow.async_step_energy_settings({"energy_targets": ["producer-example"]})
+        self.assertIn("base", invalid["errors"])
+
     async def test_profile_creation_validation_and_legacy_preservation(self):
         from custom_components.edc_sharing.report_profiles import default_profile
 
         menu = await self.flow.async_step_init()
         self.assertEqual(
             menu["menu_options"],
-            ["general", "ean_settings", "payment_settings", "profiles"],
+            ["general", "ean_settings", "energy_settings", "payment_settings", "profiles"],
         )
         form = await self.flow.async_step_profiles({"profile": "new"})
         values = default_profile() | {

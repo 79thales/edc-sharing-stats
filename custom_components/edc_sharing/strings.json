@@ -42,6 +42,7 @@
         "menu_options": {
           "general": "General settings and original buttons",
           "ean_settings": "EAN details and prices",
+          "energy_settings": "Sharing income in the Energy dashboard",
           "payment_settings": "QR payment account",
           "profiles": "Report profiles"
         }
@@ -86,6 +87,16 @@
           "location": "Shown on the EAN device and in targeted reports. It does not assign a Home Assistant area.",
           "use_group_price": "When enabled, this target EAN follows the existing group sale price.",
           "price": "Used only when the group sale price option is disabled."
+        }
+      },
+      "energy_settings": {
+        "title": "Sharing income in the Energy dashboard",
+        "description": "Select paid target EANs. Each uses its own price or the group price. New supply points are not included automatically. In Energy select the external Sharing income (Energy) statistic for the selection or an individual target. Changing the selection creates a new combined statistic; select it again in Energy. Previous statistics are retained.",
+        "data": {
+          "energy_targets": "Paid target supply points"
+        },
+        "data_description": {
+          "energy_targets": "An empty selection stops new imports. Daily amounts are assigned to the actual EDC day, not the download date. Changing a price recalculates available history."
         }
       },
       "payment_settings": {

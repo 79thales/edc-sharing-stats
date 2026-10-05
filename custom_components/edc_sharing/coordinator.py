@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import date, datetime, time, timedelta, tzinfo
 from decimal import Decimal, InvalidOperation
-import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -41,8 +41,13 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
-from .ean_settings import target_sale_price
-from .history import async_import_daily_history, async_import_hourly_history
+from .ean_settings import ean_name, target_sale_price
+from .energy import energy_targets
+from .history import (
+    async_import_daily_history,
+    async_import_energy_history,
+    async_import_hourly_history,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -209,6 +214,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self._history_refresh_date: date | None = None
         self._history_import_enabled = False
         self._history_import_signature: tuple[object, ...] | None = None
+        self._energy_import_signature: tuple[object, ...] | None = None
         self.last_attempt_at: datetime | None = None
         self.last_success_at: datetime | None = None
         self.next_attempt_at: datetime | None = None
@@ -419,6 +425,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             )))
             result = self._calculate_statistics(price, today)
             if self._history_import_enabled:
+                self._async_import_energy_history(now)
                 self._async_import_history_if_changed(
                     result, tuple(self._hours.values()), now
                 )
@@ -605,6 +612,8 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                         self.history_earliest_date = earliest
                 for row in target_days:
                     self._history_target_days.setdefault(row.ean, {})[row.day] = row
+                if self._history_import_enabled:
+                    self._async_import_energy_history(now)
                 self.history_backfill_cursor = chunk_from
                 self.history_backfill_processed_chunks += 1
                 await self._async_save_history_backfill_state()
@@ -692,9 +701,44 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
     def async_enable_history_import(self) -> None:
         """Enable imports after platforms have registered their entities."""
         self._history_import_enabled = True
+        self._async_import_energy_history(dt_util.now())
         self._async_import_history_if_changed(
             self.data, tuple(self._hours.values()), dt_util.now()
         )
+
+    @callback
+    def _async_import_energy_history(self, now: datetime) -> None:
+        """Import selected income using the full cache, including older backfill."""
+        selected = energy_targets(self.config_entry.options)
+        if not selected:
+            return
+        price = Decimal(str(self.config_entry.options.get(
+            CONF_SALE_PRICE, self.config_entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE)
+        )))
+        signature = (
+            selected, now.date(), price,
+            tuple((ean, target_sale_price(ean, self.config_entry.options, price),
+                   ean_name(ean, self.config_entry.options),
+                   tuple(sorted(self._history_target_days.get(ean, {}).items())))
+                  for ean in selected),
+        )
+        if signature == self._energy_import_signature:
+            return
+        try:
+            async_import_energy_history(
+                self.hass,
+                sse_id=int(self.config_entry.data[CONF_SSE_ID]),
+                sse_name=str(self.config_entry.data[CONF_SSE_NAME]),
+                target_days=self._history_target_days,
+                options=self.config_entry.options,
+                sale_price=price,
+                today=now.date(),
+                local_tz=now.tzinfo or dt_util.get_default_time_zone(),
+            )
+        except HomeAssistantError:
+            _LOGGER.warning("Could not queue EDC Energy statistics")
+            return
+        self._energy_import_signature = signature
 
     def _async_import_history_if_changed(
         self,

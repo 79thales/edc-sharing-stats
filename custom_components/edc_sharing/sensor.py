@@ -8,10 +8,16 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
-from homeassistant.const import EntityCategory, PERCENTAGE, Platform, UnitOfEnergy
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
+from homeassistant.const import PERCENTAGE, EntityCategory, Platform, UnitOfEnergy
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.translation import async_get_translations
@@ -28,6 +34,7 @@ from .calculation import (
 from .const import CONF_SSE_ID, CONF_SSE_NAME, DOMAIN
 from .coordinator import EdcSharingCoordinator
 from .ean_settings import ean_location, ean_name
+from .energy import energy_statistic_id, energy_targets
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -462,6 +469,17 @@ class EdcEanSensor(CoordinatorEntity[EdcSharingCoordinator], SensorEntity):
             self._ean_info.ean, self.coordinator.config_entry.options
         ):
             attributes["location"] = location
+        if self._ean_info.role == "target" and self._ean_info.ean in energy_targets(
+            self.coordinator.config_entry.options
+        ):
+            attributes["energy_revenue_statistic_id"] = energy_statistic_id(
+                self.coordinator.config_entry.data[CONF_SSE_ID],
+                (self._ean_info.ean,), "revenue",
+            )
+            attributes["energy_shared_statistic_id"] = energy_statistic_id(
+                self.coordinator.config_entry.data[CONF_SSE_ID],
+                (self._ean_info.ean,), "shared",
+            )
         return attributes
 
 
@@ -721,4 +739,11 @@ class EdcHistoryEarliestDateSensor(
     @property
     def extra_state_attributes(self) -> dict[str, str | int | None]:
         """Expose scan status so the date cannot be mistaken for a final limit."""
-        return _history_backfill_attributes(self.coordinator)
+        attributes = _history_backfill_attributes(self.coordinator)
+        selected = energy_targets(self.coordinator.config_entry.options)
+        if selected:
+            for metric in ("revenue", "shared"):
+                attributes[f"energy_{metric}_statistic_id"] = energy_statistic_id(
+                    self.coordinator.config_entry.data[CONF_SSE_ID], selected, metric
+                )
+        return attributes

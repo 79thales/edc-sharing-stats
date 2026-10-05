@@ -42,6 +42,7 @@
         "menu_options": {
           "general": "Obecné nastavení a původní tlačítka",
           "ean_settings": "Detaily EAN a ceny",
+          "energy_settings": "Příjem ze sdílení v Energy dashboardu",
           "payment_settings": "Účet pro QR platby",
           "profiles": "Profily reportů"
         }
@@ -86,6 +87,16 @@
           "location": "Zobrazí se u zařízení EAN a v cílených reportech. Nezařadí zařízení do oblasti Home Assistantu.",
           "use_group_price": "Je-li zapnuto, tento cílový EAN používá stávající prodejní cenu celé skupiny.",
           "price": "Použije se jen při vypnuté volbě prodejní ceny skupiny."
+        }
+      },
+      "energy_settings": {
+        "title": "Příjem ze sdílení v Energy dashboardu",
+        "description": "Vyberte placené cílové EANy. Každý používá vlastní cenu, případně cenu skupiny. Nová místa se automaticky nezapočítají. V Energy vyberte externí statistiku Příjem ze sdílení (Energy), společnou nebo jednotlivou. Při změně výběru vznikne nová společná statistika; v Energy ji vyberte znovu. Starší statistiky zůstávají zachované.",
+        "data": {
+          "energy_targets": "Placená odběrná místa"
+        },
+        "data_description": {
+          "energy_targets": "Prázdný výběr vypne nové importy. Denní částka se zapisuje ke skutečnému dni EDC, nikoliv ke dni stažení. Změna ceny přepočítá dostupnou historii."
         }
       },
       "payment_settings": {

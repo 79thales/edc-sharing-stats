@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, tzinfo
 from decimal import Decimal
+from typing import Any
 
 from homeassistant.components.recorder.models import (
     StatisticData,
@@ -17,8 +18,59 @@ from homeassistant.const import PERCENTAGE, UnitOfEnergy
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util.unit_conversion import EnergyConverter, UnitlessRatioConverter
 
-from .calculation import DailySharing, HourlySharing
+from .calculation import DailySharing, HourlySharing, TargetDailySharing
 from .const import DOMAIN
+from .ean_settings import ean_name
+from .energy import (
+    cumulative_daily_points,
+    daily_energy_values,
+    energy_statistic_id,
+    energy_targets,
+)
+
+
+@callback
+def async_import_energy_history(
+    hass: HomeAssistant,
+    *,
+    sse_id: int,
+    sse_name: str,
+    target_days: Mapping[str, Mapping[date, TargetDailySharing]],
+    options: Mapping[str, Any],
+    sale_price: Decimal,
+    today: date,
+    local_tz: tzinfo,
+) -> None:
+    """Replace dated cumulative statistics from the entire persisted cache."""
+    selected = energy_targets(options)
+    if not selected:
+        return
+    czech = hass.config.language.casefold().startswith("cs")
+    scopes = [selected] + [(ean,) for ean in selected if len(selected) > 1]
+    for targets in scopes:
+        values = daily_energy_values(target_days, targets, options, sale_price, today)
+        label = (
+            ean_name(targets[0], options) if len(targets) == 1
+            else ("Vybraná placená místa" if czech else "Selected paid supply points")
+        )
+        for metric, index, unit, unit_class, title in (
+            ("revenue", 1, "CZK", None, "Příjem ze sdílení" if czech else "Sharing income"),
+            ("shared", 0, UnitOfEnergy.KILO_WATT_HOUR, EnergyConverter.UNIT_CLASS,
+             "Placená sdílená energie" if czech else "Paid shared energy"),
+        ):
+            points = cumulative_daily_points({day: value[index] for day, value in values.items()}, local_tz)
+            if not points:
+                continue
+            metadata = StatisticMetaData(
+                mean_type=StatisticMeanType.NONE,
+                has_sum=True,
+                name=f"{sse_name} – {label} – {title} (Energy)",
+                source=DOMAIN,
+                statistic_id=energy_statistic_id(sse_id, targets, metric),
+                unit_class=unit_class,
+                unit_of_measurement=unit,
+            )
+            async_add_external_statistics(hass, metadata, points)
 
 
 @dataclass(frozen=True, slots=True)
