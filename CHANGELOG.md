@@ -1,5 +1,21 @@
 # Přehled změn / Changelog
 
+## 0.1.36 – 2026-10-07
+
+### Čeština
+
+- Opraven chybějící návrat z generátoru dashboardu: vlevo v hlavičce je nyní šipka **Zpět do integrace**, která vždy otevře stránku EDC. Funguje i na mobilu a při otevření přímým odkazem, bez závislosti na historii prohlížeče.
+- Stejný návrat je i v **Platby a vyúčtování**. Hlavička zůstává při posunu viditelná, nabídka HA je vpravo. Odkaz zůstává dostupný i při načítání, chybě spojení nebo chybějících skupinách/profilech.
+- Přidány JavaScript regresní testy skutečné inicializace panelů, českých/anglických popisků a zachování návratu a HA testy načtení nových frontendových modulů. Návrat sám nic nevytváří, nevystavuje ani neodesílá, ale nezruší již potvrzenou a zahájenou operaci; rozpracovaný YAML je potřeba před odchodem zkopírovat nebo stáhnout.
+- Pouze oprava navigace, bez změn generování dashboardů, reportů, evidence plateb, dat EDC, ID entit, konfigurace nebo historie. Zvýšení verze také obnoví verzované odkazy na frontendové moduly.
+
+### English
+
+- Fixed the missing return navigation in the dashboard generator. A **Back to integration** arrow on the left of the header always opens the EDC integration page, including on mobile and direct entry, without relying on browser history.
+- Added the same return link to **Payments and settlements**. The header stays visible while scrolling, with the HA menu on the right. Returning remains available during loading, connection errors and missing groups/profiles.
+- Added JavaScript regressions exercising actual panel initialization, Czech/English labels and persistent return navigation, plus HA tests loading the updated frontend modules. Returning does not initiate creation, issue or sending, but does not cancel an already confirmed, in-progress operation; copy or download generated YAML before leaving.
+- Navigation-only fix: dashboard generation, reports, the payment ledger, EDC data, entity IDs, configuration and history are unchanged. The version bump also refreshes versioned frontend module URLs.
+
 ## 0.1.35 – 2026-10-07
 
 ### Čeština

@@ -45,6 +45,7 @@ async function createNewEdcDashboard(callWS, request) {
 
 const EDC_DASHBOARD_TEXT = {
   cs: {
+    back: "Zpět do integrace",
     heading: "EDC – generátor dashboardu", intro: "Stejný styl jako EDC Share2: barevné dlaždice, ukazatele procent, historie a detaily. Pouze nativní karty Home Assistantu.",
     group: "Skupina sdílení", title: "Název dashboardu", path: "Adresa dashboardu (musí obsahovat pomlčku)",
     language: "Jazyk dashboardu", targets: "Zahrnout jednotlivá odběrná místa a jejich vlastní ceny",
@@ -66,6 +67,7 @@ const EDC_DASHBOARD_TEXT = {
     steps: "YAML: Nastavení → Ovládací panely → nový prázdný dashboard → Upravit dashboard → Editor surové konfigurace. Vložte celý YAML. Není to konfigurace jediné karty ani jediného pohledu.",
   },
   en: {
+    back: "Back to integration",
     heading: "EDC dashboard generator", intro: "The EDC Share2 style: colored tiles, percentage gauges, history and details. Native Home Assistant cards only.",
     group: "Sharing group", title: "Dashboard name", path: "Dashboard URL path (must include a hyphen)",
     language: "Dashboard language", targets: "Include individual supply points and their own prices",
@@ -124,7 +126,13 @@ class EdcSharingDashboardGenerator extends HTMLElement {
         .fields{display:grid;grid-template-columns:1fr 1fr;gap:16px}label.field{display:flex;flex-direction:column;gap:6px}input,select,textarea{box-sizing:border-box;font:inherit;color:var(--primary-text-color);background:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:6px;padding:10px;min-width:0}input[type=checkbox]{accent-color:var(--primary-color);width:20px;height:20px;vertical-align:middle;margin-right:10px}
         .check{display:flex;align-items:center;margin:14px 0;line-height:1.5}.actions{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}button{font:inherit;cursor:pointer;padding:12px 18px;border:0;border-radius:24px;color:var(--text-primary-color,#fff);background:var(--primary-color)}button:disabled{opacity:.45;cursor:default}button.secondary{color:var(--primary-color);background:var(--secondary-background-color)}textarea{width:100%;height:420px;font-family:monospace;font-size:13px}p{line-height:1.5}.muted{color:var(--secondary-text-color)}[hidden]{display:none!important}#status{white-space:pre-wrap}a{color:var(--primary-color)}@media(max-width:650px){main{padding:12px}.fields{grid-template-columns:1fr}.card{padding:16px}}
       </style>
-      <header><ha-menu-button></ha-menu-button><h1 data-text="heading"></h1></header>
+      <style>
+        header{position:sticky;top:0;z-index:2}header h1{flex:1;min-width:0}
+        header a.back{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:44px;min-height:44px;flex-shrink:0;color:inherit;text-decoration:none;border-radius:24px}
+        .back-icon{font-size:26px}.back:focus-visible{outline:2px solid currentColor;outline-offset:2px}.back:hover{background:rgba(127,127,127,.15)}
+        @media(max-width:650px){.back-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}}
+      </style>
+      <header><a id="back" class="back" href="/config/integrations/integration/edc_sharing"><span class="back-icon" aria-hidden="true">←</span><span class="back-label" data-text="back"></span></a><h1 data-text="heading"></h1><ha-menu-button></ha-menu-button></header>
       <main><div class="card"><p data-text="intro"></p><div class="fields">
         <label class="field"><span data-text="group"></span><select id="group"></select></label>
         <label class="field"><span data-text="title"></span><input id="title" maxlength="120"></label>

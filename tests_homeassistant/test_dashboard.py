@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 from homeassistant.components import frontend
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.loader import async_get_integration
 from homeassistant.setup import async_setup_component
 from homeassistant.util.yaml import parse_yaml
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -127,7 +128,9 @@ async def test_missing_entry_and_unsafe_path(hass, hass_ws_client):
         assert result["error"]["code"] == code
 
 
-async def test_hidden_admin_generator_panel_registration(hass, hass_ws_client):
+async def test_hidden_admin_generator_panel_registration(
+    hass, hass_ws_client, hass_client
+):
     assert await async_setup_component(hass, "frontend", {})
     await async_setup_dashboard_generator(hass)
     assert frontend.async_panel_exists(hass, PANEL_PATH)
@@ -137,7 +140,21 @@ async def test_hidden_admin_generator_panel_registration(hass, hass_ws_client):
     panel = response["result"][PANEL_PATH]
     assert panel["require_admin"]
     assert panel["title"] is None
-    assert panel["config"]["_panel_custom"]["module_url"].startswith("/edc_sharing/")
+    module_url = panel["config"]["_panel_custom"]["module_url"]
+    integration = await async_get_integration(hass, "edc_sharing")
+    assert (
+        module_url
+        == f"/edc_sharing/dashboard-generator.js?v={integration.manifest['version']}"
+    )
+    http_client = await hass_client(hass)
+    resource = await http_client.get(module_url)
+    assert resource.status == 200
+    source = await resource.text()
+    assert (
+        'id="back" class="back" href="/config/integrations/integration/edc_sharing"'
+        in source
+    )
+    assert "Zpět do integrace" in source and "Back to integration" in source
 
 
 async def test_core_lovelace_create_save_and_duplicate_protection(

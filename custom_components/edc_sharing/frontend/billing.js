@@ -24,6 +24,7 @@ globalThis.EDC_BILLING_HELPERS = { escape: edcBillingEscape, period: edcBillingP
 
 const EDC_BILLING_TEXT = {
   cs: {
+    back: "Zpět do integrace",
     heading: "EDC – Platby a vyúčtování", group: "Skupina sdílení", profiles: "Profil reportů",
     noProfiles: "Nejprve vytvořte profil reportů. Bez uloženého profilu nelze vystavit ani odeslat nové vyúčtování. Archiv již vystavených dokladů zůstává dostupný.",
     configure: "Otevřít integraci a vytvořit / upravit profil", settings: "Vystavitel a volitelná evidence úhrad",
@@ -49,6 +50,7 @@ const EDC_BILLING_TEXT = {
     privacy: "Jen pro správce. Evidence v Home Assistantu obsahuje osobní údaje, celé EANy, bankovní účet a doklady a je součástí záloh. Nesdílejte export veřejně. Nic se automaticky nevystavuje ani neodesílá; současné reporty a Energy statistiky se nemění.",
   },
   en: {
+    back: "Back to integration",
     heading: "EDC – Payments and settlements", group: "Sharing group", profiles: "Report profile",
     noProfiles: "Create a report profile first. Without an explicitly saved profile, new settlements cannot be issued or sent. Existing archived documents remain accessible.",
     configure: "Open the integration to create / edit a profile", settings: "Issuer and optional payment records", issuer: "Issuer name", issuerAddress: "Issuer address (optional)", tracking: "Enable manual payment confirmation (internal information only)", save: "Save ledger settings",
@@ -104,7 +106,13 @@ class EdcSharingBilling extends HTMLElement {
     this._initialized = true; this._cs = this._hass.language?.startsWith("cs"); this._t = EDC_BILLING_TEXT[this._cs ? "cs" : "en"];
     this.shadowRoot.innerHTML = `
       <style>:host{display:block;height:100%;overflow:auto;background:var(--primary-background-color);color:var(--primary-text-color);font:15px/1.5 sans-serif}header{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--app-header-background-color,var(--primary-color));color:var(--app-header-text-color,#fff)}h1{font-size:20px;margin:0}h2{font-size:21px}main{max-width:1100px;margin:auto;padding:20px}.card{background:var(--ha-card-background,var(--card-background-color));border:1px solid var(--divider-color);border-radius:12px;padding:20px;margin:0 0 18px}.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}label.field{display:flex;flex-direction:column;gap:6px}input,select{box-sizing:border-box;padding:10px;font:inherit;border:1px solid var(--divider-color);border-radius:6px;color:var(--primary-text-color);background:var(--secondary-background-color);min-width:0}input[type=checkbox]{width:20px;height:20px;vertical-align:middle;margin-right:10px;accent-color:var(--primary-color)}.check{display:block;margin:16px 0}button{font:inherit;border:0;border-radius:24px;padding:10px 16px;background:var(--primary-color);color:var(--text-primary-color,#fff);cursor:pointer;margin:6px 8px 6px 0}button:disabled{opacity:.45;cursor:default}a{color:var(--primary-color)}.muted{color:var(--secondary-text-color)}.scroll{overflow:auto}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--divider-color);white-space:nowrap}iframe{width:100%;height:780px;border:1px solid var(--divider-color);background:#fff}#status{white-space:pre-wrap}[hidden]{display:none!important}@media(max-width:650px){main{padding:12px}.card{padding:14px}.fields{grid-template-columns:1fr}}</style>
-      <header><ha-menu-button></ha-menu-button><h1 data-text="heading"></h1></header><main>
+      <style>
+        header{position:sticky;top:0;z-index:2}header h1{flex:1;min-width:0}
+        header a.back{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:44px;min-height:44px;flex-shrink:0;color:inherit;text-decoration:none;border-radius:24px}
+        .back-icon{font-size:26px}.back:focus-visible{outline:2px solid currentColor;outline-offset:2px}.back:hover{background:rgba(127,127,127,.15)}
+        @media(max-width:650px){.back-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}}
+      </style>
+      <header><a id="back" class="back" href="/config/integrations/integration/edc_sharing"><span class="back-icon" aria-hidden="true">←</span><span class="back-label" data-text="back"></span></a><h1 data-text="heading"></h1><ha-menu-button></ha-menu-button></header><main>
       <div class="card"><p data-text="intro"></p><label class="field"><span data-text="group"></span><select id="group"></select></label><button id="refresh">↻</button><p id="status" role="status" aria-live="polite"></p><p class="muted" data-text="privacy"></p></div>
       <div class="card" id="profile-gate" hidden><p data-text="noProfiles"></p><a href="/config/integrations/integration/edc_sharing" data-text="configure"></a></div>
       <div class="card" id="settings-card" hidden><h2 data-text="settings"></h2><div class="fields"><label class="field"><span data-text="issuer"></span><input id="issuer" maxlength="300"></label><label class="field"><span data-text="issuerAddress"></span><input id="issuer-address" maxlength="300"></label></div><label class="check"><input id="tracking" type="checkbox"><span data-text="tracking"></span></label><button id="save" data-text="save"></button></div>

@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from homeassistant.components import frontend, websocket_api
 from homeassistant.helpers import entity_registry as er
+from homeassistant.loader import async_get_integration
 from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -331,7 +332,7 @@ async def test_corrupt_storage_is_not_reset(hass):
 
 
 async def test_hidden_admin_panel_and_options_link_preserve_existing_settings(
-    hass, hass_ws_client
+    hass, hass_ws_client, hass_client
 ):
     from custom_components.edc_sharing.config_flow import EdcSharingOptionsFlow
 
@@ -343,6 +344,18 @@ async def test_hidden_admin_panel_and_options_link_preserve_existing_settings(
     await client.send_json({"id": 1, "type": "get_panels"})
     panel = (await client.receive_json())["result"][PANEL_PATH]
     assert panel["require_admin"] is True and panel["title"] is None
+    module_url = panel["config"]["_panel_custom"]["module_url"]
+    integration = await async_get_integration(hass, "edc_sharing")
+    assert module_url == f"/edc_sharing/billing.js?v={integration.manifest['version']}"
+    http_client = await hass_client(hass)
+    resource = await http_client.get(module_url)
+    assert resource.status == 200
+    source = await resource.text()
+    assert (
+        'id="back" class="back" href="/config/integrations/integration/edc_sharing"'
+        in source
+    )
+    assert "Zpět do integrace" in source and "Back to integration" in source
     flow = EdcSharingOptionsFlow(entry)
     flow.hass = hass
     result = await flow.async_step_billing()

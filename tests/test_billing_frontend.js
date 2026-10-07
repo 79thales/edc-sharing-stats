@@ -32,6 +32,7 @@ class TestNode {
     this.textContent = ""; this.hidden = /\bhidden\b/.test(attrs);
     for (const match of attrs.matchAll(/data-([\w-]+)="([^"]*)"/g)) this.dataset[match[1]] = match[2];
     this.id = attrs.match(/\bid="([^"]*)"/)?.[1];
+    this.href = attrs.match(/\bhref="([^"]*)"/)?.[1] || "";
     this.contentWindow = { print() {} };
   }
   set innerHTML(value) {
@@ -56,7 +57,36 @@ class TestNode {
   scrollIntoView() {}
 }
 
-async function controllerTest() {
+async function navigationTest() {
+  for (const scenario of [
+    { language: "cs", narrow: true, admin: true, fail: false },
+    { language: "en", narrow: false, admin: true, fail: true },
+    { language: "en", narrow: true, admin: false, fail: false },
+  ]) {
+    const components = new Map(); const calls = [];
+    const sandbox = {
+      HTMLElement: class { constructor() { this.isConnected = true; } attachShadow() { this.shadowRoot = new TestNode(); } },
+      customElements: { get: key => components.get(key), define: (key, value) => components.set(key, value) },
+      window: { history: { back() { throw new Error("Do not rely on browser history"); } } },
+      location: { search: "" }, URLSearchParams, Date, Math,
+    };
+    vm.createContext(sandbox); vm.runInContext(source, sandbox);
+    const Component = components.get("edc-sharing-billing-v1");
+    const component = new Component(); component.narrow = scenario.narrow;
+    component.hass = { language: scenario.language, user: { is_admin: scenario.admin }, async callWS(message) {
+      calls.push(message); if (scenario.fail) throw new Error("offline"); return [];
+    } };
+    while (component._busy) await new Promise(resolve => setImmediate(resolve));
+    const back = component._el("back");
+    assert.ok(back, "Returning must work even if billing cannot load");
+    assert.equal(back.href, "/config/integrations/integration/edc_sharing");
+    assert.equal(back.disabled, false);
+    assert.ok(calls.every(call => call.type === "edc_sharing/billing/groups"));
+  }
+  console.log("Billing navigation: return link survives mobile, empty groups, offline and unauthorized states");
+}
+
+async function controllerTest(language) {
   const components = new Map();
   const calls = [];
   const overview = {
@@ -84,7 +114,7 @@ async function controllerTest() {
   const Component = components.get("edc-sharing-billing-v1");
   const component = new Component();
   component.hass = {
-    user: { is_admin: true }, language: "cs", states: { "notify.example": { attributes: { friendly_name: "Example recipient" } } },
+    user: { is_admin: true }, language, states: { "notify.example": { attributes: { friendly_name: "Example recipient" } } },
     async callWS(message) {
       calls.push(normalize(message));
       if (message.type === "edc_sharing/billing/groups") return [{ entry_id: "entry-1", name: "Example group" }];
@@ -100,6 +130,10 @@ async function controllerTest() {
   };
   while (component._busy) await new Promise(resolve => setImmediate(resolve));
   const el = id => component.shadowRoot.getElementById(id);
+  assert.ok(el("back"), "Billing needs a return link even without profiles");
+  assert.equal(el("back").tag, "a");
+  assert.equal(el("back").href, "/config/integrations/integration/edc_sharing");
+  assert.ok(component.shadowRoot.children.some(node => node.dataset.text === "back" && node.textContent === (language === "cs" ? "Zpět do integrace" : "Back to integration")));
   assert.equal(el("profile-gate").hidden, false);
   assert.equal(el("draft-card").hidden, true);
   assert.equal(calls.filter(call => ["issue", "send", "payment"].includes(call.action)).length, 0);
@@ -133,6 +167,7 @@ async function controllerTest() {
   await component._mutate("send", { document_id: "document-1" });
   assert.equal(retries[0].payload.request_id, retries[1].payload.request_id);
   assert.equal(retries[0].revision, retries[1].revision);
+  assert.equal(el("back").disabled, false);
   console.log("Billing controller: profile-first gate, complete preview, explicit issue/send/payment and lost-response retry passed");
 }
-controllerTest().catch(error => { console.error(error); process.exitCode = 1; });
+navigationTest().then(() => controllerTest("cs")).then(() => controllerTest("en")).catch(error => { console.error(error); process.exitCode = 1; });
