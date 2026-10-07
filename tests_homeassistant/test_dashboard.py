@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from homeassistant.components import frontend
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -158,8 +159,10 @@ async def test_hidden_admin_generator_panel_registration(
     assert "Zpět do integrace" in source and "Back to integration" in source
 
 
+# Recorder's database fixtures must be prepared before the hass fixture.
+@pytest.mark.usefixtures("recorder_mock")
 async def test_helper_panels_preserve_the_native_options_menu_for_each_group(
-    hass, hass_ws_client, recorder_mock
+    hass, hass_ws_client
 ):
     from custom_components.edc_sharing.billing_api import async_setup_billing
 
