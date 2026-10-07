@@ -140,6 +140,7 @@ async def test_hidden_admin_generator_panel_registration(
     panel = response["result"][PANEL_PATH]
     assert panel["require_admin"]
     assert panel["title"] is None
+    assert not panel.get("config_panel_domain")
     module_url = panel["config"]["_panel_custom"]["module_url"]
     integration = await async_get_integration(hass, "edc_sharing")
     assert (
@@ -155,6 +156,62 @@ async def test_hidden_admin_generator_panel_registration(
         in source
     )
     assert "Zpět do integrace" in source and "Back to integration" in source
+
+
+async def test_helper_panels_preserve_the_native_options_menu_for_each_group(
+    hass, hass_ws_client
+):
+    from custom_components.edc_sharing.billing_api import async_setup_billing
+
+    assert await async_setup_component(hass, "frontend", {})
+    first = add_entry(hass)
+    second = MockConfigEntry(
+        domain="edc_sharing",
+        version=2,
+        title="Another example group",
+        data={"sse_id": "example-2", "sse_name": "Another example group"},
+        options={"sale_price": 3},
+    )
+    second.add_to_hass(hass)
+    await async_setup_dashboard_generator(hass)
+    await async_setup_billing(hass)
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": "get_panels"})
+    panels = (await client.receive_json())["result"]
+    # This is the metadata HA uses to prefer a panel over the options flow.
+    assert not any(
+        panel.get("config_panel_domain") == "edc_sharing"
+        for panel in panels.values()
+    )
+    for entry in (first, second):
+        before = dict(entry.options)
+        menu = await hass.config_entries.options.async_init(entry.entry_id)
+        assert menu["type"] == "menu" and menu["step_id"] == "init"
+        assert menu["menu_options"] == [
+            "general",
+            "ean_settings",
+            "energy_settings",
+            "payment_settings",
+            "profiles",
+            "dashboard",
+            "billing",
+        ]
+        for tool, path in (
+            ("dashboard", "/edc-sharing-dashboard"),
+            ("billing", "/edc-sharing-billing"),
+        ):
+            form = await hass.config_entries.options.async_configure(
+                menu["flow_id"], {"next_step_id": tool}
+            )
+            assert form["step_id"] == tool
+            assert form["description_placeholders"]["url"] == (
+                f"{path}?entry_id={entry.entry_id}"
+            )
+            menu = await hass.config_entries.options.async_configure(
+                menu["flow_id"], {}
+            )
+            assert menu["step_id"] == "init"
+        assert entry.options == before
 
 
 async def test_core_lovelace_create_save_and_duplicate_protection(

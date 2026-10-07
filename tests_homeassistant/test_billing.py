@@ -344,6 +344,7 @@ async def test_hidden_admin_panel_and_options_link_preserve_existing_settings(
     await client.send_json({"id": 1, "type": "get_panels"})
     panel = (await client.receive_json())["result"][PANEL_PATH]
     assert panel["require_admin"] is True and panel["title"] is None
+    assert not panel.get("config_panel_domain")
     module_url = panel["config"]["_panel_custom"]["module_url"]
     integration = await async_get_integration(hass, "edc_sharing")
     assert module_url == f"/edc_sharing/billing.js?v={integration.manifest['version']}"

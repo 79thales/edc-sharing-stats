@@ -43,6 +43,8 @@ An administrator can generate a named dashboard in the EDC Share2 sections style
 
 V **Nastavení → Zařízení a služby → EDC → Konfigurovat → Vygenerovat dashboard** otevřete odkaz na generátor. U zařízení skupiny je také nové konfigurační tlačítko **Vygenerovat dashboard**. Protože backendové tlačítko Home Assistantu nemůže samo otevřít formulář v konkrétním prohlížeči, vytvoří oznámení s odkazem na stejný generátor. Tlačítko nic nezaloží ani nic neodešle e-mailem.
 
+Od v0.1.37 ozubené kolo **Konfigurovat** otevírá společné menu nastavení dané skupiny: obecné nastavení, EANy, Energy, účet pro QR platby, profily reportů, generátor a vyúčtování. Pomocné panely toto menu nenahrazují. Tlačítko generátoru na zařízení je pouze zkratka; výchozí dashboard domácnosti se nemění.
+
 Šipka **Zpět do integrace** vlevo v pevné hlavičce generátoru i plateb vrací přímo na stránku EDC, také na mobilu nebo při otevření přímým odkazem. Nabídka HA zůstává vpravo. Návrat sám nic nevytváří ani neodesílá, ale nezruší již potvrzenou a zahájenou operaci; rozpracovaný YAML si před odchodem zkopírujte nebo stáhněte.
 
 1. Zadejte **název a adresu dashboardu**, vyberte skupinu a češtinu nebo angličtinu.
@@ -98,6 +100,8 @@ Zápisy se serializují, kontrolují revizi a potvrzení vystavení se váže na
 Open **Configure → Payments and settlements**. An explicitly saved report profile must exist first; billing reuses its recipients, language, EAN scope and financial mode rather than maintaining separate email settings. Issue a private electricity-sharing settlement for the previous month, current year or an inclusive custom range of past dates (up to 3660 days), using cached daily totals only. Missing/invalid daily data or inconsistent group totals block final issue; this is a daily-presence check, not validation of every intraday EDC interval. No VAT is calculated and no tax compliance or bank payment is certified.
 
 Both EDC panels have a **Back to integration** arrow on the left of their sticky header, including on mobile and when opened directly. The HA menu remains on the right. Returning does not initiate creation or sending, but does not cancel an already confirmed, in-progress operation; copy or download generated YAML before leaving the generator.
+
+Since v0.1.37, the **Configure** cog opens the selected group's common options menu: general settings, supply points, Energy, QR bank account, report profiles, dashboard generator and settlements. Helper panels do not override this menu. The group-device generator button is only a shortcut and does not change the home's default dashboard.
 
 Preview and explicitly issue a numbered, locally retained document. Download printable HTML or use the browser's Print / Save as PDF; there is no server-generated PDF attachment. Explicit SMTP sending places the document and optional QR for the **remaining** amount in the email body, with a plain-text alternative. Issuing and SMTP handoff **do not confirm payment**; handoff does not certify inbox delivery. Manual payment tracking is optional and off by default. Only confirmed receipts reduce balances. Unconfirmed amounts remain offered for payment, also in annual summaries. For example, value CZK 1,000 minus a manually confirmed CZK 400 leaves CZK 600 payable; without that confirmation the full CZK 1,000 is still offered.
 

@@ -1,5 +1,21 @@
 # Přehled změn / Changelog
 
+## 0.1.37 – 2026-10-07
+
+### Čeština
+
+- Opraveno nechtěné přesměrování ozubeného kola na generátor dashboardu. Generátor ani platby už nejsou registrované jako náhrada hlavní konfigurace EDC; **Konfigurovat** znovu otevře společné menu nastavení konkrétní skupiny.
+- Generátor a **Platby a vyúčtování** zůstávají volbami v tomto menu. Tlačítko generátoru na zařízení skupiny je zachovaná rychlá zkratka, nikoli výchozí dashboard domácnosti. Oba pomocné panely zůstávají skryté z postranního menu a přístupné pouze správci.
+- Přidán regresní test původní chybné registrace a reálné HA testy metadat panelů i nativního menu pro dvě nezávislé skupiny, včetně správného odkazu na každou instanci a návratu bez změn options.
+- Bez změn ID entit, údajů konfigurace, credentials, reportů, plateb, EDC komunikace, statistik nebo uložené historie. Starší releasy a jejich instalační balíčky se nepřepisují.
+
+### English
+
+- Fixed the Configure button unexpectedly opening the dashboard generator. Neither helper panel now overrides the EDC configuration route; **Configure** opens the selected sharing group's common options menu again.
+- The dashboard generator and **Payments and settlements** remain available from that menu. The group-device generator button is retained as a shortcut, not the home's default dashboard. Both helper panels remain hidden from the sidebar and restricted to administrators.
+- Added a regression for the original incorrect registration and real HA tests verifying panel metadata and native options flows for two independent sharing groups, including entry-specific links and returning without changing options.
+- Entity IDs, configuration data, credentials, reports, payments, EDC requests, statistics and retained history are unchanged. Previous releases and installer assets are preserved.
+
 ## 0.1.36 – 2026-10-07
 
 ### Čeština

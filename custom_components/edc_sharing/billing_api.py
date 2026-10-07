@@ -64,13 +64,13 @@ async def async_setup_billing(hass: HomeAssistant) -> None:
             )
         ]
     )
+    # Auxiliary tool: do not replace the config entry's native options flow.
     await async_register_panel(
         hass,
         frontend_url_path=PANEL_PATH,
         webcomponent_name="edc-sharing-billing-v1",
         module_url=f"{MODULE_PATH}?v={integration.manifest['version']}",
         require_admin=True,
-        config_panel_domain=DOMAIN,
     )
 
 
