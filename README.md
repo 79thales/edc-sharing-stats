@@ -1,10 +1,15 @@
 # EDC Sharing Stats
 
-[![Latest release](https://img.shields.io/github/v/release/79thales/edc-sharing-stats?logo=github)](https://github.com/79thales/edc-sharing-stats/releases/latest)
-[![Installer downloads, all releases](https://img.shields.io/github/downloads/79thales/edc-sharing-stats/edc_sharing.zip?label=Downloads%20total&displayAssetName=false)](https://github.com/79thales/edc-sharing-stats/releases)
-[![Installer downloads, latest release](https://img.shields.io/github/downloads/79thales/edc-sharing-stats/latest/edc_sharing.zip?label=Downloads%20latest&displayAssetName=false)](https://github.com/79thales/edc-sharing-stats/releases/latest)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.8.0%2B-41BDF5?logo=home-assistant&logoColor=white&style=flat)](https://www.home-assistant.io/)
+[![HACS Integration](https://img.shields.io/badge/HACS-Integration-41BDF5?logo=home-assistant-community-store&logoColor=white&style=flat)](https://my.home-assistant.io/redirect/hacs_repository/?owner=79thales&repository=edc-sharing-stats&category=integration)
+[![Latest release](https://img.shields.io/github/v/release/79thales/edc-sharing-stats?label=Release&logo=github&style=flat)](https://github.com/79thales/edc-sharing-stats/releases/latest)
+[![Installer downloads, all releases](https://img.shields.io/github/downloads/79thales/edc-sharing-stats/edc_sharing.zip?label=Downloads%20total&displayAssetName=false&logo=github&style=flat)](https://github.com/79thales/edc-sharing-stats/releases)
+[![Installer downloads, latest release](https://img.shields.io/github/downloads/79thales/edc-sharing-stats/latest/edc_sharing.zip?label=Downloads%20latest&displayAssetName=false&logo=github&style=flat)](https://github.com/79thales/edc-sharing-stats/releases/latest)
+[![Validation](https://img.shields.io/github/check-suites/79thales/edc-sharing-stats/main?label=Validation&logo=github&style=flat)](https://github.com/79thales/edc-sharing-stats/actions)
 
-[![Otevřít repozitář v HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=79thales&repository=edc-sharing-stats&category=integration)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/79thales/edc-sharing-stats/main/custom_components/edc_sharing/brand/icon@2x.png" alt="EDC Sharing Stats" width="180">
+</p>
 
 ## English overview
 
