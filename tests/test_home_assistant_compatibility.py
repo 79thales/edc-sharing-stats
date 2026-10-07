@@ -26,6 +26,9 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
         modules = (
             "custom_components.edc_sharing",
             "custom_components.edc_sharing.api",
+            "custom_components.edc_sharing.billing",
+            "custom_components.edc_sharing.billing_api",
+            "custom_components.edc_sharing.billing_document",
             "custom_components.edc_sharing.button",
             "custom_components.edc_sharing.calculation",
             "custom_components.edc_sharing.config_flow",
@@ -408,7 +411,7 @@ class ReportProfileFlowTests(unittest.IsolatedAsyncioTestCase):
         menu = await self.flow.async_step_init()
         self.assertEqual(
             menu["menu_options"],
-            ["general", "ean_settings", "energy_settings", "payment_settings", "profiles", "dashboard"],
+            ["general", "ean_settings", "energy_settings", "payment_settings", "profiles", "dashboard", "billing"],
         )
         form = await self.flow.async_step_profiles({"profile": "new"})
         values = default_profile() | {

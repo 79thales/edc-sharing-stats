@@ -14,6 +14,7 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import EdcApiClient, EdcApiError, EdcAuthenticationError
+from .billing import PANEL_PATH as BILLING_PANEL_PATH
 from .const import (
     CONF_DAILY_REPORT,
     CONF_EAN_SETTINGS,
@@ -194,7 +195,18 @@ class EdcSharingOptionsFlow(ProfileOptionsMixin, OptionsFlow):
     ) -> ConfigFlowResult:
         return self.async_show_menu(
             step_id="init",
-            menu_options=["general", "ean_settings", "energy_settings", "payment_settings", "profiles", "dashboard"],
+            menu_options=["general", "ean_settings", "energy_settings", "payment_settings", "profiles", "dashboard", "billing"],
+        )
+
+    async def async_step_billing(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """The financial ledger is separate; this form never writes options."""
+        if user_input is not None:
+            return await self.async_step_init()
+        return self.async_show_form(
+            step_id="billing", data_schema=vol.Schema({}),
+            description_placeholders={"url": f"/{BILLING_PANEL_PATH}?entry_id={self._entry.entry_id}"},
         )
 
     async def async_step_dashboard(

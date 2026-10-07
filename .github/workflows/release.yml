@@ -38,6 +38,8 @@ jobs:
         run: |
           node --check custom_components/edc_sharing/frontend/dashboard-generator.js
           node tests/test_dashboard_frontend.js
+          node --check custom_components/edc_sharing/frontend/billing.js
+          node tests/test_billing_frontend.js
       - name: Compile integration and packaging script
         run: python -m compileall -q custom_components/edc_sharing scripts
       - name: Build and validate installer from the tagged commit

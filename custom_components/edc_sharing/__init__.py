@@ -36,12 +36,17 @@ type EdcConfigEntry = ConfigEntry[EdcRuntimeData]
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register the optional dashboard generator without contacting EDC."""
     from .dashboard_api import async_setup_dashboard_generator
+    from .billing_api import async_setup_billing
 
     try:
         await async_setup_dashboard_generator(hass)
     except (HomeAssistantError, OSError, ValueError, RuntimeError):
         # A presentation feature must not prevent existing data/report setup.
         _LOGGER.warning("The optional EDC dashboard generator is unavailable; EDC data setup remains enabled")
+    try:
+        await async_setup_billing(hass)
+    except (HomeAssistantError, OSError, ValueError, RuntimeError):
+        _LOGGER.warning("The optional EDC billing panel is unavailable; EDC data and reports remain enabled")
     return True
 
 

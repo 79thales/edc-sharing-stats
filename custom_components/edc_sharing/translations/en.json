@@ -45,8 +45,13 @@
           "energy_settings": "Sharing income in the Energy dashboard",
           "payment_settings": "QR payment account",
           "profiles": "Report profiles",
-          "dashboard": "Generate dashboard"
+          "dashboard": "Generate dashboard",
+          "billing": "Payments and settlements"
         }
+      },
+      "billing": {
+        "title": "Payments and settlements",
+        "description": "[Open payments and settlements]({url})\n\nUse an existing report profile first. Create private-person settlements for an inclusive custom date range; send through the profile's SMTP recipients and optionally record manual payments. Issuing or sending is not payment. Unconfirmed amounts remain offered for payment; overlapping statements never add the same sharing twice. Existing reports and Energy statistics are unchanged."
       },
       "dashboard": {
         "title": "EDC dashboard generator",

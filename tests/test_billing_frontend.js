@@ -1,0 +1,22 @@
+/* Pure frontend helpers, date boundaries and no unescaped HTML regression. */
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const vm = require("node:vm");
+const source = fs.readFileSync("custom_components/edc_sharing/frontend/billing.js", "utf8");
+const context = { HTMLElement: class {}, customElements: { get() {}, define() {} }, Date, Math };
+vm.createContext(context); vm.runInContext(source, context);
+const helpers = context.EDC_BILLING_HELPERS;
+const normalize = value => JSON.parse(JSON.stringify(value));
+assert.deepEqual(normalize(helpers.period("month", "2026-01-05", "")), { start: "2025-12-01", end: "2025-12-31" });
+assert.deepEqual(normalize(helpers.period("month", "2028-03-05", "")), { start: "2028-02-01", end: "2028-02-29" });
+assert.deepEqual(normalize(helpers.period("year", "2026-10-07", "2026-10-05")), { start: "2026-01-01", end: "2026-10-05" });
+assert.equal(helpers.period("custom", "2026-10-07", ""), null);
+assert.equal(helpers.escape('<img src="x" onerror="bad()">&'), "&lt;img src=&quot;x&quot; onerror=&quot;bad()&quot;&gt;&amp;");
+assert.ok(source.includes('sandbox="allow-same-origin allow-modals"'));
+assert.ok(!source.includes("allow-scripts"));
+assert.ok(source.includes('querySelectorAll("button,input,select")'));
+assert.ok(source.includes("this._pending.request_id"));
+assert.ok(source.includes('this._el("issue-confirm").checked'));
+assert.ok(source.includes('this._el("send-confirm").checked'));
+assert.ok(source.includes('this._el("payment-confirm").checked'));
+console.log("Billing helpers: calendar periods, escaping, preview confirmation and stable retry IDs passed");

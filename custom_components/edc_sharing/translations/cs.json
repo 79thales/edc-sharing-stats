@@ -45,8 +45,13 @@
           "energy_settings": "Příjem ze sdílení v Energy dashboardu",
           "payment_settings": "Účet pro QR platby",
           "profiles": "Profily reportů",
-          "dashboard": "Vygenerovat dashboard"
+          "dashboard": "Vygenerovat dashboard",
+          "billing": "Platby a vyúčtování"
         }
+      },
+      "billing": {
+        "title": "Platby a vyúčtování",
+        "description": "[Otevřít platby a vyúčtování]({url})\n\nNejprve musí existovat profil reportů. Vystavte soukromé vyúčtování za vlastní období od–do včetně, odešlete je SMTP příjemcům profilu a volitelně ručně evidujte úhrady. Vystavení ani odeslání není platba. Nepotvrzené částky zůstávají nabízené k zaplacení; překryv dokladů nezvyšuje dluh za stejné sdílení. Stávající reporty a statistiky Energy zůstávají beze změny."
       },
       "dashboard": {
         "title": "Generátor EDC dashboardu",

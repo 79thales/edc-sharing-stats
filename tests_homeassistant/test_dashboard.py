@@ -220,6 +220,8 @@ async def test_optional_generator_failure_does_not_block_edc_setup(hass):
     with patch(
         "custom_components.edc_sharing.dashboard_api.async_setup_dashboard_generator",
         new=AsyncMock(side_effect=ValueError("Panel conflict")),
+    ), patch(
+        "custom_components.edc_sharing.billing_api.async_setup_billing", new=AsyncMock(),
     ):
         assert await async_setup(hass, {})
 
