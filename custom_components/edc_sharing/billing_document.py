@@ -106,7 +106,7 @@ def render_settlement(document: dict, qr: str | None = None) -> tuple[str, str]:
     for row in document["charges"].values():
         key = (row["ean"], row["name"], row["location"], row["price"])
         rows[key][0] += Decimal(row["shared"])
-        rows[key][1] += Decimal(row["amount"])
+        rows[key][1] += Decimal(row["payable"])
     table = []
     text_rows = []
     for (ean, name, location, rate), (energy, amount) in sorted(rows.items()):

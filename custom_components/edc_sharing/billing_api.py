@@ -12,6 +12,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
@@ -116,6 +117,8 @@ class BillingManager:
                 (item := registry.async_get(target)) is not None
                 and item.platform == "smtp"
                 and item.disabled_by is None
+                and (state := self.hass.states.get(target)) is not None
+                and state.state != STATE_UNAVAILABLE
                 for target in profile["targets"]
             )
         )
@@ -209,7 +212,21 @@ class BillingManager:
                     "balance": ledger.balance(ledger.state["charges"]),
                 }
             if action == "preview":
-                return self._preview(ledger, payload)
+                quote = self._preview(ledger, payload)
+                cs = quote["language"] == "cs"
+                preview_document = quote | {
+                    "number": "NÁHLED – není vystaveno"
+                    if cs
+                    else "PREVIEW – not issued",
+                    "issued_at": "",
+                    "variable_symbol": "Přidělí se při vystavení"
+                    if cs
+                    else "Assigned on issue",
+                }
+                html, _text = await self.hass.async_add_executor_job(
+                    render_settlement, preview_document
+                )
+                return quote | {"html": html}
             if action == "document":
                 return await self._document(ledger, payload["document_id"])
             request_id = payload.get("request_id")

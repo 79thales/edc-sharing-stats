@@ -306,6 +306,24 @@ class BillingTest(unittest.TestCase):
                 request_id="payment-disabled",
             )
 
+    def test_fractional_cent_overlap_never_demands_the_same_cent_twice(self):
+        rows = {"EAN-A": target_rows(shared="0.0025", days=2)}
+        whole = self.issue(1, 2, rows=rows)
+        first_day = self.issue(1, 1, request_id="day-1", rows=rows)
+        self.pay(first_day, "0.01")
+        self.assertEqual(
+            "0.00", self.ledger.document(whole["id"])["balance"]["remaining"]
+        )
+        self.assertEqual(
+            "0.01",
+            sum(
+                (Decimal(p["amount"]) for p in self.ledger.state["payments"]),
+                Decimal(0),
+            )
+            .quantize(Decimal("0.01"))
+            .to_eng_string(),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -91,6 +91,9 @@ async def prepared_manager(hass):
         0,
     )
     quote = await manager.action("preview", parameters(), None)
+    assert "EAN EAN-A" in quote["html"]
+    assert "Example supplier" in quote["html"]
+    assert "PREVIEW" in quote["html"] or "NÁHLED" in quote["html"]
     document = await manager.action(
         "issue",
         {
@@ -269,6 +272,7 @@ async def test_smtp_handoff_is_not_payment_and_retry_never_auto_resends(hass):
         calls.append(call)
 
     hass.services.async_register("smtp", "send_message", send)
+    hass.states.async_set("notify.example", "unknown")
     payload = {"document_id": document["id"], "request_id": "send-0001"}
     result = await manager.action("send", payload, 2)
     await manager.action("send", payload, 2)
@@ -277,6 +281,13 @@ async def test_smtp_handoff_is_not_payment_and_retry_never_auto_resends(hass):
     assert result["deliveries"][-1]["status"] == "handed_to_smtp"
     assert result["balance"]["remaining"] == "60.00"
     assert manager.ledger.state["payments"] == []
+    hass.states.async_set("notify.example", "unavailable")
+    with pytest.raises(BillingError, match="smtp_unavailable"):
+        await manager.action(
+            "send",
+            payload | {"request_id": "send-0002"},
+            manager.ledger.state["revision"],
+        )
 
 
 async def test_removed_or_changed_profile_cannot_redirect_old_document(hass):

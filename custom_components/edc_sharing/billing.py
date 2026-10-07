@@ -10,7 +10,7 @@ import json
 from collections.abc import Mapping
 from copy import deepcopy
 from datetime import date, timedelta
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal, InvalidOperation
 from hashlib import sha256
 from typing import Any
 from uuid import uuid4
@@ -143,6 +143,8 @@ class BillingLedger:
                 if key != charge_key(row["ean"], date.fromisoformat(row["day"])):
                     raise ValueError
                 decimal_value(row["amount"])
+                if money(row["payable"]) != row["payable"]:
+                    raise ValueError
                 decimal_value(row["shared"])
                 decimal_value(row["price"])
             for collection in (state["documents"], state["payments"]):
@@ -173,7 +175,7 @@ class BillingLedger:
                 if item["total"] != money(
                     sum(
                         (
-                            decimal_value(state["charges"][key]["amount"])
+                            decimal_value(state["charges"][key]["payable"])
                             for key in item["charge_keys"]
                         ),
                         ZERO,
@@ -212,11 +214,11 @@ class BillingLedger:
         )
         unsettled = keys - settled
         total = Decimal(
-            money(sum((decimal_value(charges[key]["amount"]) for key in keys), ZERO))
+            money(sum((decimal_value(charges[key]["payable"]) for key in keys), ZERO))
         )
         remaining = Decimal(
             money(
-                sum((decimal_value(charges[key]["amount"]) for key in unsettled), ZERO)
+                sum((decimal_value(charges[key]["payable"]) for key in unsettled), ZERO)
             )
         )
         ambiguous = []
@@ -361,6 +363,7 @@ class BillingLedger:
                 "number": parsed.number,
                 "bank_code": parsed.bank_code,
             }
+        self._allocate_cents(charges)
         balance = self.balance(keys, charges=charges)
         quote = {
             "revision": self.state["revision"],
@@ -390,6 +393,49 @@ class BillingLedger:
         }
         quote["preview_id"] = fingerprint(quote)
         return quote
+
+    def _allocate_cents(self, charges: dict) -> None:
+        """Freeze cents once while retaining unrounded energy and raw value.
+
+        Round new charges per EAN/issued range, then allocate residual cents
+        by largest remainder (date as tie-breaker). Subranges and receipts use
+        these same canonical cents, never independently rerounded raw values.
+        """
+        eans = {
+            row["ean"]
+            for key, row in charges.items()
+            if key not in self.state["charges"]
+        }
+        for ean in eans:
+            keys = [
+                key
+                for key, row in charges.items()
+                if row["ean"] == ean and key not in self.state["charges"]
+            ]
+            floor = {
+                key: decimal_value(charges[key]["amount"]).quantize(
+                    CENT, rounding=ROUND_DOWN
+                )
+                for key in keys
+            }
+            target = Decimal(
+                money(
+                    sum((decimal_value(charges[key]["amount"]) for key in keys), ZERO)
+                )
+            )
+            residual = int((target - sum(floor.values(), ZERO)) / CENT)
+            ordered = sorted(
+                keys,
+                key=lambda key: (
+                    -(decimal_value(charges[key]["amount"]) - floor[key]),
+                    charges[key]["day"],
+                ),
+            )
+            extra = set(ordered[:residual])
+            for key in keys:
+                charges[key]["payable"] = money(
+                    floor[key] + (CENT if key in extra else ZERO)
+                )
 
     def issue(self, quote: dict, *, now: str, request_id: str) -> dict:
         """Reissuing a statement never creates an additional charge."""
