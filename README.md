@@ -11,6 +11,8 @@
   <img src="https://raw.githubusercontent.com/79thales/edc-sharing-stats/main/custom_components/edc_sharing/brand/icon@2x.png" alt="EDC Sharing Stats" width="180">
 </p>
 
+HACS displays documentation for the installed version. The unified header is included from v0.1.33. Update this repository in HACS to see it; refreshing the page or updating only the default branch does not change an older release's README.
+
 ## English overview
 
 EDC Sharing Stats is a custom Home Assistant integration for electricity-sharing groups managed through the Czech EDC portal. For the latest available EDC day, it exposes shared electricity, consumption, grid import, unused production surplus, sharing coverage, and an estimated value based on a configurable CZK/kWh price. Current-month statistics additionally include total production surplus. Separate surplus-utilization sensors show the percentage of production surplus actually used for sharing for the latest day, current week, month, year and all retained history.
