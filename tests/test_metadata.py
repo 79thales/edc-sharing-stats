@@ -10,7 +10,7 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).parents[1]
 COMPONENT_ROOT = REPOSITORY_ROOT / "custom_components" / "edc_sharing"
-TEXT_SUFFIXES = {".json", ".md", ".py", ".yaml", ".yml"}
+TEXT_SUFFIXES = {".json", ".md", ".py", ".yaml", ".yml", ".js"}
 NON_EMAIL_LITERALS = {"icon@2x.png"}
 
 
@@ -20,6 +20,7 @@ def _repository_text_files():
         REPOSITORY_ROOT / ".github",
         REPOSITORY_ROOT / "custom_components",
         REPOSITORY_ROOT / "tests",
+        REPOSITORY_ROOT / "tests_homeassistant",
         REPOSITORY_ROOT / "scripts",
     ):
         yield from (path for path in root.rglob("*") if path.suffix in TEXT_SUFFIXES)
@@ -92,7 +93,8 @@ class TranslationMetadataTest(unittest.TestCase):
             self.assertEqual(len(names), 35)
             self.assertEqual(len(names), len(set(names)))
 
-        self.assertEqual(len(source["entity"]["button"]), 7)
+        self.assertEqual(len(source["entity"]["button"]), 8)
+        self.assertIn("generate_dashboard", source["entity"]["button"])
 
     def test_profile_ui_translations_are_complete(self) -> None:
         documents = [

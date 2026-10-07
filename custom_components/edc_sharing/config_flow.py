@@ -37,6 +37,7 @@ from .const import (
     DOMAIN,
     config_entry_unique_id,
 )
+from .dashboard import PANEL_PATH
 from .ean_settings import configured_ean_settings, ean_location, ean_name
 from .payment import PaymentConfigurationError, parse_czech_account
 from .profile_options import ProfileOptionsMixin
@@ -193,7 +194,20 @@ class EdcSharingOptionsFlow(ProfileOptionsMixin, OptionsFlow):
     ) -> ConfigFlowResult:
         return self.async_show_menu(
             step_id="init",
-            menu_options=["general", "ean_settings", "energy_settings", "payment_settings", "profiles"],
+            menu_options=["general", "ean_settings", "energy_settings", "payment_settings", "profiles", "dashboard"],
+        )
+
+    async def async_step_dashboard(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Link to a frontend that uses the signed-in admin's Lovelace connection."""
+        if user_input is not None:
+            return await self.async_step_init()
+        return self.async_show_form(
+            step_id="dashboard", data_schema=vol.Schema({}),
+            description_placeholders={
+                "url": f"/{PANEL_PATH}?entry_id={self._entry.entry_id}"
+            },
         )
 
     async def async_step_energy_settings(

@@ -30,6 +30,8 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
             "custom_components.edc_sharing.calculation",
             "custom_components.edc_sharing.config_flow",
             "custom_components.edc_sharing.coordinator",
+            "custom_components.edc_sharing.dashboard",
+            "custom_components.edc_sharing.dashboard_api",
             "custom_components.edc_sharing.ean_settings",
             "custom_components.edc_sharing.energy",
             "custom_components.edc_sharing.history",

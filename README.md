@@ -31,7 +31,27 @@ This is an independent integration and is not an official product of, or support
 
 The download badges count only downloads of the `edc_sharing.zip` release asset, including HACS updates and manual downloads. They do not count unique users, source-code archives or default-branch installations. Counting starts with v0.1.32; earlier downloads cannot be reconstructed. HACS's download indicator refers to the selected release, while the total badge combines installer downloads across releases. GitHub, HACS and badge caches may update at different times. No usage tracking is added to the integration.
 
+### Dashboard generator (prepared for v0.1.34)
+
+An administrator can generate a named dashboard in the EDC Share2 sections style: native tiles, percentage gauges, dated EDC history charts, details and optional individual supply-point sections. Choose downloadable YAML or explicitly create a **new** storage dashboard through Home Assistant's authenticated Lovelace API. Current entity IDs are resolved from the entity registry, including user renames. Existing dashboards, Energy settings, prices, reports and stored EDC data are never modified. Direct creation defaults to an administrator-only dashboard; it requires a preview and confirmation.
+
 ## Česká dokumentace
+
+### Generátor dashboardu (připraveno pro v0.1.34)
+
+V **Nastavení → Zařízení a služby → EDC → Konfigurovat → Vygenerovat dashboard** otevřete odkaz na generátor. U zařízení skupiny je také nové konfigurační tlačítko **Vygenerovat dashboard**. Protože backendové tlačítko Home Assistantu nemůže samo otevřít formulář v konkrétním prohlížeči, vytvoří oznámení s odkazem na stejný generátor. Tlačítko nic nezaloží ani nic neodešle e-mailem.
+
+1. Zadejte **název a adresu dashboardu**, vyberte skupinu a češtinu nebo angličtinu.
+2. Volitelně zahrňte jednotlivá odběrná místa (s jejich vlastními hodnotami a cenami), stránku detailů a tabulku Energy.
+3. Vyberte **Vygenerovat YAML** nebo **Přímo založit nový dashboard** a vytvořte náhled.
+4. YAML můžete zkopírovat nebo stáhnout jako soubor. Jde o **celou konfiguraci dashboardu**, nikoli jedinou kartu či pohled. Vložte jej do editoru surové konfigurace nového prázdného dashboardu.
+5. Přímé založení je dostupné jen správci a vyžaduje samostatné potvrzení. Nový dashboard se přidá do bočního menu a standardně jej uvidí pouze správci; tuto volbu lze změnit před založením.
+
+Vzhled vychází z EDC Share2: barevné dlaždice, dva sloupce uvnitř sekcí, nejvýše čtyři sloupce dashboardu, procentní ukazatele, finance, historie a podstránka detailů. Používá pouze nativní karty, bez Mushroom, dalších HACS karet či externích skriptů. Skutečná ID entit se načítají z registru; přejmenované entity jsou podporované a vypnuté či dosud nevytvořené senzory se vynechají. Dashboard je jednorázový výstup: vaše pozdější úpravy ani nová odběrná místa se automaticky nepřepisují nebo nepřidávají.
+
+Historické grafy používají importované denní/hodinové statistiky s původním **datem EDC**, nikoli časem stažení. Roční přehled uvádí skutečný dostupný rozsah. EDC výsledky zůstávají zpožděné přibližně o jeden den. Volitelná tabulka Energy zobrazuje **celkovou stávající konfiguraci domu**, ne jen danou skupinu; generátor nevkládá EDC do Energy automaticky.
+
+Existující adresa se odmítne — generátor nikdy nepřepisuje Home64, EDC Share2 ani jiné dashboardy. Založení používá přihlášenou relaci správce a nativní `lovelace/dashboards/create` a `lovelace/config/save`; nepíše přímo do `.storage` a nepotřebuje další token. Pokud se po založení nepodaří potvrdit uložení obsahu, nový dashboard zůstane zachovaný a YAML je stále dostupný pro ruční vložení. Automaticky se nic nemaže. Adresa `/edc-sharing-dashboard` patří generátoru; pokud ji již používá jiný panel, ten se nezmění a HA zaznamená upozornění.
 
 ### Příjem ze sdílení v Energy dashboardu
 

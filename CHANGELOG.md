@@ -1,5 +1,23 @@
 # Přehled změn / Changelog
 
+## 0.1.34 – připraveno / unreleased
+
+### Čeština
+
+- Nové konfigurační tlačítko a položka nastavení **Vygenerovat dashboard** otevřou administrátorský generátor ve stylu EDC Share2.
+- Vlastní název a adresa, výběr skupiny, čeština/angličtina, volitelné jednotlivé cílové EANy, detaily a tabulka Energy. YAML lze kopírovat i stáhnout; přímé založení nového dashboardu vyžaduje náhled a potvrzení správce.
+- Skutečná ID přejmenovaných entit se načítají z veřejného registru. Vypnuté či dosud chybějící senzory se vynechají. Historické grafy používají původní data externích statistik EDC místo času aktualizace senzoru.
+- Jen nativní Lovelace karty a API přihlášeného správce, bez dalších tokenů, externího generování a přímých zásahů do `.storage`. Existující dashboardy se nepřepisují; při neúplném uložení zůstává nově založený dashboard i export YAML zachovaný.
+- Beze změn cen, reportů, datové komunikace EDC, statistik, stávajících ID entit a uložené historie. Přidány unit/JavaScript testy a reálné HA fixture testy pro minimum 2026.8.0 i dynamicky zjištěný latest stable s přesně odpovídajícím testovacím pluginem.
+
+### English
+
+- Added a **Generate dashboard** configuration button and settings action, linking to an administrator-only generator in the EDC Share2 style.
+- Custom name and URL path, sharing-group and language selection, optional individual supply points, details and Energy table. YAML can be copied or downloaded; direct creation requires a preview and explicit administrator confirmation.
+- Actual entity IDs, including user renames, are resolved through the public entity registry. Disabled or not-yet-created sensors are omitted. History charts use original EDC external-statistic dates rather than sensor update times.
+- Native Lovelace cards and the signed-in administrator's API only: no extra tokens, external generation service or direct `.storage` edits. Existing dashboards are never overwritten; an incomplete save preserves the newly created dashboard and the YAML fallback.
+- No changes to pricing, reports, EDC requests, statistics, existing entity IDs or retained history. Added unit/JavaScript tests and real HA fixture tests for minimum 2026.8.0 and dynamically resolved latest stable, each with an exactly matching test plugin.
+
 ## 0.1.33 – 2026-10-07
 
 ### Čeština

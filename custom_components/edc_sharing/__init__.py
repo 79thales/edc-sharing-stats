@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.typing import ConfigType
 
 from .api import EdcApiClient
 from .const import CONF_SSE_ID, config_entry_unique_id
@@ -15,6 +18,7 @@ from .coordinator import EdcSharingCoordinator
 from .report import EdcReportManager
 
 PLATFORMS = (Platform.SENSOR, Platform.BUTTON)
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -27,6 +31,18 @@ class EdcRuntimeData:
 
 
 type EdcConfigEntry = ConfigEntry[EdcRuntimeData]
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Register the optional dashboard generator without contacting EDC."""
+    from .dashboard_api import async_setup_dashboard_generator
+
+    try:
+        await async_setup_dashboard_generator(hass)
+    except (HomeAssistantError, OSError, ValueError, RuntimeError):
+        # A presentation feature must not prevent existing data/report setup.
+        _LOGGER.warning("The optional EDC dashboard generator is unavailable; EDC data setup remains enabled")
+    return True
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

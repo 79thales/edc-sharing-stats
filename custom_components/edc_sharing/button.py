@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from homeassistant.components import persistent_notification
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -14,6 +16,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import EdcConfigEntry
 from .const import CONF_SSE_ID, CONF_SSE_NAME, DOMAIN
 from .coordinator import EdcSharingCoordinator
+from .dashboard import PANEL_PATH
 from .report import ReportPeriod
 
 
@@ -66,7 +69,7 @@ async def async_setup_entry(
     """Set up report and manual data refresh buttons."""
     async_add_entities(
         [EdcReportButton(entry, description) for description in BUTTONS]
-        + [EdcRefreshButton(entry), EdcHistoryBackfillButton(entry)]
+        + [EdcRefreshButton(entry), EdcHistoryBackfillButton(entry), EdcDashboardButton(entry)]
     )
 
 
@@ -156,3 +159,36 @@ class EdcHistoryBackfillButton(ButtonEntity):
             raise HomeAssistantError(
                 "Doplňování historie EDC již probíhá."
             )
+
+
+class EdcDashboardButton(ButtonEntity):
+    """Offer an authenticated configuration link, not an automatic dashboard write."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "generate_dashboard"
+    _attr_icon = "mdi:view-dashboard-plus-outline"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, entry: EdcConfigEntry) -> None:
+        self._entry = entry
+        self._attr_unique_id = f"{entry.data[CONF_SSE_ID]}_generate_dashboard"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(entry.data[CONF_SSE_ID]))},
+            name=str(entry.data[CONF_SSE_NAME]),
+            manufacturer="Elektroenergetické datové centrum, a. s.",
+            model="Skupina sdílení elektřiny",
+        )
+
+    async def async_press(self) -> None:
+        """A backend button cannot open a browser dialog; provide a safe link."""
+        czech = self.hass.config.language.casefold().startswith("cs")
+        url = f"/{PANEL_PATH}?entry_id={self._entry.entry_id}"
+        persistent_notification.async_create(
+            self.hass,
+            (f"[Otevřít generátor dashboardu]({url})\n\nZadejte název a vyberte YAML "
+             "nebo založení nového dashboardu. Existující dashboardy se nepřepisují.")
+            if czech else (f"[Open the dashboard generator]({url})\n\nEnter a name and choose YAML "
+                           "or create a new dashboard. Existing dashboards are never overwritten."),
+            title="EDC – dashboard",
+            notification_id=f"{DOMAIN}_dashboard_{self._entry.entry_id}",
+        )

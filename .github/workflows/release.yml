@@ -34,6 +34,10 @@ jobs:
           python-version: "3.13"
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
+      - name: Validate and test the dashboard frontend
+        run: |
+          node --check custom_components/edc_sharing/frontend/dashboard-generator.js
+          node tests/test_dashboard_frontend.js
       - name: Compile integration and packaging script
         run: python -m compileall -q custom_components/edc_sharing scripts
       - name: Build and validate installer from the tagged commit

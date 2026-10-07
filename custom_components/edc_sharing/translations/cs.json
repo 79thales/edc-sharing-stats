@@ -44,8 +44,13 @@
           "ean_settings": "Detaily EAN a ceny",
           "energy_settings": "Příjem ze sdílení v Energy dashboardu",
           "payment_settings": "Účet pro QR platby",
-          "profiles": "Profily reportů"
+          "profiles": "Profily reportů",
+          "dashboard": "Vygenerovat dashboard"
         }
+      },
+      "dashboard": {
+        "title": "Generátor EDC dashboardu",
+        "description": "[Otevřít generátor dashboardu]({url})\n\nZadejte název, zvolte skupinu a vyberte YAML nebo založení nového dashboardu. Styl odpovídá EDC Share2. Existující dashboardy se nepřepisují. Tímto formulářem se nastavení integrace nemění."
       },
       "general": {
         "title": "Nastavení EDC",
@@ -226,6 +231,9 @@
       },
       "backfill_history": {
         "name": "Doplnit dostupnou historii EDC za poslední rok"
+      },
+      "generate_dashboard": {
+        "name": "Vygenerovat dashboard"
       }
     },
     "sensor": {
