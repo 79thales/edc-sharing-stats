@@ -31,13 +31,13 @@ This is an independent integration and is not an official product of, or support
 
 The download badges count only downloads of the `edc_sharing.zip` release asset, including HACS updates and manual downloads. They do not count unique users, source-code archives or default-branch installations. Counting starts with v0.1.32; earlier downloads cannot be reconstructed. HACS's download indicator refers to the selected release, while the total badge combines installer downloads across releases. GitHub, HACS and badge caches may update at different times. No usage tracking is added to the integration.
 
-### Dashboard generator (prepared for v0.1.34)
+### Dashboard generator (v0.1.34)
 
 An administrator can generate a named dashboard in the EDC Share2 sections style: native tiles, percentage gauges, dated EDC history charts, details and optional individual supply-point sections. Choose downloadable YAML or explicitly create a **new** storage dashboard through Home Assistant's authenticated Lovelace API. Current entity IDs are resolved from the entity registry, including user renames. Existing dashboards, Energy settings, prices, reports and stored EDC data are never modified. Direct creation defaults to an administrator-only dashboard; it requires a preview and confirmation.
 
 ## Česká dokumentace
 
-### Generátor dashboardu (připraveno pro v0.1.34)
+### Generátor dashboardu (v0.1.34)
 
 V **Nastavení → Zařízení a služby → EDC → Konfigurovat → Vygenerovat dashboard** otevřete odkaz na generátor. U zařízení skupiny je také nové konfigurační tlačítko **Vygenerovat dashboard**. Protože backendové tlačítko Home Assistantu nemůže samo otevřít formulář v konkrétním prohlížeči, vytvoří oznámení s odkazem na stejný generátor. Tlačítko nic nezaloží ani nic neodešle e-mailem.
 

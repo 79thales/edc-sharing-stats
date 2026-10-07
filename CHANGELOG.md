@@ -1,10 +1,10 @@
 # Přehled změn / Changelog
 
-## 0.1.34 – připraveno / unreleased
+## 0.1.34 – 2026-10-07
 
 ### Čeština
 
-- Nové konfigurační tlačítko a položka nastavení **Vygenerovat dashboard** otevřou administrátorský generátor ve stylu EDC Share2.
+- Nové konfigurační tlačítko a položka nastavení **Vygenerovat dashboard** nabídnou odkaz na administrátorský generátor ve stylu EDC Share2.
 - Vlastní název a adresa, výběr skupiny, čeština/angličtina, volitelné jednotlivé cílové EANy, detaily a tabulka Energy. YAML lze kopírovat i stáhnout; přímé založení nového dashboardu vyžaduje náhled a potvrzení správce.
 - Skutečná ID přejmenovaných entit se načítají z veřejného registru. Vypnuté či dosud chybějící senzory se vynechají. Historické grafy používají původní data externích statistik EDC místo času aktualizace senzoru.
 - Jen nativní Lovelace karty a API přihlášeného správce, bez dalších tokenů, externího generování a přímých zásahů do `.storage`. Existující dashboardy se nepřepisují; při neúplném uložení zůstává nově založený dashboard i export YAML zachovaný.
