@@ -159,10 +159,11 @@ async def test_hidden_admin_generator_panel_registration(
 
 
 async def test_helper_panels_preserve_the_native_options_menu_for_each_group(
-    hass, hass_ws_client
+    hass, hass_ws_client, recorder_mock
 ):
     from custom_components.edc_sharing.billing_api import async_setup_billing
 
+    # The native flow manager also sets up the manifest's recorder dependency.
     assert await async_setup_component(hass, "frontend", {})
     first = add_entry(hass)
     second = MockConfigEntry(
@@ -185,6 +186,7 @@ async def test_helper_panels_preserve_the_native_options_menu_for_each_group(
     )
     for entry in (first, second):
         before = dict(entry.options)
+        before_data = dict(entry.data)
         menu = await hass.config_entries.options.async_init(entry.entry_id)
         assert menu["type"] == "menu" and menu["step_id"] == "init"
         assert menu["menu_options"] == [
@@ -212,6 +214,7 @@ async def test_helper_panels_preserve_the_native_options_menu_for_each_group(
             )
             assert menu["step_id"] == "init"
         assert entry.options == before
+        assert entry.data == before_data
 
 
 async def test_core_lovelace_create_save_and_duplicate_protection(
