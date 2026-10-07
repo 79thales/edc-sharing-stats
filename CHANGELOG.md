@@ -1,6 +1,6 @@
 # Přehled změn / Changelog
 
-## 0.1.35 – připraveno / unreleased
+## 0.1.35 – 2026-10-07
 
 ### Čeština
 
