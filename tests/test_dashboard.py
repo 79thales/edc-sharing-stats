@@ -101,4 +101,3 @@ class DashboardTests(unittest.TestCase):
         for title in ("", " ", "a" * 121):
             with self.subTest(title=title), self.assertRaises(ValueError):
                 dashboard.build_dashboard(title=title, url_path="edc-test", entities={}, statistics={})
-

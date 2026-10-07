@@ -408,7 +408,7 @@ class ReportProfileFlowTests(unittest.IsolatedAsyncioTestCase):
         menu = await self.flow.async_step_init()
         self.assertEqual(
             menu["menu_options"],
-            ["general", "ean_settings", "energy_settings", "payment_settings", "profiles"],
+            ["general", "ean_settings", "energy_settings", "payment_settings", "profiles", "dashboard"],
         )
         form = await self.flow.async_step_profiles({"profile": "new"})
         values = default_profile() | {
