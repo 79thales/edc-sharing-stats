@@ -1,5 +1,9 @@
 # EDC Sharing Stats
 
+[![Latest release](https://img.shields.io/github/v/release/79thales/edc-sharing-stats?logo=github)](https://github.com/79thales/edc-sharing-stats/releases/latest)
+[![Installer downloads, all releases](https://img.shields.io/github/downloads/79thales/edc-sharing-stats/edc_sharing.zip?label=Downloads%20total&displayAssetName=false)](https://github.com/79thales/edc-sharing-stats/releases)
+[![Installer downloads, latest release](https://img.shields.io/github/downloads/79thales/edc-sharing-stats/latest/edc_sharing.zip?label=Downloads%20latest&displayAssetName=false)](https://github.com/79thales/edc-sharing-stats/releases/latest)
+
 [![Otevřít repozitář v HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=79thales&repository=edc-sharing-stats&category=integration)
 
 ## English overview
@@ -17,6 +21,8 @@ When EDC returns multiple target EANs, the integration also creates an individua
 The EDC account email and password are stored in the Home Assistant config entry and may therefore be included in Home Assistant backups. Access and refresh tokens remain in memory only. Group names and full EANs are visible in diagnostic entities. New report profiles mask EANs by default; legacy reports include full EANs. Reports should only be sent through trusted notification targets.
 
 This is an independent integration and is not an official product of, or supported by, Elektroenergetické datové centrum, a. s. The EDC web API is not publicly guaranteed and may change without notice.
+
+The download badges count only downloads of the `edc_sharing.zip` release asset, including HACS updates and manual downloads. They do not count unique users, source-code archives or default-branch installations. Counting starts with v0.1.32; earlier downloads cannot be reconstructed. HACS's download indicator refers to the selected release, while the total badge combines installer downloads across releases. GitHub, HACS and badge caches may update at different times. No usage tracking is added to the integration.
 
 ## Česká dokumentace
 
@@ -68,9 +74,17 @@ Vlastní integrace pro Home Assistant, která načítá vyhodnocení skupiny sd�
 5. Restartujte Home Assistant.
 6. Otevřete **Nastavení → Zařízení a služby → Přidat integraci** a vyhledejte **EDC Sharing Stats**.
 
+### Počet stažení
+
+Odznaky nahoře ukazují **stažení instalačního ZIPu celkem** a **stažení posledního vydání**. Od v0.1.32 vydání poskytují přílohu `edc_sharing.zip`, kterou používá také HACS. Horní ikona stažení v HACS patří vybranému vydání, nikoli součtu všech verzí.
+
+Počítadla zahrnují opakovaná stažení a aktualizace, nejde tedy o počet uživatelů nebo aktivních instalací. Nezahrnují stažení zdrojového kódu, instalace výchozí větve ani starší vydání bez instalační přílohy. Hodnoty se mohou zobrazit se zpožděním kvůli cache. Integrace kvůli tomu neposílá žádnou telemetrii.
+
 ## Ruční instalace
 
 Zkopírujte adresář `custom_components/edc_sharing` do adresáře `custom_components` ve své konfiguraci Home Assistantu a Home Assistant restartujte.
+
+U vydání s přílohou `edc_sharing.zip` lze místo toho rozbalit její obsah přímo do `custom_components/edc_sharing`. Soubor `manifest.json` musí být přímo v tomto adresáři, nikoli v další vnořené složce. Automatický GitHub archiv **Source code (zip)** má odlišnou strukturu a není instalační přílohou HACS.
 
 ## Nastavení
 

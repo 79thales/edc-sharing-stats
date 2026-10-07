@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import re
 import struct
 import unittest
-
+from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).parents[1]
 COMPONENT_ROOT = REPOSITORY_ROOT / "custom_components" / "edc_sharing"
@@ -21,6 +20,7 @@ def _repository_text_files():
         REPOSITORY_ROOT / ".github",
         REPOSITORY_ROOT / "custom_components",
         REPOSITORY_ROOT / "tests",
+        REPOSITORY_ROOT / "scripts",
     ):
         yield from (path for path in root.rglob("*") if path.suffix in TEXT_SUFFIXES)
     yield REPOSITORY_ROOT / "README.md"
@@ -121,6 +121,20 @@ class BrandMetadataTest(unittest.TestCase):
             width, height = struct.unpack(">II", data[16:24])
             self.assertEqual((width, height), (expected_size, expected_size))
             self.assertIn(data[25], (4, 6), "Brand icon must contain an alpha channel")
+
+
+class HacsInstallerMetadataTest(unittest.TestCase):
+    def test_hacs_and_badges_use_the_same_installer(self) -> None:
+        hacs = json.loads((REPOSITORY_ROOT / "hacs.json").read_text(encoding="utf-8"))
+        self.assertTrue(hacs["zip_release"])
+        self.assertEqual(hacs["filename"], "edc_sharing.zip")
+        readme = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        for asset_path in ("edc_sharing.zip?", "latest/edc_sharing.zip?"):
+            self.assertIn(
+                "https://img.shields.io/github/downloads/79thales/edc-sharing-stats/"
+                + asset_path,
+                readme,
+            )
 
 
 if __name__ == "__main__":

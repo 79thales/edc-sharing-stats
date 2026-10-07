@@ -1,5 +1,21 @@
 # Přehled změn / Changelog
 
+## 0.1.32 – 2026-10-07
+
+### Čeština
+
+- Instalační balíček `edc_sharing.zip` pro HACS a automatické odznaky stažení celkem i posledního vydání v README. Počítají pouze stažení instalačního balíčku včetně aktualizací, nikoli unikátní uživatele. Počítání začíná tímto vydáním; starší stažení bez přílohy nelze zpětně dopočítat.
+- Horní počítadlo v HACS se vztahuje k vybranému vydání, zatímco odznak celkových stažení sčítá instalační balíčky všech vydání. Stažení zdrojového kódu, instalace výchozí větve ani ukázkové dashboardy se do odznaků nezapočítávají. Starší vydání si zachovávají původní způsob instalace.
+- Nový postup vydávání vytváří ZIP pouze z verzovaných souborů integrace a nejdříve jej přiloží ke konceptu vydání. Kontroluje shodu verze s tagem, strukturu balíčku a bilingvní poznámky. Již zveřejněné přílohy nepřepisuje, aby neztratil jejich počty stažení.
+- Bez změn entit, nastavení integrace, statistik nebo uložených dat; bez přidání telemetrie.
+
+### English
+
+- A HACS installer asset, `edc_sharing.zip`, and automatic README badges for total and latest-release installer downloads. Counts cover only installer downloads, including updates, not unique users. Counting starts with this release; downloads from older releases without an installer asset cannot be recovered.
+- HACS's download indicator refers to the selected release, while the total badge combines installer downloads across releases. Source-code downloads, default-branch installations and sample dashboards are not counted by the badges. Older releases retain their original installation method.
+- The release workflow packages only committed integration files and attaches the installer to a draft release before publication. It checks the tag against the manifest version, validates the archive layout and extracts bilingual release notes. Published assets are never overwritten, preserving their download counts.
+- No changes to entities, integration options, statistics or retained data, and no added telemetry.
+
 ## 0.1.31 – 2026-10-05
 
 ### Čeština
