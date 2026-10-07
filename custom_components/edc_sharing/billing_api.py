@@ -223,8 +223,16 @@ class BillingManager:
                     if cs
                     else "Assigned on issue",
                 }
+                payment_payload = settlement_payment_payload(quote, preview=True)
+                qr = (
+                    await self.hass.async_add_executor_job(
+                        payment_qr_data_uri, payment_payload
+                    )
+                    if payment_payload
+                    else None
+                )
                 html, _text = await self.hass.async_add_executor_job(
-                    render_settlement, preview_document
+                    render_settlement, preview_document, qr, True
                 )
                 return quote | {"html": html}
             if action == "document":

@@ -10,8 +10,10 @@ from .billing import money
 from .payment import CzechBankAccount, PaymentRequest, payment_message
 
 
-def settlement_payment_payload(document: dict) -> str | None:
+def settlement_payment_payload(document: dict, *, preview: bool = False) -> str | None:
     """A QR is an offer to pay the remaining balance, not payment confirmation."""
+    if preview and not document.get("can_issue"):
+        return None
     balance = document["balance"]
     account = document.get("account")
     if not account or balance["ambiguous"] or Decimal(balance["remaining"]) <= 0:
@@ -23,15 +25,18 @@ def settlement_payment_payload(document: dict) -> str | None:
         target_name=document["recipient"],
         target_ean=eans[0] if len(eans) == 1 else None,
     )
-    return (
+    payload = (
         PaymentRequest(
             CzechBankAccount(**account), Decimal(balance["remaining"]), message
         ).spd
-        + f"*X-VS:{document['variable_symbol']}"
     )
+    # A preview must not allocate, guess or encode a placeholder variable symbol.
+    return payload if preview else payload + f"*X-VS:{document['variable_symbol']}"
 
 
-def render_settlement(document: dict, qr: str | None = None) -> tuple[str, str]:
+def render_settlement(
+    document: dict, qr: str | None = None, preview: bool = False,
+) -> tuple[str, str]:
     """No remote assets, scripts, tax calculation or unescaped user text."""
     cs = document["language"] == "cs"
     labels = (
@@ -140,8 +145,20 @@ def render_settlement(document: dict, qr: str | None = None) -> tuple[str, str]:
         f"<dt>{escape(label)}</dt><dd>{escape(content)}</dd>"
         for label, content in fields
     )
+    preview_note = (
+        (
+            "Náhled QR platby – doklad ještě není vystaven. Neplaťte podle tohoto náhledu. "
+            "Finální QR s variabilním symbolem se vytvoří až při vystavení."
+            if cs
+            else "QR payment preview – the document has not been issued. Do not pay from this preview. "
+            "The final QR with its variable symbol is generated only on issue."
+        )
+        if preview and qr and not uncertain
+        else ""
+    )
     qr_html = (
-        f'<p><img alt="QR payment" width="260" height="260" src="{escape(qr, quote=True)}"></p>'
+        (f'<p class="warning">{escape(preview_note)}</p>' if preview_note else "")
+        + f'<p><img alt="QR payment" width="260" height="260" src="{escape(qr, quote=True)}"></p>'
         if qr and not uncertain
         else ""
     )
@@ -167,6 +184,7 @@ def render_settlement(document: dict, qr: str | None = None) -> tuple[str, str]:
             *text_rows,
             *(f"{key}: {content}" for key, content in fields),
             uncertain,
+            *([preview_note] if preview_note else []),
             note,
             data_note,
             disclaimer,

@@ -22,7 +22,37 @@ jobs:
         with:
           python-version: "3.13"
       - id: resolve
-        run: echo "matrix=$(python scripts/resolve_ha_tests.py)" >> "$GITHUB_OUTPUT"
+        run: |
+          matrix="$(python -c 'import json; from scripts.resolve_ha_tests import resolve_environment; print(json.dumps({"include": [resolve_environment()]}))')"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  dashboard-minimum-home-assistant:
+    name: Dashboard and billing tests – HA 2026.8.0
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Install exact matching minimum HA test environment
+        run: >-
+          python -m pip install
+          "homeassistant==2026.8.0"
+          "pytest-homeassistant-custom-component==0.13.354"
+      - name: Install declared integration requirements
+        run: |
+          python - <<'PY'
+          import json, subprocess, sys
+          from pathlib import Path
+          requirements = json.loads(Path("custom_components/edc_sharing/manifest.json").read_text())["requirements"]
+          subprocess.check_call([sys.executable, "-m", "pip", "install", *requirements])
+          PY
+      - name: Install the frontend required by this exact HA release
+        run: |
+          requirement="$(python -c 'import json; from pathlib import Path; import homeassistant; print(json.loads((Path(homeassistant.__file__).parent / "components/frontend/manifest.json").read_text())["requirements"][0])')"
+          python -m pip install "$requirement"
+      - name: Test real HA permissions, dashboard creation, billing storage and SMTP
+        run: pytest tests_homeassistant -q
 
   dashboard-home-assistant:
     name: Dashboard and billing tests – HA ${{ matrix.homeassistant }}
@@ -41,6 +71,14 @@ jobs:
           python -m pip install
           "homeassistant==${{ matrix.homeassistant }}"
           "pytest-homeassistant-custom-component==${{ matrix.test_plugin }}"
+      - name: Install declared integration requirements
+        run: |
+          python - <<'PY'
+          import json, subprocess, sys
+          from pathlib import Path
+          requirements = json.loads(Path("custom_components/edc_sharing/manifest.json").read_text())["requirements"]
+          subprocess.check_call([sys.executable, "-m", "pip", "install", *requirements])
+          PY
       - name: Install the frontend required by this exact HA release
         run: |
           requirement="$(python -c 'import json; from pathlib import Path; import homeassistant; print(json.loads((Path(homeassistant.__file__).parent / "components/frontend/manifest.json").read_text())["requirements"][0])')"

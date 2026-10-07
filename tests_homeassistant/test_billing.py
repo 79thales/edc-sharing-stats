@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
+from base64 import b64decode
+from copy import deepcopy
 from datetime import date, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -24,6 +27,7 @@ from custom_components.edc_sharing.billing_api import (
     websocket_billing_groups,
 )
 from custom_components.edc_sharing.calculation import TargetDailySharing
+from custom_components.edc_sharing.payment import payment_qr_data_uri
 from custom_components.edc_sharing.report_profiles import default_profile
 
 
@@ -168,6 +172,103 @@ async def test_no_profile_requires_creation_and_does_not_adapt_legacy_buttons(ha
     with pytest.raises(BillingError, match="profile_required"):
         await manager.action("preview", parameters(), None)
     assert entry.options == before
+
+
+@pytest.mark.parametrize("language", ("cs", "en"))
+async def test_preview_renders_a_real_local_qr_without_writes_or_final_symbol(
+    hass, language
+):
+    entry = sample_entry(hass)
+    profile = dict(entry.options["report_profiles"][0]) | {"language": language}
+    hass.config_entries.async_update_entry(
+        entry, options=dict(entry.options) | {
+            "report_profiles": [profile],
+            "payment_account_number": "120000001",
+            "payment_bank_code": "9999",
+        },
+    )
+    manager = BillingManager(hass, entry)
+    await manager.action(
+        "settings",
+        {"issuer": "Example supplier", "tracking": True, "request_id": "settings-1"},
+        0,
+    )
+    before = deepcopy(manager.ledger.state)
+    before_options = deepcopy(dict(entry.options))
+    with (
+        patch.object(manager.store, "async_save", new=AsyncMock()) as save,
+        patch.object(type(hass.services), "async_call", new=AsyncMock()) as send,
+        patch(
+            "custom_components.edc_sharing.billing_api.payment_qr_data_uri",
+            wraps=payment_qr_data_uri,
+        ) as generate,
+    ):
+        quote = await manager.action("preview", parameters(), None)
+        again = await manager.action("preview", parameters(), None)
+        payload = generate.call_args.args[0]
+        assert "*AM:60.00*" in payload and "*X-VS:" not in payload
+        assert "EAN EAN-A" in payload
+        save.assert_not_awaited()
+        send.assert_not_awaited()
+    image = re.search(r'src="data:image/png;base64,([^"]+)"', quote["html"])
+    assert image is not None
+    png = b64decode(image.group(1), validate=True)
+    assert png.startswith(b"\x89PNG\r\n\x1a\n") and len(png) > 200
+    assert quote["preview_id"] == again["preview_id"]
+    assert ("Neplaťte podle tohoto náhledu" if language == "cs"
+            else "Do not pay from this preview") in quote["html"]
+    assert manager.ledger.state == before
+    assert entry.options == before_options
+    with patch(
+        "custom_components.edc_sharing.billing_api.payment_qr_data_uri",
+        wraps=payment_qr_data_uri,
+    ) as generate:
+        document = await manager.action(
+            "issue",
+            {"parameters": parameters(), "preview_id": quote["preview_id"],
+             "request_id": "issue-preview-1"},
+            1,
+        )
+        assert f"*X-VS:{document['variable_symbol']}" in generate.call_args.args[0]
+        assert "Do not pay from this preview" not in document["html"]
+        assert "Neplaťte podle tohoto náhledu" not in document["html"]
+
+
+@pytest.mark.parametrize("reason", ("missing_account", "missing_day", "zero"))
+async def test_preview_does_not_generate_qr_without_a_payable_complete_range(
+    hass, reason
+):
+    entry = sample_entry(hass)
+    if reason != "missing_account":
+        hass.config_entries.async_update_entry(
+            entry, options=dict(entry.options) | {
+                "payment_account_number": "120000001", "payment_bank_code": "9999",
+            },
+        )
+        coordinator = entry.runtime_data.coordinator
+        rows = coordinator.target_days_for_range(date(2026, 1, 1), date(2026, 1, 4))
+        if reason == "missing_day":
+            rows["EAN-A"] = rows["EAN-A"][:2]
+        else:
+            rows["EAN-A"] = tuple(
+                TargetDailySharing("EAN-A", row.day, *(Decimal(0),) * 4)
+                for row in rows["EAN-A"]
+            )
+        coordinator.target_days_for_range = lambda start, end: rows
+    manager = BillingManager(hass, entry)
+    await manager.action(
+        "settings",
+        {"issuer": "Example supplier", "tracking": False, "request_id": "settings-1"},
+        0,
+    )
+    before = deepcopy(manager.ledger.state)
+    with patch(
+        "custom_components.edc_sharing.billing_api.payment_qr_data_uri"
+    ) as generate:
+        quote = await manager.action("preview", parameters(), None)
+        generate.assert_not_called()
+    assert "data:image/png;base64," not in quote["html"]
+    assert manager.ledger.state == before
 
 
 async def test_private_store_round_trip_survives_restart_without_changing_history(hass):

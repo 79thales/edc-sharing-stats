@@ -1,5 +1,23 @@
 # Přehled změn / Changelog
 
+## 0.1.38 – 2026-10-07
+
+### Čeština
+
+- QR platba je nově viditelná také v náhledu vyúčtování, ještě před vystavením. Používá účet skupiny a zbývající částku po odečtení pouze ručně potvrzených úhrad; období a identifikace odběratele/EANu odpovídají zvolenému rozsahu.
+- Náhled QR není finální výzva k úhradě: nemá variabilní symbol a u obrázku je výslovné upozornění **Neplaťte podle tohoto náhledu**. Finální QR s variabilním symbolem vzniká až po potvrzení vystavení. Náhled nic neukládá, nerezervuje číslo dokladu a neposílá e-mail.
+- Bez nastaveného účtu, při nulovém zůstatku, neúplných datech nebo nejednoznačně přiřazené úhradě se QR v náhledu nevytváří. QR nadále vzniká lokálně v paměti, bez externí služby nebo souboru.
+- Doplněny regresní testy částky, částečných/potvrzených úhrad, překryvů a českého/anglického upozornění i reálné HA testy PNG a náhledu bez zápisů. CI instaluje deklarované závislosti integrace; testy minimální HA verze běží nezávisle na dostupnosti fixtures pro nejnovější stabilní HA. Kontrola nejnovější verze zůstává povinná, bez náhrady starší nebo beta verzí.
+- Vystavené doklady, jejich QR a variabilní symboly, uložená historie, stávající reporty, statistiky a ID entit zůstávají beze změny.
+
+### English
+
+- Payment QR codes now appear in settlement previews before issue. They use the group's bank account and the remaining balance after deducting only manually confirmed receipts, with the selected period and customer/EAN reference.
+- The preview QR is not a final payment request: it has no variable symbol and is explicitly labelled **Do not pay from this preview**. The final QR receives its variable symbol only after issue is confirmed. Previewing does not save anything, reserve a document number or send email.
+- Preview QR generation is suppressed when no account is configured, the balance is zero, daily data is incomplete or a receipt allocation is ambiguous. Images continue to be generated locally in memory, without external services or files.
+- Added regressions for amounts, partial/confirmed receipts, overlapping periods and Czech/English warnings, plus real HA tests of PNG generation and read-only previews. CI installs declared integration dependencies, and minimum-version HA tests run independently of fixture availability for the latest stable HA. Latest-version validation remains required, with no older or beta substitution.
+- Issued documents, their QR codes and variable symbols, retained history, existing reports, statistics and entity IDs are unchanged.
+
 ## 0.1.37 – 2026-10-07
 
 ### Čeština

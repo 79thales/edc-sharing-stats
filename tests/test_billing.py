@@ -293,6 +293,85 @@ class BillingTest(unittest.TestCase):
             render.settlement_payment_payload(self.ledger.document(doc["id"]))
         )
 
+    def test_preview_qr_has_remaining_amount_but_no_final_variable_symbol(self):
+        render = importlib.import_module(package.__name__ + ".billing_document")
+        before = deepcopy(self.ledger.state)
+        quote = self.preview(options={
+            "sale_price": 2,
+            "payment_account_number": "120000001",
+            "payment_bank_code": "9999",
+        })
+        payload = render.settlement_payment_payload(quote, preview=True)
+        self.assertIn("*AM:60.00*", payload)
+        self.assertIn("2026-01-01..2026-01-03", payload)
+        self.assertIn("EAN EAN-A", payload)
+        self.assertNotIn("*X-VS:", payload)
+        self.assertEqual(before, self.ledger.state)
+
+    def test_preview_qr_is_absent_for_missing_account_incomplete_or_zero_data(self):
+        render = importlib.import_module(package.__name__ + ".billing_document")
+        options = {
+            "sale_price": 2,
+            "payment_account_number": "120000001",
+            "payment_bank_code": "9999",
+        }
+        quotes = (
+            self.preview(),
+            self.preview(options=options, rows={"EAN-A": target_rows(days=2)}),
+            self.preview(options=options, rows={"EAN-A": target_rows(shared="0")}),
+        )
+        for quote in quotes:
+            with self.subTest(balance=quote["balance"], complete=quote["can_issue"]):
+                self.assertIsNone(render.settlement_payment_payload(quote, preview=True))
+
+    def test_preview_qr_deducts_confirmed_receipts_and_blocks_ambiguous_overlap(self):
+        render = importlib.import_module(package.__name__ + ".billing_document")
+        options = {
+            "sale_price": 2,
+            "payment_account_number": "120000001",
+            "payment_bank_code": "9999",
+        }
+        doc = self.issue(options=options)
+        self.pay(doc, "20.00")
+        before = deepcopy(self.ledger.state)
+        quote = self.preview(options=options)
+        self.assertIn("*AM:40.00*", render.settlement_payment_payload(quote, preview=True))
+        self.assertIsNone(render.settlement_payment_payload(
+            self.preview(2, 2, options=options), preview=True,
+        ))
+        self.assertEqual(before, self.ledger.state)
+        self.pay(doc, "40.00", request_id="payment-final")
+        self.assertIsNone(render.settlement_payment_payload(
+            self.preview(options=options), preview=True,
+        ))
+
+    def test_preview_qr_warning_is_localized_and_does_not_change_final_document(self):
+        render = importlib.import_module(package.__name__ + ".billing_document")
+        doc = self.issue(options={
+            "sale_price": 2,
+            "payment_account_number": "120000001",
+            "payment_bank_code": "9999",
+        })
+        document = self.ledger.document(doc["id"])
+        for language, warning in (
+            ("cs", "Neplaťte podle tohoto náhledu"),
+            ("en", "Do not pay from this preview"),
+        ):
+            with self.subTest(language=language):
+                document["language"] = language
+                html, text = render.render_settlement(
+                    document, "data:image/png;base64,AA==", preview=True,
+                )
+                self.assertIn(warning, html)
+                self.assertIn(warning, text)
+                self.assertIn('src="data:image/png;base64,AA=="', html)
+                final_html, final_text = render.render_settlement(
+                    document, "data:image/png;base64,AA==",
+                )
+                self.assertNotIn(warning, final_html + final_text)
+                self.assertIn(f"*X-VS:{doc['variable_symbol']}",
+                              render.settlement_payment_payload(document))
+
     def test_invalid_store_and_disabled_tracking_fail_closed(self):
         with self.assertRaisesRegex(BillingError, "storage_invalid"):
             BillingLedger({"revision": 0})

@@ -9,7 +9,7 @@ from base64 import b64decode
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
-
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location(
     "edc_payment",
@@ -80,7 +80,7 @@ class PaymentTests(unittest.TestCase):
                 output.write(b"\x89PNG\r\n\x1a\n")
 
         qrcode = SimpleNamespace(make=lambda _payload: FakeQrImage())
-        with unittest.mock.patch.dict(sys.modules, {"qrcode": qrcode}):
+        with patch.dict(sys.modules, {"qrcode": qrcode}):
             image = payment.payment_qr_data_uri(
                 "SPD*1.0*ACC:CZ0000000000000000000000"
             )
