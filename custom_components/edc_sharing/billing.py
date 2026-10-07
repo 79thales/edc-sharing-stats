@@ -575,6 +575,11 @@ class BillingLedger:
             "paid_on": paid_on.isoformat(),
             "recorded_at": now,
             "charge_keys": keys,
+            "allocation_start": min(document["charges"][key]["day"] for key in keys),
+            "allocation_end": max(document["charges"][key]["day"] for key in keys),
+            "allocation_eans": sorted(
+                {document["charges"][key]["ean"] for key in keys}
+            ),
             "settles_keys": value == Decimal(balance["remaining"]),
             "voided_at": None,
         }
