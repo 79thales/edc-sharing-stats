@@ -119,7 +119,7 @@ class EdcSharingBilling extends HTMLElement {
       <div class="card" id="draft-card" hidden><h2 data-text="draft"></h2><div class="fields">
       <label class="field"><span data-text="profiles"></span><select id="profile"></select></label><label class="field"><span data-text="period"></span><select id="period"><option value="month" data-text="month"></option><option value="year" data-text="year"></option><option value="custom" data-text="custom"></option></select></label>
       <label class="field"><span data-text="start"></span><input id="start" type="date"></label><label class="field"><span data-text="end"></span><input id="end" type="date"></label><label class="field"><span data-text="recipient"></span><input id="recipient" maxlength="300"></label><label class="field"><span data-text="recipientAddress"></span><input id="recipient-address" maxlength="300"></label><label class="field"><span data-text="due"></span><input id="due" type="date"></label></div>
-      <p><strong data-text="routing"></strong>: <span id="routing"></span></p><p class="muted" data-text="routingNote"></p><button id="preview" data-text="preview"></button></div>
+      <p><strong data-text="routing"></strong>: <span id="routing"></span></p><p class="muted" data-text="routingNote"></p><label class="check"><input id="allow-missing" type="checkbox"><span id="allow-missing-label"></span></label><button id="preview" data-text="preview"></button></div>
       <div class="card" id="preview-card" hidden><h2 data-text="previewTitle"></h2><div id="preview-summary"></div><p id="availability"></p><p id="smtp-warning" data-text="noSmtp" hidden></p><iframe id="preview-frame" title="Draft settlement preview" sandbox="allow-same-origin allow-modals" referrerpolicy="no-referrer"></iframe><label class="check"><input id="issue-confirm" type="checkbox"><span data-text="issueConfirm"></span></label><button id="issue" disabled data-text="issue"></button></div>
       <div class="card"><h2 data-text="history"></h2><p id="balance"></p><div class="scroll" id="archive"></div></div>
       <div class="card" id="document-card" hidden><h2 data-text="document"></h2><iframe id="document-frame" title="Settlement preview" sandbox="allow-same-origin allow-modals" referrerpolicy="no-referrer"></iframe><button id="download" data-text="download"></button><button id="print" data-text="print"></button><p id="delivery"></p>
@@ -130,10 +130,12 @@ class EdcSharingBilling extends HTMLElement {
     const menu = this.shadowRoot.querySelector("ha-menu-button"); menu.hass = this._hass; menu.narrow = this._narrow;
     this._el("refresh").textContent = this._cs ? "Obnovit přehled" : "Refresh ledger";
     this._el("refresh").addEventListener("click", () => this._run(async () => { const id = this._doc?.id; this._pending = null; await this._overview(); if (id) this._showDocument(await this._call("document", { document_id: id })); this._status(this._t.refreshed); }));
-    this._el("group").addEventListener("change", () => this._run(async () => { this._quote = null; this._doc = null; this._el("document-card").hidden = true; await this._overview(); }));
+    this._el("group").addEventListener("change", () => this._run(async () => { this._el("allow-missing").checked = false; this._quote = null; this._doc = null; this._el("document-card").hidden = true; await this._overview(); }));
     this._el("profile").addEventListener("change", () => this._profileChanged());
     this._el("period").addEventListener("change", () => this._periodChanged());
-    ["start", "end", "recipient", "recipient-address", "due"].forEach(id => this._el(id).addEventListener("input", () => this._invalidate()));
+    this._el("allow-missing-label").textContent = this._cs ? "Výslovně souhlasím s vyúčtováním pouze dostupných dat. Chybějící dny budou uvedeny na dokladu a nejsou považovány za nulu ani automaticky za dobu před zahájením sdílení." : "I explicitly accept billing only available data. Missing dates will be listed on the document and are not treated as zero or automatically as dates before sharing began.";
+    ["start", "end", "recipient", "recipient-address", "due"].forEach(id => this._el(id).addEventListener("input", () => { this._el("allow-missing").checked = false; this._invalidate(); }));
+    this._el("allow-missing").addEventListener("input", () => this._invalidate());
     ["issuer", "issuer-address", "tracking"].forEach(id => this._el(id).addEventListener("input", () => this._invalidate()));
     this._el("issue-confirm").addEventListener("change", () => this._el("issue").disabled = this._busy || !this._quote?.can_issue || !this._el("issue-confirm").checked);
     this._el("send-confirm").addEventListener("change", () => this._el("send").disabled = this._busy || !this._doc || !this._el("send-confirm").checked);
@@ -146,7 +148,7 @@ class EdcSharingBilling extends HTMLElement {
       const b = this._quote.balance;
       this._el("preview-summary").textContent = `${this._quote.start} – ${this._quote.end}: ${this._t.value} ${b.total} CZK; ${this._t.confirmed} ${b.confirmed} CZK; ${this._t.remaining} ${b.ambiguous.length ? "—" : b.remaining} CZK`;
       const missing = Object.values(this._quote.missing_days).flat();
-      this._el("availability").textContent = b.ambiguous.length ? this._t.ambiguous : this._quote.can_issue ? this._t.complete : `${this._t.incomplete} ${[...new Set([...missing, ...this._quote.inconsistent_days])].slice(0, 16).join(", ")}`;
+      this._el("availability").textContent = b.ambiguous.length ? this._t.ambiguous : this._quote.can_issue && !missing.length ? this._t.complete : this._quote.can_issue ? `${this._el("allow-missing-label").textContent} ${[...new Set(missing)].slice(0, 16).join(", ")}` : `${this._t.incomplete} ${[...new Set([...missing, ...this._quote.inconsistent_days])].slice(0, 16).join(", ")}`;
       this._el("smtp-warning").hidden = this._quote.smtp_ready;
     }));
     this._el("issue").addEventListener("click", () => this._run(async () => {
@@ -199,12 +201,14 @@ class EdcSharingBilling extends HTMLElement {
     }
   }
   _invalidate() { this._quote = null; this._el("preview-card").hidden = true; this._el("issue-confirm").checked = false; this._el("issue").disabled = true; }
-  _parametersFromForm() { return { profile_id: this._el("profile").value, start: this._el("start").value, end: this._el("end").value, due: this._el("due").value, recipient: this._el("recipient").value, recipient_address: this._el("recipient-address").value }; }
+  _parametersFromForm() { return { profile_id: this._el("profile").value, start: this._el("start").value, end: this._el("end").value, due: this._el("due").value, recipient: this._el("recipient").value, recipient_address: this._el("recipient-address").value, allow_missing: this._el("allow-missing").checked }; }
   _profileChanged() {
+    this._el("allow-missing").checked = false;
     this._invalidate(); const profile = this._profiles?.find(p => p.id === this._el("profile").value);
     if (profile) { this._el("recipient").value = profile.name; this._el("routing").textContent = profile.targets.map(id => this._hass.states[id]?.attributes.friendly_name || id).join(", "); }
   }
   _periodChanged() {
+    this._el("allow-missing").checked = false;
     this._invalidate(); const range = edcBillingPeriod(this._el("period").value, this._data.today, this._data.latest_day);
     if (range) { this._el("start").value = range.start; this._el("end").value = range.end; }
   }

@@ -144,6 +144,12 @@ async function controllerTest(language) {
   await el("save").trigger("click");
   await el("preview").trigger("click");
   assert.equal(el("preview-frame").srcdoc, html);
+  assert.equal(calls.find(call => call.action === "preview").payload.allow_missing, false);
+  el("allow-missing").checked = true;
+  await el("allow-missing").trigger("input");
+  assert.equal(el("preview-card").hidden, true);
+  await el("preview").trigger("click");
+  assert.equal(calls.filter(call => call.action === "preview").at(-1).payload.allow_missing, true);
   assert.equal(el("issue").disabled, true);
   await el("issue").trigger("click");
   assert.equal(calls.filter(call => call.action === "issue").length, 0);

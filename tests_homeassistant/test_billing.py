@@ -271,6 +271,45 @@ async def test_preview_does_not_generate_qr_without_a_payable_complete_range(
     assert manager.ledger.state == before
 
 
+async def test_explicit_partial_preview_issue_and_restart_preserve_omissions(hass):
+    entry = sample_entry(hass)
+    hass.config_entries.async_update_entry(
+        entry, options=dict(entry.options) | {
+            "payment_account_number": "120000001", "payment_bank_code": "9999",
+        },
+    )
+    coordinator = entry.runtime_data.coordinator
+    rows = coordinator.target_days_for_range(date(2026, 1, 1), date(2026, 1, 4))
+    rows["EAN-A"] = rows["EAN-A"][-1:]
+    coordinator.target_days_for_range = lambda start, end: rows
+    manager = BillingManager(hass, entry)
+    await manager.action(
+        "settings",
+        {"issuer": "Example supplier", "tracking": False, "request_id": "settings-1"},
+        0,
+    )
+    request = parameters() | {"allow_missing": True}
+    before = deepcopy(manager.ledger.state)
+    with patch.object(type(hass.services), "async_call", new=AsyncMock()) as send:
+        quote = await manager.action("preview", request, None)
+        assert quote["can_issue"]
+        assert "data:image/png;base64," in quote["html"]
+        assert manager.ledger.state == before
+        issued = await manager.action(
+            "issue",
+            {"parameters": request, "preview_id": quote["preview_id"],
+             "request_id": "partial-issue-1"},
+            manager.ledger.state["revision"],
+        )
+        send.assert_not_called()
+    assert issued["missing_days"] == quote["missing_days"]
+    restored = BillingManager(hass, entry)
+    saved = await restored.action("document", {"document_id": issued["id"]}, None)
+    assert saved["missing_days"] == quote["missing_days"]
+    assert "2026-01-01" in saved["html"]
+    assert "data:image/png;base64," in saved["html"]
+
+
 async def test_private_store_round_trip_survives_restart_without_changing_history(hass):
     _manager, entry, document = await prepared_manager(hass)
     before = dict(entry.options)

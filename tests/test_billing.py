@@ -187,6 +187,40 @@ class BillingTest(unittest.TestCase):
         self.assertTrue(quote["can_issue"])
         self.assertEqual("60.00", quote["balance"]["total"])
 
+    def test_explicit_partial_billing_keeps_omitted_dates_and_qr(self):
+        document_module = importlib.import_module(package.__name__ + ".billing_document")
+        rows = {"EAN-A": (target_rows()[2],)}
+        options = {"sale_price": 2, "payment_account_number": "19", "payment_bank_code": "0800"}
+        quote = self.preview(rows=rows, options=options, allow_missing=True)
+        self.assertTrue(quote["can_issue"])
+        self.assertEqual("20.00", quote["balance"]["remaining"])
+        self.assertEqual(["2026-01-01", "2026-01-02"], quote["missing_days"]["EAN-A"])
+        self.assertIsNotNone(document_module.settlement_payment_payload(quote, preview=True))
+        document = self.issue(rows=rows, options=options, allow_missing=True)
+        self.assertEqual(quote["missing_days"], document["missing_days"])
+        html, text = document_module.render_settlement(self.ledger.document(document["id"]))
+        self.assertIn("Vynechané dny", text)
+        self.assertIn("2026-01-01", html)
+        self.assertEqual(1, len(self.ledger.state["charges"]))
+        self.assertFalse(self.preview(rows={}, allow_missing=True, start=4, end=5)["can_issue"])
+
+    def test_partial_billing_does_not_override_invalid_values(self):
+        for value in ("-1", "NaN", "Infinity"):
+            quote = self.preview(rows={"EAN-A": target_rows(shared=value)}, allow_missing=True)
+            self.assertFalse(quote["can_issue"])
+
+    def test_partial_group_billing_skips_empty_dates_not_inconsistent_totals(self):
+        profile = self.profile | {"report_scope": "group", "target_eans": []}
+        rows = {"EAN-A": (target_rows()[2],)}
+        group_days = {date(2026, 1, 3): SimpleNamespace(shared=Decimal(10))}
+        quote = self.preview(profile=profile, rows=rows, group_days=group_days, allow_missing=True)
+        self.assertTrue(quote["can_issue"])
+        self.assertEqual("20.00", quote["balance"]["remaining"])
+        group_days[date(2026, 1, 3)] = SimpleNamespace(shared=Decimal(99))
+        self.assertFalse(self.preview(
+            profile=profile, rows=rows, group_days=group_days, allow_missing=True
+        )["can_issue"])
+
     def test_unavailable_negative_and_nonfinite_data_block_issue(self):
         for value in ("-1", "NaN", "Infinity"):
             quote = self.preview(rows={"EAN-A": target_rows(shared=value)})

@@ -1,5 +1,15 @@
 # Přehled změn / Changelog
 
+## Unreleased
+
+### Čeština
+
+- Volitelný výslovný souhlas s vyúčtováním pouze dostupných dat dovolí vystavení a QR také při chybějících dnech (například při výběru období před zahájením sdílení). Výchozí kontrola zůstává přísná. Vynechané dny jsou trvale uvedeny v náhledu, dokladu i e-mailu; nejsou označovány za nulu ani automaticky za období před zahájením. Úplně prázdné období, neplatné hodnoty, nesouhlasící dostupné skupinové součty a nejednoznačné úhrady nelze touto volbou obejít. Nově dostupná data se nepřidají zpětně do uloženého dokladu; lze je vyúčtovat novým dokladem bez zdvojení již evidovaných dnů.
+
+### English
+
+- An explicit opt-in to bill only available data permits issue and QR generation when dates are missing, including ranges selected before sharing began. Strict completeness remains the default. Omitted dates remain visible in previews, stored documents and email; they are not treated as zero or automatically classified as pre-sharing dates. The option does not override entirely empty ranges, invalid values, inconsistent available group totals or ambiguous receipts. Later data does not mutate issued documents; it can be billed in a new statement without duplicating existing daily charges.
+
 ## 0.2.0 – 2026-10-08
 
 ### Čeština

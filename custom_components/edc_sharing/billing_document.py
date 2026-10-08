@@ -108,6 +108,14 @@ def render_settlement(
         else ("Nenastaven" if cs else "Not configured")
     )
     rows = defaultdict(lambda: [Decimal(0), Decimal(0)])
+    missing = document.get("missing_days", {})
+    omitted = sorted({day for days in missing.values() for day in days})
+    if omitted:
+        note += (
+            " Vyúčtována jsou pouze dostupná data. Chybějící dny nejsou nulová spotřeba ani potvrzené období před zahájením sdílení. Vynechané dny: "
+            if cs else
+            " Only available data is billed. Missing days are not zero consumption or a verified period before sharing began. Omitted dates: "
+        ) + ", ".join(omitted)
     for row in document["charges"].values():
         key = (row["ean"], row["name"], row["location"], row["price"])
         rows[key][0] += Decimal(row["shared"])

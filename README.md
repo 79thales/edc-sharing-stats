@@ -73,6 +73,8 @@ Existující adresa se odmítne — generátor nikdy nepřepisuje Home64, EDC Sh
 
 ### Platby a vyúčtování mezi soukromými osobami (v0.1.35)
 
+Při výběru rozsahu před zahájením sdílení lze výslovně zaškrtnout **Souhlas s vyúčtováním pouze dostupných dat** a znovu vytvořit náhled. Tato volba dovolí vystavení i QR za dostupné dny; nezaškrtnutá zachovává přísnou kontrolu úplnosti. Chybějící dny zůstanou uvedeny i na uloženém dokladu a v e-mailu. Neznamenají nulovou spotřebu a integrace bez podkladů netvrdí, že sdílení ještě neexistovalo. Neplatné hodnoty, nejednoznačné úhrady, nesouhlasící dostupné skupinové součty a zcela prázdné období zůstávají blokované. Později načtené dny lze vyúčtovat novým dokladem; původní doklad se nepřepisuje a stejné EAN/den se neúčtují dvakrát.
+
 V **Nastavení → Zařízení a služby → EDC → Konfigurovat → Platby a vyúčtování** otevřete administrátorskou sekci. Jde o soukromé **Vyúčtování sdílené elektřiny**, nikoli o automatický daňový doklad, bankovní účetnictví nebo ověření úhrad bankou. Generování vyúčtování nevypočítává DPH ani neposuzuje daňové povinnosti. Běžné reporty, jejich plánování, senzory, ceny a statistiky Energy se nemění.
 
 1. **Nejdříve vytvořte profil reportů.** Používají se výhradně skutečně uložené profily: jejich příjemci, jazyk, skupinový nebo individuální rozsah a finanční nastavení. Starší výchozí nastavení původních tlačítek se nepovažuje za vytvořený profil. Bez profilu nelze začít nastavovat ani vystavovat nové doklady. Archiv již vystavených dokladů je dostupný i po odstranění profilu.

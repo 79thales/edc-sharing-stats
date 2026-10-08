@@ -255,6 +255,7 @@ class BillingLedger:
         recipient: str,
         recipient_address: str,
         due: date,
+        allow_missing: bool = False,
     ) -> dict:
         """Use cached daily aggregates only; end dates are inclusive in the UI."""
         try:
@@ -286,6 +287,7 @@ class BillingLedger:
             raise BillingError("no_targets")
         default_price = decimal_value(options.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE))
         charges, missing, keys = {}, {}, []
+        invalid_days = []
         dates = tuple(start + timedelta(days=i) for i in range((end - start).days + 1))
         for ean in selected:
             data = {row.day: row for row in rows.get(ean, ())}
@@ -301,13 +303,15 @@ class BillingLedger:
                     charges[key] = deepcopy(self.state["charges"][key])
                 else:
                     row = data.get(day)
+                    if row is None:
+                        missing.setdefault(ean, []).append(day.isoformat())
+                        continue
                     try:
-                        if row is None:
-                            raise BillingError("incomplete_data")
                         shared = decimal_value(row.shared)
                         value = decimal_value(shared * price)
                     except BillingError:
                         missing.setdefault(ean, []).append(day.isoformat())
+                        invalid_days.append(day.isoformat())
                         continue
                     charges[key] = {
                         "ean": ean,
@@ -321,7 +325,7 @@ class BillingLedger:
                 keys.append(key)
         # Group billing needs every target day and a reconciled group total.
         # This checks presence/consistency of daily aggregates, not intraday quality.
-        inconsistent = []
+        inconsistent = list(set(invalid_days))
         if group:
             for day in dates:
                 if all(
@@ -334,10 +338,12 @@ class BillingLedger:
                     for ean in selected
                     if (key := charge_key(ean, day)) in charges
                 ]
+                if allow_missing and not target_values:
+                    continue
                 try:
                     if (
                         original is None
-                        or len(target_values) != len(selected)
+                        or (not allow_missing and len(target_values) != len(selected))
                         or abs(
                             decimal_value(original.shared)
                             - sum((decimal_value(v) for v in target_values), ZERO)
@@ -385,9 +391,10 @@ class BillingLedger:
             "charge_keys": sorted(keys),
             "balance": balance,
             "missing_days": missing,
+            "allow_missing": allow_missing,
             "inconsistent_days": inconsistent,
             "can_issue": bool(keys)
-            and not missing
+            and (not missing or allow_missing)
             and not inconsistent
             and not balance["ambiguous"],
         }
@@ -459,6 +466,8 @@ class BillingLedger:
                     "recipient_address",
                     "account",
                     "due",
+                    "start",
+                    "end",
                 )
             ):
                 return deepcopy(document)
@@ -475,7 +484,6 @@ class BillingLedger:
                 "preview_id",
                 "balance",
                 "can_issue",
-                "missing_days",
                 "inconsistent_days",
                 "charges",
             }

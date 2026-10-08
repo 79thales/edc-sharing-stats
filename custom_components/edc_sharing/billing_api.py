@@ -151,6 +151,7 @@ class BillingManager:
                 recipient=payload["recipient"],
                 recipient_address=payload.get("recipient_address", ""),
                 due=due,
+                allow_missing=payload.get("allow_missing") is True,
             )
             quote["smtp_ready"] = self._smtp_ready(profile)
             return quote
