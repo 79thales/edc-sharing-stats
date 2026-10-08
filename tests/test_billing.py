@@ -322,6 +322,10 @@ class BillingTest(unittest.TestCase):
         payload = render.settlement_payment_payload(document)
         self.assertIn("*AM:40.00*", payload)
         self.assertIn("*X-VS:", payload)
+        message = payload.split("*MSG:", 1)[1].split("*", 1)[0]
+        self.assertIn("Poznámka k platbě", html)
+        self.assertIn(importlib.import_module("html").escape(message), html)
+        self.assertIn(message, text)
         self.pay(doc, "40.00", request_id="pay-b")
         self.assertIsNone(
             render.settlement_payment_payload(self.ledger.document(doc["id"]))
@@ -337,7 +341,7 @@ class BillingTest(unittest.TestCase):
         })
         payload = render.settlement_payment_payload(quote, preview=True)
         self.assertIn("*AM:60.00*", payload)
-        self.assertIn("2026-01-01..2026-01-03", payload)
+        self.assertIn("rok 2026 do 01-03", payload)
         self.assertIn("EAN EAN-A", payload)
         self.assertNotIn("*X-VS:", payload)
         self.assertEqual(before, self.ledger.state)

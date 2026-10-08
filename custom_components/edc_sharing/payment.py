@@ -6,12 +6,13 @@ financial payload can be tested independently from e-mail delivery.
 
 from __future__ import annotations
 
-from base64 import b64encode
-from dataclasses import dataclass
-from decimal import Decimal
-from io import BytesIO
 import re
 import unicodedata
+from base64 import b64encode
+from dataclasses import dataclass
+from datetime import date, timedelta
+from decimal import Decimal
+from io import BytesIO
 
 
 class PaymentConfigurationError(ValueError):
@@ -90,7 +91,9 @@ def payment_message(
     period_text = _payment_text(period)
     ean = _payment_text(target_ean)
     if not ean:
-        return f"EDC sdileni {_payment_text(group_name)} - {period_text}"[:60].rstrip()
+        suffix = f" - {period_text}"
+        available = max(0, 60 - len("EDC sdileni ") - len(suffix))
+        return f"EDC sdileni {_payment_text(group_name)[:available]}{suffix}"[:60].rstrip()
 
     # SPAYD limits MSG to 60 characters.  For target reports, the period and
     # complete EAN are more important than a long user alias, so only the
@@ -100,6 +103,19 @@ def payment_message(
     available = max(0, 60 - len(prefix) - len(suffix))
     name = _payment_text(target_name) or "odberatel"
     return f"{prefix}{name[:available].rstrip()}{suffix}"[:60].strip()
+
+
+def settlement_period_reference(start: date, end: date) -> str:
+    """Match report month/year references, retaining inclusive custom dates."""
+    if start.day == 1 and (end + timedelta(days=1)).day == 1 and start.year == end.year and start.month == end.month:
+        return f"mesic {start:%Y-%m}"
+    if start.month == 1 and start.day == 1 and end.month == 12 and end.day == 31 and start.year == end.year:
+        return f"rok {start:%Y}"
+    if start.year == end.year:
+        if start.month == 1 and start.day == 1:
+            return f"rok {start:%Y} do {end:%m-%d}"
+        return f"rok {start:%Y} od {start:%m-%d} do {end:%m-%d}"
+    return f"{start:%Y-%m-%d}..{end:%Y-%m-%d}"
 
 
 def payment_amount(value: Decimal) -> Decimal | None:

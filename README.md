@@ -73,6 +73,8 @@ Existující adresa se odmítne — generátor nikdy nepřepisuje Home64, EDC Sh
 
 ### Platby a vyúčtování mezi soukromými osobami (v0.1.35)
 
+Poznámka k platbě je totožná s textem uloženým v QR a je viditelná v náhledu, dokladu i textovém e-mailu. Měsíc/rok má stejné označení jako automatické reporty (`mesic YYYY-MM`, `rok YYYY`); vlastní období obsahuje skutečné krajní dny. U jednoho odběrného místa se přidává jméno příjemce a celý EAN. Limit poznámky je 60 znaků: případně se zkrátí jméno, nikoli období nebo EAN. U skupinového dokladu je uvedena skupina a období, bez tvrzení, že patří jedinému EANu.
+
 Při výběru rozsahu před zahájením sdílení lze výslovně zaškrtnout **Souhlas s vyúčtováním pouze dostupných dat** a znovu vytvořit náhled. Tato volba dovolí vystavení i QR za dostupné dny; nezaškrtnutá zachovává přísnou kontrolu úplnosti. Chybějící dny zůstanou uvedeny i na uloženém dokladu a v e-mailu. Neznamenají nulovou spotřebu a integrace bez podkladů netvrdí, že sdílení ještě neexistovalo. Neplatné hodnoty, nejednoznačné úhrady, nesouhlasící dostupné skupinové součty a zcela prázdné období zůstávají blokované. Později načtené dny lze vyúčtovat novým dokladem; původní doklad se nepřepisuje a stejné EAN/den se neúčtují dvakrát.
 
 V **Nastavení → Zařízení a služby → EDC → Konfigurovat → Platby a vyúčtování** otevřete administrátorskou sekci. Jde o soukromé **Vyúčtování sdílené elektřiny**, nikoli o automatický daňový doklad, bankovní účetnictví nebo ověření úhrad bankou. Generování vyúčtování nevypočítává DPH ani neposuzuje daňové povinnosti. Běžné reporty, jejich plánování, senzory, ceny a statistiky Energy se nemění.

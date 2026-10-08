@@ -6,6 +6,7 @@ import importlib.util
 import sys
 import unittest
 from base64 import b64decode
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,6 +22,30 @@ spec.loader.exec_module(payment)
 
 
 class PaymentTests(unittest.TestCase):
+    def test_settlement_reference_matches_reports_and_preserves_custom_dates(self):
+        cases = (
+            (date(2026, 9, 1), date(2026, 9, 30), "mesic 2026-09"),
+            (date(2024, 2, 1), date(2024, 2, 29), "mesic 2024-02"),
+            (date(2026, 1, 1), date(2026, 12, 31), "rok 2026"),
+            (date(2026, 1, 1), date(2026, 9, 30), "rok 2026 do 09-30"),
+            (date(2026, 6, 1), date(2026, 9, 30), "rok 2026 od 06-01 do 09-30"),
+            (date(2025, 12, 1), date(2026, 1, 31), "2025-12-01..2026-01-31"),
+        )
+        for start, end, expected in cases:
+            with self.subTest(start=start, end=end):
+                self.assertEqual(payment.settlement_period_reference(start, end), expected)
+                group_message = payment.payment_message("Long sharing group " * 10, expected)
+                self.assertIn(expected, group_message)
+                self.assertLessEqual(len(group_message), 60)
+                ean = "859000000" + "000000001"
+                target_message = payment.payment_message(
+                    "Example", expected, target_name="Very long customer name " * 10,
+                    target_ean=ean,
+                )
+                self.assertIn(expected, target_message)
+                self.assertIn(ean, target_message)
+                self.assertLessEqual(len(target_message), 60)
+
     def test_domestic_account_becomes_a_valid_czech_iban(self):
         account = payment.parse_czech_account("120000001", "9999")
         self.assertEqual(account.domestic, "120000001/9999")

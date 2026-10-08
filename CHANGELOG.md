@@ -1,5 +1,15 @@
 # Přehled změn / Changelog
 
+## Unreleased
+
+### Čeština
+
+- Poznámka platby v QR vyúčtování používá stejné označení měsíce/roku jako automatické reporty a pro vlastní období zachovává oba krajní dny. Stejná poznámka je viditelná v náhledu, na dokladu i v textovém e-mailu. V limitu 60 znaků mají přednost období a celý EAN; dlouhé jméno se zkracuje. Dlouhý název skupiny už nesmí vytlačit období z poznámky. Částky, účet a variabilní symbol se nemění.
+
+### English
+
+- Settlement QR payment references use the same month/year labels as automatic reports and retain both boundaries for custom ranges. The exact reference is also visible in previews, documents and plain-text email. Within the 60-character limit, the period and full EAN take priority over long names. Long group names no longer displace the period. Amounts, accounts and variable symbols are unchanged.
+
 ## 0.2.1 – 2026-10-08
 
 ### Čeština

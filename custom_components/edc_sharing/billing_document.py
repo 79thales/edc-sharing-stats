@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import date
 from decimal import Decimal
 from html import escape
 
 from .billing import money
-from .payment import CzechBankAccount, PaymentRequest, payment_message
+from .payment import (
+    CzechBankAccount,
+    PaymentRequest,
+    payment_message,
+    settlement_period_reference,
+)
 
 
 def settlement_payment_payload(document: dict, *, preview: bool = False) -> str | None:
@@ -21,7 +27,9 @@ def settlement_payment_payload(document: dict, *, preview: bool = False) -> str 
     eans = sorted({row["ean"] for row in document["charges"].values()})
     message = payment_message(
         document["group_name"],
-        f"{document['start']}..{document['end']}",
+        settlement_period_reference(
+            date.fromisoformat(document["start"]), date.fromisoformat(document["end"])
+        ),
         target_name=document["recipient"],
         target_ean=eans[0] if len(eans) == 1 else None,
     )
@@ -149,6 +157,10 @@ def render_settlement(
         (confirmed, f"{balance['confirmed']} CZK"),
         (remaining, "—" if uncertain else f"{balance['remaining']} CZK"),
     )
+    payload = settlement_payment_payload(document, preview=preview)
+    if payload:
+        message = payload.split("*MSG:", 1)[1].split("*", 1)[0]
+        fields += (("Poznámka k platbě" if cs else "Payment reference", message),)
     details = "".join(
         f"<dt>{escape(label)}</dt><dd>{escape(content)}</dd>"
         for label, content in fields
