@@ -1,13 +1,17 @@
 # Přehled změn / Changelog
 
-## Unreleased
+## 0.2.1 – 2026-10-08
 
 ### Čeština
 
+- Po aktualizaci restartujte HA. Zaškrtněte souhlas s vyúčtováním pouze dostupných dat, znovu vytvořte náhled a samostatně potvrďte vystavení. Změna skupiny, profilu či období tento souhlas ruší. QR vyžaduje nastavený účet a kladný zůstatek; náhled QR nemá finální variabilní symbol. Stávající doklady, úhrady a statistiky se nemění.
+- Doplněny testy částečného období, QR, uchování vynechaných dnů po restartu, neplatných hodnot, skupinových součtů a předání výslovného souhlasu z panelu. Dostupné testy včetně reálných fixtures na HA 2026.8.0, HACS, Hassfest a kompatibility API na stabilní HA 2026.10.0 prošly. Úplné fixtures na 2026.10.0 zůstávají nedostupné kvůli upstream pluginu; CI tuto mezeru dál hlásí jako chybu, bez náhrady betou či starší verzí.
 - Volitelný výslovný souhlas s vyúčtováním pouze dostupných dat dovolí vystavení a QR také při chybějících dnech (například při výběru období před zahájením sdílení). Výchozí kontrola zůstává přísná. Vynechané dny jsou trvale uvedeny v náhledu, dokladu i e-mailu; nejsou označovány za nulu ani automaticky za období před zahájením. Úplně prázdné období, neplatné hodnoty, nesouhlasící dostupné skupinové součty a nejednoznačné úhrady nelze touto volbou obejít. Nově dostupná data se nepřidají zpětně do uloženého dokladu; lze je vyúčtovat novým dokladem bez zdvojení již evidovaných dnů.
 
 ### English
 
+- Restart HA after updating. Explicitly accept billing only available data, regenerate the preview and separately confirm issue. Changing the group, profile or period clears this consent. QR requires a configured account and a positive balance; preview QR has no final variable symbol. Existing documents, receipts and statistics are unchanged.
+- Added tests for partial periods, QR, omitted-date persistence across restart, invalid values, group reconciliation and explicit consent submitted by the panel. Available tests, including real HA 2026.8.0 fixtures, HACS, Hassfest and API compatibility on stable HA 2026.10.0 passed. Full 2026.10.0 fixtures remain unavailable because of the upstream plugin; CI still reports this gap as a failure, without beta or older-version substitution.
 - An explicit opt-in to bill only available data permits issue and QR generation when dates are missing, including ranges selected before sharing began. Strict completeness remains the default. Omitted dates remain visible in previews, stored documents and email; they are not treated as zero or automatically classified as pre-sharing dates. The option does not override entirely empty ranges, invalid values, inconsistent available group totals or ambiguous receipts. Later data does not mutate issued documents; it can be billed in a new statement without duplicating existing daily charges.
 
 ## 0.2.0 – 2026-10-08
