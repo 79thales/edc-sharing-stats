@@ -75,6 +75,35 @@ def _dst_profile(day: str, starts: tuple[str, ...]) -> dict:
 
 
 class CalculationTests(unittest.TestCase):
+    def test_target_hourly_dst_missing_hours_and_midnight(self) -> None:
+        for day, starts, expected in (
+            ("2026-03-29", ("01:00:00", "03:00:00"),
+             ("2026-03-29T00:00:00+00:00", "2026-03-29T01:00:00+00:00")),
+            ("2026-10-25", ("02:00:00", "02:00:00"),
+             ("2026-10-25T00:00:00+00:00", "2026-10-25T01:00:00+00:00")),
+            ("2026-08-04", ("00:00:00", "03:00:00"),
+             ("2026-08-03T22:00:00+00:00", "2026-08-04T01:00:00+00:00")),
+        ):
+            with self.subTest(day=day):
+                rows = calculation.parse_hourly_target_profiles(
+                    _dst_profile(day, starts), local_tz=PRAGUE_2026
+                )
+                self.assertEqual(tuple(row.start.isoformat() for row in rows), expected)
+                self.assertEqual(tuple(row.shared for row in rows), (Decimal(1), Decimal(2)))
+                self.assertTrue(all(row.coverage == Decimal(100) for row in rows))
+
+    def test_target_hourly_nonexistent_hour_rejected_and_zero_coverage(self) -> None:
+        with self.assertRaises(ValueError):
+            calculation.parse_hourly_target_profiles(
+                _dst_profile("2026-03-29", ("02:00:00",)), local_tz=PRAGUE_2026
+            )
+        response = _dst_profile("2026-08-04", ("00:00:00",))
+        response["content"][0]["values"] = [{"v": 0}] * 4
+        rows = calculation.parse_hourly_target_profiles(response, local_tz=PRAGUE_2026)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].coverage, Decimal(0))
+        self.assertEqual(rows[0].shared, Decimal(0))
+
     @staticmethod
     def _target_daily_row(
         ean: str,
@@ -578,6 +607,19 @@ class CalculationTests(unittest.TestCase):
         self.assertEqual(hours[1].shared, Decimal("0.02"))
         self.assertEqual(hours[1].consumption, Decimal("0.04"))
         self.assertEqual(hours[1].grid_purchase, Decimal("0.02"))
+
+        target_hours = calculation.parse_hourly_target_profiles(response)
+        self.assertEqual(len(target_hours), 2)
+        self.assertEqual(target_hours[0].ean, "consumer")
+        self.assertEqual(target_hours[0].start.isoformat(), "2026-08-04T00:00:00")
+        self.assertEqual(target_hours[0].shared, Decimal("0.03"))
+        self.assertEqual(target_hours[0].consumption, Decimal("0.10"))
+        self.assertEqual(target_hours[0].grid_purchase, Decimal("0.07"))
+        self.assertEqual(target_hours[1].ean, "consumer")
+        self.assertEqual(target_hours[1].start.isoformat(), "2026-08-04T01:00:00")
+        self.assertEqual(target_hours[1].shared, Decimal("0.02"))
+        self.assertEqual(target_hours[1].consumption, Decimal("0.04"))
+        self.assertEqual(target_hours[1].grid_purchase, Decimal("0.02"))
 
     def test_latest_available_day_is_used_when_today_is_delayed(self) -> None:
         response = {

@@ -33,6 +33,12 @@ def energy_statistic_id(
     return f"{DOMAIN}:{sse_id}_energy_{digest}_{metric}"
 
 
+def target_hourly_statistic_id(sse_id: str | int, ean: str, metric: str) -> str:
+    """Scope new interval series to a group; never rename existing statistics."""
+    clean_ean = ean.replace("-", "_").lower()
+    return f"{DOMAIN}:{sse_id}_{clean_ean}_{metric}_hourly"
+
+
 def daily_energy_values(
     rows: Mapping[str, Mapping[date, TargetDailySharing]],
     targets: tuple[str, ...],
@@ -69,7 +75,7 @@ def cumulative_daily_points(
 ) -> list[dict[str, Any]]:
     """Rebuild the full series; never append to a previously imported sum.
 
-    Daily EDC values have no per-target hourly breakdown. Book the daily amount
+    This exporter uses daily target totals, not hourly profiles. Book the daily amount
     in the final real UTC hour of its local day; do not invent hourly earnings.
     A zero baseline in the preceding hour preserves the very first day's delta.
     """

@@ -160,6 +160,7 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
         coordinator._target_days = {}
         coordinator._history_target_days = {}
         coordinator._hours = {}
+        coordinator._target_hours = {}
         coordinator._history_refresh_date = None
         coordinator._history_import_enabled = False
         coordinator.history_earliest_date = None
@@ -207,6 +208,71 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
         self.assertTrue(revenue_metadata["has_sum"])
         self.assertEqual(revenue_metadata["unit_of_measurement"], "CZK")
         self.assertEqual(points[-1]["sum"], 8)
+
+    def test_target_hourly_export_passes_real_recorder_validation(self) -> None:
+        from custom_components.edc_sharing.calculation import TargetHourlySharing
+        from custom_components.edc_sharing.history import async_import_target_hourly_history
+
+        start = datetime(2026, 10, 1, 10, tzinfo=UTC)
+        row = TargetHourlySharing(
+            "target_example", start, Decimal(10), Decimal(6), Decimal(4), Decimal(40)
+        )
+        recorder = Mock()
+        with patch(
+            "homeassistant.components.recorder.statistics.get_instance", return_value=recorder
+        ):
+            async_import_target_hourly_history(
+                SimpleNamespace(config=SimpleNamespace(language="en")),
+                sse_id="1", sse_name="Example group",
+                ean="target_example",
+                target_name="Example target",
+                hours=(row,),
+                now=datetime(2026, 10, 1, 12, tzinfo=UTC),
+                local_tz=UTC,
+            )
+        self.assertEqual(recorder.async_import_statistics.call_count, 4)
+        metadata, points, _table = recorder.async_import_statistics.call_args_list[0].args
+        self.assertFalse(metadata["has_sum"])
+        self.assertEqual(metadata["statistic_id"], "edc_sharing:1_target_example_shared_hourly")
+        self.assertEqual(points[0]["mean"], 4.0)
+
+    def test_target_hourly_overlap_corrections_and_group_scoping(self) -> None:
+        from custom_components.edc_sharing.calculation import TargetHourlySharing
+        from custom_components.edc_sharing.history import async_import_target_hourly_history
+
+        start = datetime(2026, 10, 25, 0, tzinfo=UTC)
+        following = datetime(2026, 10, 25, 1, tzinfo=UTC)
+        def row(ean, timestamp, value):
+            return TargetHourlySharing(
+                ean, timestamp, Decimal(10), Decimal(10) - Decimal(value),
+                Decimal(value), Decimal(value) * Decimal(10),
+            )
+        original = row("target_example", start, 4)
+        corrected = row("target_example", start, 5)
+        second_fold = row("target_example", following, 6)
+        recorder = Mock()
+        with patch(
+            "homeassistant.components.recorder.statistics.get_instance", return_value=recorder
+        ):
+            for group in ("1", "1", "2"):
+                count = async_import_target_hourly_history(
+                    SimpleNamespace(config=SimpleNamespace(language="en")),
+                    sse_id=group, sse_name="Example group", ean="target_example",
+                    target_name="Example target",
+                    hours=(original, corrected, second_fold, row("other_target", start, 9)),
+                    now=datetime(2026, 10, 25, 3, tzinfo=UTC), local_tz=UTC,
+                )
+                self.assertEqual(count, 2)
+        calls = recorder.async_import_statistics.call_args_list
+        first_meta, first_points, _ = calls[0].args
+        repeated_meta, repeated_points, _ = calls[4].args
+        other_meta, _, _ = calls[8].args
+        self.assertEqual(first_meta, repeated_meta)
+        self.assertEqual(first_points, repeated_points)
+        self.assertNotEqual(first_meta["statistic_id"], other_meta["statistic_id"])
+        self.assertEqual([point["mean"] for point in first_points], [5.0, 6.0])
+        self.assertEqual([point["start"] for point in first_points], [start, following])
+        self.assertTrue(all("sum" not in point for point in first_points))
 
     def test_cached_daily_row_round_trip_preserves_precision(self) -> None:
         from custom_components.edc_sharing.calculation import (

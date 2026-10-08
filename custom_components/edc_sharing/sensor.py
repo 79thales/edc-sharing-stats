@@ -34,7 +34,7 @@ from .calculation import (
 from .const import CONF_SSE_ID, CONF_SSE_NAME, DOMAIN
 from .coordinator import EdcSharingCoordinator
 from .ean_settings import ean_location, ean_name
-from .energy import energy_statistic_id, energy_targets
+from .energy import energy_statistic_id, energy_targets, target_hourly_statistic_id
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -553,6 +553,16 @@ class EdcTargetSensor(
         )
         if location := ean_location(self._ean, self.coordinator.config_entry.options):
             attributes["location"] = location
+        metric = {
+            "shared_latest_available_day": "shared",
+            "consumption_latest_available_day": "consumption",
+            "grid_purchase_latest_available_day": "grid",
+            "sharing_coverage_latest_available_day": "coverage",
+        }.get(self.entity_description.key)
+        if metric:
+            attributes["hourly_statistic_id"] = target_hourly_statistic_id(
+                self.coordinator.config_entry.data[CONF_SSE_ID], self._ean, metric
+            )
         return attributes or None
 
 

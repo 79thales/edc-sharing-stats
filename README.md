@@ -33,11 +33,23 @@ This is an independent integration and is not an official product of, or support
 
 The download badges count only downloads of the `edc_sharing.zip` release asset, including HACS updates and manual downloads. They do not count unique users, source-code archives or default-branch installations. Counting starts with v0.1.32; earlier downloads cannot be reconstructed. HACS's download indicator refers to the selected release, while the total badge combines installer downloads across releases. GitHub, HACS and badge caches may update at different times. No usage tracking is added to the integration.
 
+### Per-target hourly history (v0.2.0)
+
+Each target now has group-scoped external statistics for shared electricity, consumption, grid import (kWh) and sharing coverage (%): `edc_sharing:<group>_<EAN>_<metric>_hourly`, where the metric is `shared`, `consumption`, `grid` or `coverage`. The corresponding latest-day sensor exposes its exact `hourly_statistic_id`. Select hourly periods and `mean` for hourly charts: these are interval values, not cumulative `sum` counters or live power. Coverage is calculated from hourly energy totals, not averaged quarter-hour percentages. Use existing daily aggregates for daily totals and coverage. EDC's usual reporting delay still applies.
+
+Run backfill again to populate older hours; retained daily totals cannot reconstruct an hourly profile. Reimports replace matching timestamps and missing hours are not fabricated. Existing statistics remain unchanged. Users of the fork's EAN-only IDs need to update their cards to these group-scoped IDs; old statistics are not deleted or renamed. Flow-card support depends on whether the card accepts external statistics.
+
 ### Dashboard generator (v0.1.34)
 
 An administrator can generate a named dashboard in the EDC Share2 sections style: native tiles, percentage gauges, dated EDC history charts, details and optional individual supply-point sections. Choose downloadable YAML or explicitly create a **new** storage dashboard through Home Assistant's authenticated Lovelace API. Current entity IDs are resolved from the entity registry, including user renames. Existing dashboards, Energy settings, prices, reports and stored EDC data are never modified. Direct creation defaults to an administrator-only dashboard; it requires a preview and confirmation.
 
 ## Česká dokumentace
+
+### Hodinová historie jednotlivých odběrných míst (v0.2.0)
+
+Pro každé odběrné místo se importují externí statistiky `edc_sharing:<group>_<EAN>_shared_hourly`, `_consumption_hourly`, `_grid_hourly` (kWh) a `_coverage_hourly` (%). Přesné ID najdete v atributu `hourly_statistic_id` senzoru příslušné hodnoty za poslední dostupný den. Nejde o nové živé senzory výkonu: data mají původní čas EDC a obvykle přibližně denní zpoždění. Pro graf jednotlivých hodin použijte hodinové období a hodnotu `mean`; statistiky nemají kumulativní `sum`. Pokrytí hodiny je poměr součtu sdílení a součtu spotřeby, nikoli průměr čtvrthodinových procent. Pro denní součty a denní pokrytí používejte existující denní agregace, nikoli průměr hodinových hodnot.
+
+Nové statistiky se plní při běžném načítání i backfillu bez dalších HTTP požadavků. Pro starší období znovu spusťte dostupný backfill: uložené denní součty samy neobsahují rozdělení do hodin. Opakovaný import nahrazuje stejné časové body; chybějící hodiny se nevymýšlejí. ID je oddělené pro každou skupinu. Uživatelé forku s EAN-only ID musí odkazy svých karet přepnout na tato nová ID; staré statistiky se automaticky nemažou ani nepřejmenovávají. Podpora externích statistik ve flow kartách závisí na konkrétní kartě.
 
 ### Generátor dashboardu (v0.1.34)
 
