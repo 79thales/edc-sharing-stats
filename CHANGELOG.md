@@ -1,12 +1,13 @@
 # Přehled změn / Changelog
 
-## 0.2.0 – 2026-10-07
+## 0.2.0 – 2026-10-08
 
 ### Čeština
 
 - Přidány hodinové externí statistiky pro každé odběrné místo: nasdílená energie, spotřeba, dokup ze sítě a pokrytí sdílením. ID obsahuje skupinu i EAN, aby stejné místo v různých skupinách nekolidovalo. Atribut `hourly_statistic_id` příslušného senzoru odkazuje na novou statistiku. Starší historii lze doplnit opětovným spuštěním backfillu.
 - Hodnoty představují jednotlivé hodiny EDC, nikoli kumulativní čítače nebo živý výkon. Import pracuje s UTC, rozlišuje opakovanou hodinu při změně času a nahrazuje stejné časové body místo jejich přičítání. Stávající Energy statistiky a jejich denní příjmy se nemění.
 - Kredit za základ hodinových statistik jednotlivých míst patří [@jirisida](https://github.com/jirisida), fork `feature/target-hourly-history`; doplněno oddělení skupin a ochrana překrývajících se importů.
+- Validační omezení při vydání: HACS, Hassfest, unit testy, reálné HA fixtures pro minimum 2026.8.0 a kontrola kompatibility API na stabilní HA 2026.10.0 prošly. Úplné dashboard/billing fixtures na 2026.10.0 nebylo možné spustit, protože upstream testovací plugin pro tuto přesnou stabilní verzi dosud není dostupný. CI tuto mezeru stále hlásí jako chybu; nebyla nahrazena betou ani starší HA a nejde o kompletně zelenou validaci.
 - QR platba je nově viditelná také v náhledu vyúčtování, ještě před vystavením. Používá účet skupiny a zbývající částku po odečtení pouze ručně potvrzených úhrad; období a identifikace odběratele/EANu odpovídají zvolenému rozsahu.
 - Náhled QR není finální výzva k úhradě: nemá variabilní symbol a u obrázku je výslovné upozornění **Neplaťte podle tohoto náhledu**. Finální QR s variabilním symbolem vzniká až po potvrzení vystavení. Náhled nic neukládá, nerezervuje číslo dokladu a neposílá e-mail.
 - Bez nastaveného účtu, při nulovém zůstatku, neúplných datech nebo nejednoznačně přiřazené úhradě se QR v náhledu nevytváří. QR nadále vzniká lokálně v paměti, bez externí služby nebo souboru.
@@ -18,6 +19,7 @@
 - Added per-target hourly external statistics for shared electricity, consumption, grid import and sharing coverage. IDs include both the group and EAN to avoid collisions across groups. The corresponding sensor exposes an `hourly_statistic_id` attribute. Run history backfill again to populate older periods.
 - Values describe individual EDC hours, not cumulative counters or live power. Imports use UTC, distinguish repeated DST hours and replace matching timestamps instead of adding them again. Existing Energy statistics and daily income booking are unchanged.
 - Credit to [@jirisida](https://github.com/jirisida) for the per-target hourly statistics foundation in `feature/target-hourly-history`; this integration adds group-scoped IDs and safeguards for overlapping imports.
+- Validation limitation at release: HACS, Hassfest, unit tests, real HA fixtures for the 2026.8.0 minimum and API compatibility checks on stable HA 2026.10.0 passed. Full dashboard/billing fixture tests on 2026.10.0 could not run because the upstream test plugin for that exact stable release is not yet available. CI continues to report this gap as a failure; no beta or older HA was substituted, and validation is not entirely green.
 - Payment QR codes now appear in settlement previews before issue. They use the group's bank account and the remaining balance after deducting only manually confirmed receipts, with the selected period and customer/EAN reference.
 - The preview QR is not a final payment request: it has no variable symbol and is explicitly labelled **Do not pay from this preview**. The final QR receives its variable symbol only after issue is confirmed. Previewing does not save anything, reserve a document number or send email.
 - Preview QR generation is suppressed when no account is configured, the balance is zero, daily data is incomplete or a receipt allocation is ambiguous. Images continue to be generated locally in memory, without external services or files.
