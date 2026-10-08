@@ -1,13 +1,15 @@
 # Přehled změn / Changelog
 
-## Unreleased
+## 0.2.2 – 2026-10-08
 
 ### Čeština
 
+- Po aktualizaci restartujte HA a znovu vytvořte náhled. Doplněny regresní testy měsíce, přestupného února, roku, vlastního období a přechodu mezi roky, dlouhých názvů, celého EANu a bezpečného HTML zobrazení skutečné QR poznámky. HACS, Hassfest, dostupné testy a kompatibilita API na stabilní HA 2026.10.0 prošly. Úplné dashboard/billing fixtures na 2026.10.0 zůstávají nedostupné kvůli upstream pluginu; CI tuto mezeru stále hlásí jako chybu, bez nahrazení betou nebo starší HA.
 - Poznámka platby v QR vyúčtování používá stejné označení měsíce/roku jako automatické reporty a pro vlastní období zachovává oba krajní dny. Stejná poznámka je viditelná v náhledu, na dokladu i v textovém e-mailu. V limitu 60 znaků mají přednost období a celý EAN; dlouhé jméno se zkracuje. Dlouhý název skupiny už nesmí vytlačit období z poznámky. Částky, účet a variabilní symbol se nemění.
 
 ### English
 
+- Restart HA after updating and regenerate the preview. Added regressions for months, leap-year February, years, custom and cross-year ranges, long names, full EANs and safe HTML rendering of the actual QR reference. HACS, Hassfest, available tests and API compatibility on stable HA 2026.10.0 passed. Full dashboard/billing fixtures for 2026.10.0 remain unavailable because of the upstream plugin; CI still reports this gap as a failure, without substituting beta or older HA.
 - Settlement QR payment references use the same month/year labels as automatic reports and retain both boundaries for custom ranges. The exact reference is also visible in previews, documents and plain-text email. Within the 60-character limit, the period and full EAN take priority over long names. Long group names no longer displace the period. Amounts, accounts and variable symbols are unchanged.
 
 ## 0.2.1 – 2026-10-08
