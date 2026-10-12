@@ -360,3 +360,13 @@ Hodinové body používají jednoznačné UTC časové značky. Při podzimním 
 Chyby a návrhy hlaste v [GitHub Issues](https://github.com/79thales/edc-sharing-stats/issues).
 
 Tento projekt není oficiálním produktem ani podporovanou integrací Elektroenergetického datového centra, a. s.
+
+## Licence
+
+[![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
+
+Tento projekt je licencován pod GNU General Public License v3.0, pouze verze 3 (**GPL-3.0-only**). Podrobnosti jsou v [LICENSE](LICENSE).
+
+Copyright (c) 2026 Jiří Dvořák (79thales).
+
+Dříve zveřejněné verze pod MIT zůstávají pod původní licencí. Změna platí pro toto a následující vydání.
