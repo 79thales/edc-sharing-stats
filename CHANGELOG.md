@@ -1,6 +1,6 @@
 # Přehled změn / Changelog
 
-## Nevydáno / Unreleased
+## 0.2.4 – 2026-10-13
 
 ### Čeština
 
@@ -8,6 +8,7 @@
 - Opraven požadavek profilových dat pro aktuální portál EDC: `dateFrom`/`dateTo` používají kalendářní data `YYYY-MM-DD` místo UTC okamžiků, konečný den je včetně a nadbytečný `profileType` se neposílá. Interní intervaly a kurzor zůstávají od včetně/do bez koncového dne; převod se provádí pouze v API klientovi. Platí pro první i pravidelné načtení, roční backfill a skupinové i individuální reporty. Bloky obsahují maximálně 31 dnů, bez mezer nebo duplicit, včetně přestupného dne a změn času.
 - Chyby API zachovávají stav HTTP a doplňují jen známý endpoint, kalendářní rozsah a bezpečně povolené kódy/pole. Maximálně 16 KiB chybového těla, bez kopírování volných zpráv, EANů, ID skupin, tokenů a hesel. Spojení se uvolní i při chybě. Neplatné/větší rozsahy se odmítnou ještě před HTTP.
 - Po instalaci restartujte HA bez mazání integrace; selhaný backfill obnovte jeho tlačítkem. Uložené EDC hodnoty, hodinové UTC značky, statistiky a jejich ID, ceny, reportové rozvrhy, vyúčtování a potvrzené úhrady se nemění. Oprava sama nevystavuje doklady ani neodesílá e-maily.
+- Ověření opravy: všech devět Linuxových CI kontrol prošlo, včetně HACS, Hassfest, frontendů, lint a kompatibility HA 2026.8.0, 2026.9.0 i nejnovější stabilní 2026.10.1. Reálné dashboard/billing fixtures používají přesné dvojice 2026.8.0/0.13.354 a 2026.10.1/0.13.372; na každé prošlo 27 testů. Unit sada má 147 úspěšných testů a 22 HA kontrol prováděných samostatně v kompatibilitních bězích. Hassfest nadále upozorňuje na dosavadní registraci CONFIG_SCHEMA, ale nehlásí selhání. Místní Windows kontrola skončila nativní chybou OpenSSL a nebyla započtena jako úspěch; kompatibilita byla ověřena v Linuxu, bez náhrady starší nebo beta verzí.
 
 ### English
 
@@ -15,6 +16,7 @@
 - Fixed profile requests for the current EDC portal: calendar `YYYY-MM-DD` dates replace UTC instants, the end date is inclusive and the redundant `profileType` is omitted. Internal half-open intervals and history cursors are preserved; only the API client converts the end boundary. This applies to initial/regular refresh, history backfill and group/target reports. Blocks cover at most 31 days without gaps or duplication, including leap days and DST changes.
 - API errors retain HTTP status and expose only known endpoints, calendar ranges and allowlisted error codes/fields. Error bodies are bounded to 16 KiB; free text, EANs, group IDs, tokens and passwords are not echoed. Connections are released on errors. Invalid/oversized intervals are rejected before HTTP.
 - Restart HA after installing without deleting the integration; resume a failed backfill using its button. Retained EDC data, hourly UTC timestamps, statistics/IDs, prices, report schedules, settlements and confirmed receipts are unchanged. The fix does not itself issue documents or send email.
+- Validation: all nine Linux CI checks passed, including HACS, Hassfest, frontends, lint and HA 2026.8.0, 2026.9.0 and latest stable 2026.10.1 compatibility. Real dashboard/billing fixtures use exact 2026.8.0/0.13.354 and 2026.10.1/0.13.372 pairs, with 27 tests passing on each. The unit suite has 147 passing tests and 22 HA checks executed separately in compatibility jobs. Hassfest retains a warning about the existing CONFIG_SCHEMA registration, not a failed check. The local Windows HA check ended with a native OpenSSL error and was not counted as successful; compatibility was verified on Linux without an older or beta substitute.
 
 ## 0.2.3 – 2026-10-12
 
