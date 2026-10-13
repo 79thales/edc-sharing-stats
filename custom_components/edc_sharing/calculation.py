@@ -8,8 +8,7 @@ from datetime import UTC, date, datetime, timedelta, tzinfo
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
-
-ZERO = Decimal("0")
+ZERO = Decimal(0)
 MAX_PROFILE_DAYS = 31
 
 
@@ -177,7 +176,7 @@ def calculate_surplus_utilization(
     production_surplus = sum((row.producer_overflow for row in ordered), ZERO)
     unused_surplus = sum((row.unused_overflow for row in ordered), ZERO)
     value = (
-        shared / production_surplus * Decimal("100")
+        shared / production_surplus * Decimal(100)
         if shared > ZERO and production_surplus > ZERO
         else ZERO
     )
@@ -201,7 +200,12 @@ def two_calendar_month_start(today: date) -> date:
 def profile_date_ranges(
     date_from: date, date_to: date
 ) -> tuple[tuple[date, date], ...]:
-    """Split a half-open date interval into EDC-compatible requests."""
+    """Rozdělit [od, do) na nejvýše 31 kalendářních dnů bez mezer/překryvu.
+
+    Výstupní koncová mez stále není součástí bloku. Až API klient ji sníží
+    o den pro včetně používané portálem; výpočty a uložená historie se nemění.
+    Prázdný či obrácený vstup nemá žádný požadavek.
+    """
     if date_to <= date_from:
         return ()
     ranges: list[tuple[date, date]] = []
@@ -216,7 +220,11 @@ def profile_date_ranges(
 def profile_date_ranges_backwards(
     date_from: date, date_to: date
 ) -> tuple[tuple[date, date], ...]:
-    """Split an interval into newest-first EDC-compatible requests."""
+    """Rozdělit [od, do) od nejnovějších dnů se stejnou sémantikou hranic.
+
+    Kurzor backfillu je koncová mez bez tohoto dne. Sousední bloky na sebe
+    navazují a limit 31 počítá skutečně zahrnuté kalendářní dny, nikoli hodiny.
+    """
     if date_to <= date_from:
         return ()
     ranges: list[tuple[date, date]] = []
@@ -323,7 +331,7 @@ def _sharing_values(
     consumer_out = sum((abs(value(pair.get("OUT"))) for pair in consumers.values()), ZERO)
     shared_consumer = consumer_in - consumer_out
     shared_producer = producer_in - producer_out
-    coverage = shared_consumer / consumer_in * Decimal("100") if consumer_in else ZERO
+    coverage = shared_consumer / consumer_in * Decimal(100) if consumer_in else ZERO
     return (
         consumer_in,
         consumer_out,
@@ -349,7 +357,7 @@ def _target_values(
     consumption = abs(value(pair.get("IN")))
     grid_purchase = abs(value(pair.get("OUT")))
     shared = consumption - grid_purchase
-    coverage = shared / consumption * Decimal("100") if consumption else ZERO
+    coverage = shared / consumption * Decimal(100) if consumption else ZERO
     return consumption, grid_purchase, shared, coverage
 
 
@@ -564,7 +572,7 @@ def calculate_target_period_summary(
         consumption=consumption,
         grid_purchase=sum((row.grid_purchase for row in ordered), ZERO),
         shared=shared,
-        coverage=shared / consumption * Decimal("100") if consumption else ZERO,
+        coverage=shared / consumption * Decimal(100) if consumption else ZERO,
         revenue=shared * sale_price,
         data_start=ordered[0].day if ordered else None,
         data_end=ordered[-1].day if ordered else None,
@@ -632,7 +640,7 @@ def calculate_statistics(
     year_rows = [row for row in available_rows if row.day.year == today.year]
     month_consumption = sum((row.consumption for row in month_rows), ZERO)
     month_shared = sum((row.shared for row in month_rows), ZERO)
-    month_coverage = month_shared / month_consumption * Decimal("100") if month_consumption else ZERO
+    month_coverage = month_shared / month_consumption * Decimal(100) if month_consumption else ZERO
     targets = tuple(
         calculate_target_statistics(
             ean,
@@ -687,7 +695,7 @@ def calculate_period_summary(
         shared=shared,
         producer_overflow=sum((row.producer_overflow for row in days), ZERO),
         unused_overflow=sum((row.unused_overflow for row in days), ZERO),
-        coverage=shared / consumption * Decimal("100") if consumption else ZERO,
+        coverage=shared / consumption * Decimal(100) if consumption else ZERO,
         revenue=shared * sale_price,
     )
 

@@ -5,12 +5,11 @@ from __future__ import annotations
 import asyncio
 import importlib
 import importlib.util
+import unittest
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
-import unittest
 from unittest.mock import AsyncMock, Mock, patch
-
 
 HOME_ASSISTANT_INSTALLED = importlib.util.find_spec("homeassistant") is not None
 
@@ -118,8 +117,8 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
 
     def test_target_ean_uses_supported_via_device_id(self) -> None:
         from custom_components.edc_sharing.sensor import (
-            EdcTargetSensor,
             TARGET_SENSORS,
+            EdcTargetSensor,
         )
 
         coordinator = Mock()
@@ -179,7 +178,9 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(coordinator.last_attempt_result, "success")
         self.assertEqual(coordinator._days, {})
-        api.async_get_daily_profile.assert_awaited_once()
+        api.async_get_daily_profile.assert_awaited_once_with(
+            1, date(2026, 9, 1), date(2026, 9, 2)
+        )
 
     def test_energy_export_passes_real_recorder_validation(self) -> None:
         from custom_components.edc_sharing.calculation import TargetDailySharing
@@ -209,9 +210,53 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
         self.assertEqual(revenue_metadata["unit_of_measurement"], "CZK")
         self.assertEqual(points[-1]["sum"], 8)
 
+    def test_backfill_preserves_calendar_range_and_resume_cursor(self) -> None:
+        """Historie předává date, nepřevádí UTC a uloží následující hranici."""
+        from custom_components.edc_sharing.coordinator import EdcSharingCoordinator
+
+        coordinator = object.__new__(EdcSharingCoordinator)
+        coordinator.api = SimpleNamespace(
+            async_get_daily_profile=AsyncMock(return_value={"content": []})
+        )
+        coordinator.config_entry = SimpleNamespace(
+            data={"sse_id": "1", "sse_name": "Example group", "sale_price": 2},
+            options={},
+        )
+        coordinator.hass = Mock()
+        coordinator.history_backfill_scan_start = date(2026, 9, 1)
+        coordinator.history_backfill_cursor = date(2026, 10, 2)
+        coordinator.history_backfill_imported_days = 0
+        coordinator.history_backfill_imported_hours = 0
+        coordinator.history_backfill_processed_chunks = 0
+        coordinator._history_import_enabled = False
+        coordinator._history_days = {}
+        coordinator._history_target_days = {}
+        coordinator._async_save_history_backfill_state = AsyncMock()
+        coordinator._async_finish_history_backfill = AsyncMock()
+        coordinator._async_fail_history_backfill = AsyncMock()
+        coordinator._calculate_statistics = Mock()
+        coordinator.async_set_updated_data = Mock()
+        with (
+            patch("custom_components.edc_sharing.coordinator.dt_util.now",
+                  return_value=datetime(2026, 10, 13, 12, tzinfo=UTC)),
+            patch("custom_components.edc_sharing.coordinator.async_import_daily_history", return_value=0),
+            patch("custom_components.edc_sharing.coordinator.async_import_hourly_history", return_value=0),
+            patch("custom_components.edc_sharing.coordinator._BACKFILL_REQUEST_DELAY", 0),
+        ):
+            asyncio.run(coordinator._async_backfill_history())
+        coordinator.api.async_get_daily_profile.assert_awaited_once_with(
+            1, date(2026, 9, 1), date(2026, 10, 2)
+        )
+        coordinator._async_finish_history_backfill.assert_awaited_once()
+        coordinator._async_fail_history_backfill.assert_not_awaited()
+        self.assertEqual(coordinator.history_backfill_cursor, date(2026, 9, 1))
+        self.assertEqual(coordinator.history_backfill_processed_chunks, 1)
+
     def test_target_hourly_export_passes_real_recorder_validation(self) -> None:
         from custom_components.edc_sharing.calculation import TargetHourlySharing
-        from custom_components.edc_sharing.history import async_import_target_hourly_history
+        from custom_components.edc_sharing.history import (
+            async_import_target_hourly_history,
+        )
 
         start = datetime(2026, 10, 1, 10, tzinfo=UTC)
         row = TargetHourlySharing(
@@ -238,7 +283,9 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
 
     def test_target_hourly_overlap_corrections_and_group_scoping(self) -> None:
         from custom_components.edc_sharing.calculation import TargetHourlySharing
-        from custom_components.edc_sharing.history import async_import_target_hourly_history
+        from custom_components.edc_sharing.history import (
+            async_import_target_hourly_history,
+        )
 
         start = datetime(2026, 10, 25, 0, tzinfo=UTC)
         following = datetime(2026, 10, 25, 1, tzinfo=UTC)
@@ -329,13 +376,13 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
             return HourlySharing(
                 start,
                 value,
-                Decimal("0"),
+                Decimal(0),
                 value,
                 value,
                 value,
-                Decimal("0"),
-                Decimal("100"),
-                Decimal("0"),
+                Decimal(0),
+                Decimal(100),
+                Decimal(0),
             )
 
         hours = (
@@ -353,7 +400,7 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
                     sse_id=1,
                     sse_name="Test group",
                     hours=hours,
-                    sale_price=Decimal("2"),
+                    sale_price=Decimal(2),
                     now=datetime(2026, 10, 25, 3, tzinfo=UTC),
                     local_tz=UTC,
                 )
@@ -366,7 +413,7 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
                 sse_id=1,
                 sse_name="Test group",
                 hours=corrected_hours,
-                sale_price=Decimal("2"),
+                sale_price=Decimal(2),
                 now=datetime(2026, 10, 25, 3, tzinfo=UTC),
                 local_tz=UTC,
             )

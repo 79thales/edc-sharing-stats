@@ -31,6 +31,12 @@ The EDC account email and password are stored in the Home Assistant config entry
 
 This is an independent integration and is not an official product of, or supported by, Elektroenergetické datové centrum, a. s. The EDC web API is not publicly guaranteed and may change without notice.
 
+### Profile API date boundaries and HTTP errors
+
+Profile requests use local EDC calendar dates (`YYYY-MM-DD`) with both endpoints inclusive, at most 31 days per request. Internally the integration retains half-open intervals: `[2026-09-01, 2026-10-02)` is sent as `dateFrom=2026-09-01`, `dateTo=2026-10-01`. The next block starts on October 2; dates are never shifted through UTC. The same conversion applies to initial/regular refresh, resumable history backfill and group/target reports. Hourly statistic timestamps remain UTC and still distinguish both autumn DST hours.
+
+If EDC rejects a request, diagnostics preserve the HTTP status and may show the known endpoint, calendar range and allowlisted validation code/field (for example `MAX_PERIOD_RANGE (dateTo)`). Error bodies are read up to 16 KiB; malformed, oversized or unrecognized details fall back to the HTTP status. Raw messages, payloads, EANs, group IDs, account identifiers, tokens and passwords are not copied into these error details. HTTP 400 does not itself prove invalid credentials. After installing the fix, restart HA without deleting the integration; restart a failed history backfill separately. Existing entries, statistics, cached history, settlements and confirmed payments are preserved.
+
 The download badges count only downloads of the `edc_sharing.zip` release asset, including HACS updates and manual downloads. They do not count unique users, source-code archives or default-branch installations. Counting starts with v0.1.32; earlier downloads cannot be reconstructed. HACS's download indicator refers to the selected release, while the total badge combines installer downloads across releases. GitHub, HACS and badge caches may update at different times. No usage tracking is added to the integration.
 
 ### Per-target hourly history (v0.2.0)
@@ -329,6 +335,12 @@ Stejných šest senzorů uvádí v atributech také `daily_statistic_id` a `hour
 ## Historie a dlouhodobé statistiky
 
 Při načtení integrace se automaticky stáhnou profilová data od prvního dne předchozího kalendářního měsíce do současnosti. EDC povoluje v přehledu nejvýše 31 dní, proto integrace delší období sama rozdělí na několik požadavků a výsledky sloučí bez duplicit. Zdrojové intervaly se sečtou po jednotlivých hodinách i kalendářních dnech. Jednou denně se celé období znovu načte, takže se doplní nově uzavřené intervaly i případné opravy na straně EDC.
+
+### Kalendářní hranice API a chyba HTTP 400
+
+Profilové API dostává místní kalendářní data EDC ve formátu `YYYY-MM-DD` a zahrnuje **oba krajní dny**, nejvýše 31 dní na požadavek. Interní výpočty a kurzor historie nadále používají interval **od včetně, do bez tohoto dne**: například `[2026-09-01, 2026-10-02)` se pošle jako `dateFrom=2026-09-01`, `dateTo=2026-10-01`. Další blok začne 2. října. Převod přes UTC by v letním čase posunul datum na předchozí den; datum se proto nepřevádí na časový okamžik. Stejný převod používá první i pravidelná obnova, backfill a skupinové i cílené reporty. Časové značky hodinových statistik zůstávají v UTC a nadále rozlišují obě podzimní opakované hodiny.
+
+Chybová diagnostika zachová stav HTTP a může doplnit známý endpoint, kalendářní rozsah a povolený validační kód s názvem pole, například `MAX_PERIOD_RANGE (dateTo)`. Čte nejvýše 16 KiB chybového těla; HTML, neplatný JSON, velké tělo nebo neznámé údaje nepřekryjí původní HTTP status. Volné zprávy serveru, celé požadavky, hodnoty EANů/ID skupiny, přihlašovací údaje a tokeny se do těchto chybových podrobností nevkládají. HTTP 400 samo o sobě neznamená neplatné heslo. Po instalaci opravy restartujte HA; integraci nemažte ani nezakládejte znovu. Dříve selhané doplnění historie spusťte samostatně jeho tlačítkem. ID entit a statistik, uložená historie, vystavené doklady i potvrzené úhrady se zachovávají.
 
 Historické hodnoty celé skupiny se zapisují podporovaným API jako externí dlouhodobé statistiky. Nevytvářejí falešné zpětně datované změny stavů v databázi Recorderu. Denní řady mají identifikátory ve tvaru `edc_sharing:<ID skupiny>_shared_daily`, `consumption_daily`, `grid_daily`, `unused_daily`, `coverage_daily` a `revenue_daily`. Stejné názvy s koncovkou `_hourly` obsahují hodinové hodnoty. Lze je vybrat v panelu Historie nebo v kartě **Graf statistik**; zobrazovaným typem je `mean`.
 

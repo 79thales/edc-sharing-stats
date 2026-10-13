@@ -6,21 +6,39 @@ import asyncio
 import base64
 import hashlib
 import html
-from html.parser import HTMLParser
 import json
 import os
 import re
 import time
+import uuid
+from datetime import date, timedelta
+from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
-import uuid
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
+from .calculation import MAX_PROFILE_DAYS
 from .const import API_BASE_URL, AUTHORITY_URL, CLIENT_ID, REDIRECT_URI
 
-
 REQUEST_TIMEOUT = ClientTimeout(total=30)
+ERROR_BODY_LIMIT = 16 * 1024
+# Diagnostika smí zobrazit jen pevně známé kódy a názvy polí. Volné zprávy,
+# hodnoty, identifikátory skupin/EANů ani přihlašovací údaje se nikdy nevypisují.
+SAFE_ERROR_CODES = frozenset({
+    "INVALID_DATE", "INVALID_ENTERED_DATE", "MAX_PERIOD_RANGE",
+    "MAX_PERIOD_RANGE_FOR_EXPORT", "MISSING_DATA_FOR_PERIOD", "NOT_EMPTY",
+    "NOT_FOUND", "MAX_LENGTH", "MIN_LENGTH", "NUMBER_BETWEEN",
+    "INTERNAL_ERROR", "TIME_INTERVAL_EXCEEDS_LIMIT",
+    "PRODUCER_IS_NOT_VALID_WHOLE_PERIOD",
+})
+SAFE_ERROR_FIELDS = frozenset({
+    "sseId", "eans", "dateFrom", "dateTo", "calculationType", "inputData",
+    "outputData", "fileName", "currentEnteredDateTime",
+})
+SAFE_API_PATHS = frozenset({
+    "/profiles-data/get-sse", "/profiles-data/standard/overview",
+})
 
 
 class EdcApiError(Exception):
@@ -187,16 +205,27 @@ class EdcApiClient:
         return data
 
     async def async_get_daily_profile(
-        self, sse_id: int, date_from_utc: str, date_to_utc: str
+        self, sse_id: int, date_from: date, date_to: date
     ) -> dict[str, Any]:
+        """Načíst 1–31 kalendářních dnů z interního intervalu [od, do).
+
+        Vstupy jsou místní kalendářní data EDC, nikoli UTC okamžiky. Portál
+        používá YYYY-MM-DD a oba krajní dny včetně; koncovou mez proto snížíme
+        o jeden den právě zde, společně pro obnovu, historii i reporty. Převod
+        přes UTC by v létě posunul datum na předchozí den. Neplatný interval
+        odmítneme před přihlášením/HTTP, odpověď profilu vracíme beze změny.
+        """
+        if type(date_from) is not date or type(date_to) is not date:
+            raise ValueError("Profil EDC vyžaduje kalendářní data bez času.")
+        if not 1 <= (date_to - date_from).days <= MAX_PROFILE_DAYS:
+            raise ValueError("Profil EDC vyžaduje rozsah 1 až 31 kalendářních dnů.")
         payload = {
             "sseId": sse_id,
             "calculationType": "DAILY",
             "inputData": True,
             "outputData": True,
-            "dateFrom": date_from_utc,
-            "dateTo": date_to_utc,
-            "profileType": "STANDARD",
+            "dateFrom": date_from.isoformat(),
+            "dateTo": (date_to - timedelta(days=1)).isoformat(),
             "fileName": "_",
         }
         data = await self._request("POST", "/profiles-data/standard/overview", payload)
@@ -221,14 +250,24 @@ class EdcApiClient:
                         "X-Correlation-ID": str(uuid.uuid4()),
                     },
                 )
-                if response.status == 401:
-                    self._access_token = None
-                    raise EdcAuthenticationError(
-                        "Platnost přihlášení EDC skončila."
-                    )
-                if response.status >= 400:
-                    raise EdcApiError(f"EDC API vrátilo HTTP {response.status}.")
-                return await response.json()
+                try:
+                    if response.status == 401:
+                        self._access_token = None
+                        raise EdcAuthenticationError(
+                            "Platnost přihlášení EDC skončila."
+                        )
+                    if response.status >= 400:
+                        details = await _async_safe_error_details(response)
+                        context = _safe_request_context(method, path, payload)
+                        raise EdcApiError(
+                            f"EDC API vrátilo HTTP {response.status}{context}."
+                            + (f" {details}" if details else "")
+                        )
+                    return await response.json()
+                finally:
+                    # Uvolnit spojení i při 401, chybě JSONu nebo velkém těle
+                    # chyby; diagnostika nesmí zadržovat HTTP pool při retry.
+                    response.release()
             except EdcApiError:
                 raise
             except (ClientError, TimeoutError, ValueError):
@@ -270,6 +309,64 @@ class EdcApiClient:
 
 def _base64url(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
+
+
+def _safe_request_context(
+    method: str, path: str, payload: dict[str, Any] | None
+) -> str:
+    """Doplnit jen známý endpoint a ověřená kalendářní data, nikdy celý JSON."""
+    if method not in ("GET", "POST") or path not in SAFE_API_PATHS:
+        return ""
+    context = f" ({method} {path})"
+    if isinstance(payload, dict):
+        bounds = [payload.get("dateFrom"), payload.get("dateTo")]
+        try:
+            if all(isinstance(value, str) and len(value) == 10 for value in bounds):
+                parsed = [date.fromisoformat(value) for value in bounds]
+                context += f"; období {parsed[0].isoformat()} až {parsed[1].isoformat()}"
+        except ValueError:
+            pass
+    return context
+
+
+async def _async_safe_error_details(response: Any) -> str:
+    """Přečíst nejvýše 16 KiB chyby; ponechat pouze povolené kódy/pole.
+
+    Čtení respektuje timeout původního požadavku. HTML, neplatné JSON/UTF-8,
+    velké tělo či chyba čtení nesmí překrýt původní HTTP status. Neznámé kódy
+    a volné zprávy se nevracejí do logu ani do atributů diagnostických entit.
+    """
+    try:
+        try:
+            body = await response.content.readexactly(ERROR_BODY_LIMIT + 1)
+        except asyncio.IncompleteReadError as err:
+            body = err.partial
+        if len(body) > ERROR_BODY_LIMIT:
+            return ""
+        data = json.loads(body)
+    except (ClientError, TimeoutError, ValueError, RecursionError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    errors = data.get("validationErrors")
+    candidates = errors[:5] if isinstance(errors, list) else []
+    generic = data.get("genericError")
+    if isinstance(generic, dict):
+        candidates = [*candidates, generic]
+    details: list[str] = []
+    for error in candidates:
+        if not isinstance(error, dict):
+            continue
+        code = error.get("code")
+        field = error.get("field")
+        if not isinstance(code, str) or code not in SAFE_ERROR_CODES:
+            continue
+        detail = code
+        if isinstance(field, str) and field in SAFE_ERROR_FIELDS:
+            detail += f" ({field})"
+        if detail not in details:
+            details.append(detail)
+    return "; ".join(details)
 
 
 def _extract_keycloak_value(page: str, name: str) -> str | None:

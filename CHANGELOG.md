@@ -1,5 +1,21 @@
 # Přehled změn / Changelog
 
+## Nevydáno / Unreleased
+
+### Čeština
+
+- Souvisí s [issue #7 – chyba EDC HTTP 400](https://github.com/79thales/edc-sharing-stats/issues/7).
+- Opraven požadavek profilových dat pro aktuální portál EDC: `dateFrom`/`dateTo` používají kalendářní data `YYYY-MM-DD` místo UTC okamžiků, konečný den je včetně a nadbytečný `profileType` se neposílá. Interní intervaly a kurzor zůstávají od včetně/do bez koncového dne; převod se provádí pouze v API klientovi. Platí pro první i pravidelné načtení, roční backfill a skupinové i individuální reporty. Bloky obsahují maximálně 31 dnů, bez mezer nebo duplicit, včetně přestupného dne a změn času.
+- Chyby API zachovávají stav HTTP a doplňují jen známý endpoint, kalendářní rozsah a bezpečně povolené kódy/pole. Maximálně 16 KiB chybového těla, bez kopírování volných zpráv, EANů, ID skupin, tokenů a hesel. Spojení se uvolní i při chybě. Neplatné/větší rozsahy se odmítnou ještě před HTTP.
+- Po instalaci restartujte HA bez mazání integrace; selhaný backfill obnovte jeho tlačítkem. Uložené EDC hodnoty, hodinové UTC značky, statistiky a jejich ID, ceny, reportové rozvrhy, vyúčtování a potvrzené úhrady se nemění. Oprava sama nevystavuje doklady ani neodesílá e-maily.
+
+### English
+
+- Related to [issue #7 – EDC HTTP 400](https://github.com/79thales/edc-sharing-stats/issues/7).
+- Fixed profile requests for the current EDC portal: calendar `YYYY-MM-DD` dates replace UTC instants, the end date is inclusive and the redundant `profileType` is omitted. Internal half-open intervals and history cursors are preserved; only the API client converts the end boundary. This applies to initial/regular refresh, history backfill and group/target reports. Blocks cover at most 31 days without gaps or duplication, including leap days and DST changes.
+- API errors retain HTTP status and expose only known endpoints, calendar ranges and allowlisted error codes/fields. Error bodies are bounded to 16 KiB; free text, EANs, group IDs, tokens and passwords are not echoed. Connections are released on errors. Invalid/oversized intervals are rejected before HTTP.
+- Restart HA after installing without deleting the integration; resume a failed backfill using its button. Retained EDC data, hourly UTC timestamps, statistics/IDs, prices, report schedules, settlements and confirmed receipts are unchanged. The fix does not itself issue documents or send email.
+
 ## 0.2.3 – 2026-10-12
 
 ### Čeština

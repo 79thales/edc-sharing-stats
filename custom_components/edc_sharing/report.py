@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from enum import StrEnum
-import logging
 from typing import TYPE_CHECKING
 
 from homeassistant.core import HomeAssistant, callback
@@ -27,7 +27,6 @@ from .calculation import (
 )
 from .const import (
     CONF_DAILY_REPORT,
-    CONF_WEEKLY_REPORT,
     CONF_MONTHLY_REPORT,
     CONF_REPORT_DAY,
     CONF_REPORT_LANGUAGE,
@@ -37,6 +36,7 @@ from .const import (
     CONF_SSE_ID,
     CONF_SSE_NAME,
     CONF_SUMMARY_REPORT,
+    CONF_WEEKLY_REPORT,
     CONF_YEARLY_REPORT,
     DEFAULT_REPORT_DAY,
     DEFAULT_REPORT_TIME,
@@ -265,16 +265,15 @@ class EdcReportManager:
         self, date_from: date, date_to: date
     ) -> tuple[DailySharing, ...]:
         """Fetch and merge an arbitrary EDC report period."""
-        local_tz = dt_util.now().tzinfo
         fetched: dict[date, DailySharing] = {}
         try:
             for chunk_from, chunk_to in profile_date_ranges(date_from, date_to):
-                local_from = datetime.combine(chunk_from, time.min, tzinfo=local_tz)
-                local_to = datetime.combine(chunk_to, time.min, tzinfo=local_tz)
+                # Období reportu zůstává [od, do); jediný převod na oba dny
+                # včetně provádí API klient, bez posunu data přes UTC.
                 raw = await self.coordinator.api.async_get_daily_profile(
                     int(self.entry.data[CONF_SSE_ID]),
-                    dt_util.as_utc(local_from).isoformat().replace("+00:00", "Z"),
-                    dt_util.as_utc(local_to).isoformat().replace("+00:00", "Z"),
+                    chunk_from,
+                    chunk_to,
                 )
                 try:
                     rows = parse_daily_profile(raw)
@@ -313,16 +312,15 @@ class EdcReportManager:
         It does not alter the existing group aggregation or long-term
         statistics; it only makes individual recipient reports possible.
         """
-        local_tz = dt_util.now().tzinfo
         fetched: dict[str, dict[date, TargetDailySharing]] = {}
         try:
             for chunk_from, chunk_to in profile_date_ranges(date_from, date_to):
-                local_from = datetime.combine(chunk_from, time.min, tzinfo=local_tz)
-                local_to = datetime.combine(chunk_to, time.min, tzinfo=local_tz)
+                # Stejný kalendářní rozsah jako skupinový report; změna se
+                # netýká cen, příjemců ani rozvrhu odesílání.
                 raw = await self.coordinator.api.async_get_daily_profile(
                     int(self.entry.data[CONF_SSE_ID]),
-                    dt_util.as_utc(local_from).isoformat().replace("+00:00", "Z"),
-                    dt_util.as_utc(local_to).isoformat().replace("+00:00", "Z"),
+                    chunk_from,
+                    chunk_to,
                 )
                 try:
                     rows = parse_daily_target_profiles(raw)

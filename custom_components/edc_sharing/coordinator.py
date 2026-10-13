@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, datetime, time, timedelta, tzinfo
+from datetime import date, datetime, timedelta, tzinfo
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -341,12 +341,12 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             fetched_target_hours: dict[str, dict[datetime, TargetHourlySharing]] = {}
             fetched_eans: set[EanInfo] = set()
             for chunk_from, chunk_to in profile_date_ranges(date_from, date_to):
-                local_from = datetime.combine(chunk_from, time.min, tzinfo=local_tz)
-                local_to = datetime.combine(chunk_to, time.min, tzinfo=local_tz)
+                # Zachovat kalendářní interval [od, do). API klient převede
+                # poslední den na včetně; UTC patří až k hodinovým statistikám.
                 raw = await self.api.async_get_daily_profile(
                     int(self.config_entry.data[CONF_SSE_ID]),
-                    dt_util.as_utc(local_from).isoformat().replace("+00:00", "Z"),
-                    dt_util.as_utc(local_to).isoformat().replace("+00:00", "Z"),
+                    chunk_from,
+                    chunk_to,
                 )
                 try:
                     fetched.update(
@@ -567,12 +567,12 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 )
             )
             for chunk_from, chunk_to in ranges:
-                local_from = datetime.combine(chunk_from, time.min, tzinfo=local_tz)
-                local_to = datetime.combine(chunk_to, time.min, tzinfo=local_tz)
+                # Backfill používá stejné hranice jako běžná obnova. Kurzor
+                # zůstává bez koncového dne, takže restart žádný den nepřeskočí.
                 raw = await self.api.async_get_daily_profile(
                     int(self.config_entry.data[CONF_SSE_ID]),
-                    dt_util.as_utc(local_from).isoformat().replace("+00:00", "Z"),
-                    dt_util.as_utc(local_to).isoformat().replace("+00:00", "Z"),
+                    chunk_from,
+                    chunk_to,
                 )
                 try:
                     days = tuple(

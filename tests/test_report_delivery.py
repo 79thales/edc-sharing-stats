@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 
 class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
@@ -99,6 +99,24 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
             "enabled": True,
             "targets": ["notify.one", "notify.two"],
         }
+
+    async def test_group_and_target_report_fetches_pass_calendar_ranges(self):
+        """Reporty musí předávat stejné nepřekrývající se dny jako obnova."""
+        self.entry.data["sse_id"] = "1"
+        self.coordinator.api = SimpleNamespace(
+            async_get_daily_profile=AsyncMock(return_value={"content": []})
+        )
+        expected = [
+            call(1, date(2026, 9, 1), date(2026, 10, 2)),
+            call(1, date(2026, 10, 2), date(2026, 10, 14)),
+        ]
+        for fetch in (self.reporter._async_fetch_days, self.reporter._async_fetch_target_days):
+            with self.subTest(fetch=fetch.__name__):
+                self.coordinator.api.async_get_daily_profile.reset_mock()
+                await fetch(date(2026, 9, 1), date(2026, 10, 14))
+                self.assertEqual(
+                    self.coordinator.api.async_get_daily_profile.await_args_list, expected
+                )
 
     async def test_profile_language_content_and_recipient_isolation(self):
         first = self.profile | {
@@ -217,10 +235,10 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
         target_day = calculation.TargetDailySharing(
             "consumer-example",
             self.day.day,
-            Decimal("10"),
-            Decimal("6"),
-            Decimal("4"),
-            Decimal("40"),
+            Decimal(10),
+            Decimal(6),
+            Decimal(4),
+            Decimal(40),
         )
         self.entry.options["ean_settings"] = {
             "consumer-example": {
@@ -254,8 +272,8 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
         calculation = importlib.import_module("_edc_delivery_test.calculation")
         rows = {
             ean: (calculation.TargetDailySharing(
-                ean, self.day.day, Decimal("5"), Decimal("3"),
-                Decimal("2"), Decimal("40")),)
+                ean, self.day.day, Decimal(5), Decimal(3),
+                Decimal(2), Decimal(40)),)
             for ean in ("target-a", "target-b")
         }
         self.entry.options["ean_settings"] = {"target-a": {"price": "3", "name": "Flat A"}}
@@ -342,10 +360,10 @@ class ReportDeliveryTests(unittest.IsolatedAsyncioTestCase):
             calculation.TargetDailySharing(
                 ean,
                 date(2026, 1, day),
-                Decimal("10"),
-                Decimal("6"),
-                Decimal("4"),
-                Decimal("60"),
+                Decimal(10),
+                Decimal(6),
+                Decimal(4),
+                Decimal(60),
             )
             for day in range(1, 4)
         )
