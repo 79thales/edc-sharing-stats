@@ -25,6 +25,35 @@ svého termínu; aktualizace je nemaže. Po HACS aktualizaci a restartu proto
 ověřte `result`, `last_success`, `latest_data_day` a body Recorderu, ne jen
 HTTP 200 nebo přítomnost entity.
 
+## Přesný krok přihlášení (diagnostická oprava)
+
+`original_failure.authentication_step` a položka `krok` v prvním varování
+rozlišují původní autorizační GET (`authorization_get`), jeho následný GET
+(`authorization_redirect_get`), POST přihlašovacího formuláře
+(`credentials_post`), jeho následný GET (`credentials_redirect_get`), výměnu
+kódu za token (`code_exchange_post`) a obnovu tokenu (`refresh_token_post`).
+Autorizační callback obsahující kód se nestahuje: následuje výměna tokenu,
+nikoli redirect GET. Krok odpovídá poslední prováděné HTTP operaci; při
+timeoutu či kontrole cíle zůstává zachován bez dalšího pokusu. Samostatná
+fáze `authentication` dál označuje celý přihlašovací tok.
+
+Do Store, logu, entity i exportu se propustí pouze tyto pevné názvy a známý
+bezpečný důvod. Neznámý serverový text, HTML, URL, query parametry, cookies,
+hesla ani tokeny se neukládají. Staré záznamy mají krok `null`; aktualizace
+jej zpětně nevymýšlí. Po restartu a během čekání nový zaznamenaný krok zůstává
+stejný. Potvrzené neplatné jméno/heslo si zachová vlastní důvod `credentials`;
+samotné HTTP 403 zůstává `http`/`permission` a neurčuje příčinu odmítnutí.
+
+Tato změna opravuje ztrátu diagnostického kroku, **neprokazuje odstranění
+živé HTTP 403**. Parametry OIDC, formulář, práce s cookies, počty požadavků,
+statistická ID, historie, dashboardy a doklady se tím nemění. Místní fallback
+pro `permission` bez serverového Retry-After zůstává 21600 sekund (6 hodin).
+To je rozhodnutí integrace, nikoli potvrzený serverový zákaz. Serverový
+Retry-After se nadále respektuje a aktualizace uloženou lhůtu nemaže ani
+nezkracuje. Kratší politika vyžaduje doložené provozní údaje, které nyní
+nemáme. Po instalaci by se přesný krok zachytil až při příštím běžném pokusu;
+aktualizace ani diagnostické čtení samo další přihlášení nevynucuje.
+
 ## Kde najít původní chybu (v0.2.6)
 
 1. **Nastavení → Systém → Protokoly**, logger `custom_components.edc_sharing.api_policy`: první chyba je WARNING i před dokončením setupu. Záznam obsahuje pevný bezpečný důvod, HTTP status (také 200 při chybě validace odpovědi), fázi, známý endpoint/kalendářní rozsah, povolené validační kódy/pole, původ čekání a další UTC termín. Volné texty serveru, hodnoty polí, EANy a přihlašovací údaje se nelogují.

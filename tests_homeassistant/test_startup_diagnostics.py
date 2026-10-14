@@ -20,6 +20,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.edc_sharing.api import EdcApiClient
 from custom_components.edc_sharing.api_policy import (
     ApiAccountState,
+    EdcApiError,
     EdcAuthenticationError,
 )
 from custom_components.edc_sharing.calculation import (
@@ -134,6 +135,41 @@ async def test_first_setup_failure_is_logged_persisted_and_exported_without_runt
         == "profile_lists"
     )
     assert api._request_once.await_count == calls
+
+
+async def test_login_step_is_exported_and_persisted_by_real_ha_setup(
+    hass, recorder_mock, hass_storage, caplog
+):
+    """HA Store i export zachovají přesný HTTP krok neúspěšného prvního startu.
+
+    Nahrazen je pouze síťový požadavek. Start, plánovač, záznam do Store a
+    sdílitelná diagnostika jsou skutečné; žádný EDC login se neodesílá.
+    """
+    entry, api = make_entry(hass), make_api(hass)
+    api._request_once.side_effect = EdcApiError(
+        "Přihlašovací služba EDC vrátila HTTP 403.",
+        category="permission",
+        status=403,
+        phase="authentication",
+        authentication_step="credentials_redirect_get",
+    )
+    with (
+        patch("custom_components.edc_sharing.async_setup", new=AsyncMock(return_value=True)),
+        patch("custom_components.edc_sharing.async_get_api_client", new=AsyncMock(return_value=api)),
+    ):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    diagnostic = await async_get_config_entry_diagnostics(hass, entry)
+    failure = diagnostic["original_failure"]
+    assert failure["authentication_step"] == "credentials_redirect_get"
+    assert failure["http_status"] == 403
+    assert failure["wait_source"] == "local_policy"
+    assert "krok=credentials_redirect_get" in caplog.text
+    persisted = hass_storage["edc_sharing.test.api_wait"]["data"]
+    restored = ApiAccountState()
+    restored.restore(persisted)
+    assert restored.diagnostic_failure()["authentication_step"] == "credentials_redirect_get"
+    assert "private" not in str((diagnostic, persisted))
 
 
 async def test_cached_start_exposes_diagnostics_but_does_not_import_or_send_until_recovery(

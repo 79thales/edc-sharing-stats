@@ -128,21 +128,28 @@ class EdcApiClient:
         }
         response = None
         login_response = None
+        # Krok zůstává lokální pro tento pokus. Mění se těsně před HTTP
+        # operací, takže i timeout označí skutečně rozpracovaný požadavek.
+        # Neobsahuje URL ani údaje účtu; nesmí vyvolat další login/retry.
+        authentication_step = "authorization_get"
         try:
             response = await self._session.get(
                 f"{AUTHORITY_URL}/protocol/openid-connect/auth?{urlencode(params)}",
                 allow_redirects=False,
                 timeout=REQUEST_TIMEOUT,
             )
-            response, location = await self._async_follow_login_redirects(response)
+            response, location, authentication_step = await self._async_follow_login_redirects(
+                response, authentication_step
+            )
             redirect_query = parse_qs(urlparse(location).query)
             code = redirect_query.get("code", [None])[0]
             if code:
                 self._validate_authorization_redirect(redirect_query, state)
+                authentication_step = "code_exchange_post"
                 await self._async_exchange_code(code, verifier)
                 return
             if response.status >= 400:
-                raise self._login_http_error(response)
+                raise self._login_http_error(response, authentication_step)
             response_text = await response.text()
             response.release()
             self._require_supported_login_page(response_text)
@@ -163,14 +170,15 @@ class EdcApiClient:
             }
             login_target = urljoin(str(response.url), login_action)
             self._validate_login_target(login_target)
+            authentication_step = "credentials_post"
             login_response = await self._session.post(
                 login_target,
                 data=form,
                 allow_redirects=False,
                 timeout=REQUEST_TIMEOUT,
             )
-            login_response, location = await self._async_follow_login_redirects(
-                login_response
+            login_response, location, authentication_step = await self._async_follow_login_redirects(
+                login_response, authentication_step
             )
             redirect_query = parse_qs(urlparse(location).query)
             code = redirect_query.get("code", [None])[0]
@@ -181,47 +189,76 @@ class EdcApiClient:
                 if login_error and _is_invalid_credentials_error(login_error):
                     raise EdcAuthenticationError("Neplatné jméno nebo heslo EDC.")
                 if login_response.status >= 400:
-                    raise self._login_http_error(login_response)
+                    raise self._login_http_error(login_response, authentication_step)
                 self._require_supported_login_page(login_text)
                 raise EdcApiError(
                     "EDC přihlášení nedokončilo přesměrováním.", category="contract"
                 )
             self._validate_authorization_redirect(redirect_query, state)
+            authentication_step = "code_exchange_post"
             await self._async_exchange_code(code, verifier)
         except EdcApiError as error:
             error.phase = "authentication"
+            if error.authentication_step is None:
+                error.authentication_step = authentication_step
             raise
         except (ClientError, TimeoutError, ValueError):
             raise EdcApiError(
                 "Spojení s přihlášením EDC selhalo.",
                 category="unavailable",
                 phase="authentication",
+                authentication_step=authentication_step,
             ) from None
         finally:
             for result in (response, login_response):
                 if result is not None:
                     result.release()
 
-    async def _async_follow_login_redirects(self, response: Any) -> tuple[Any, str]:
-        """Follow Keycloak redirects while preserving the authorization callback."""
+    async def _async_follow_login_redirects(
+        self, response: Any, authentication_step: str
+    ) -> tuple[Any, str, str]:
+        """Vrátit odpověď, callback a skutečný poslední krok přihlášení.
+
+        Vstup je odpověď GETu/POSTu. Nejvýše pět redirect GETů zůstává na
+        ověřeném SSO originu; autorizační callback se nestahuje. Název kroku
+        změníme pouze při odeslání dalšího GETu, nikoli při jeho nalezení.
+        Transportní chyba i neplatný cíl zachovají krok, který je způsobil.
+        """
         location = response.headers.get("Location", "")
-        for _ in range(5):
-            if parse_qs(urlparse(location).query).get("code"):
+        redirect_step = (
+            "credentials_redirect_get"
+            if authentication_step == "credentials_post"
+            else "authorization_redirect_get"
+        )
+        try:
+            for _ in range(5):
+                if parse_qs(urlparse(location).query).get("code"):
+                    response.release()
+                    self._validate_login_target(location, callback=True)
+                    break
+                if response.status not in (301, 302, 303, 307, 308) or not location:
+                    break
+                target = urljoin(str(response.url), location)
                 response.release()
-                self._validate_login_target(location, callback=True)
-                break
-            if response.status not in (301, 302, 303, 307, 308) or not location:
-                break
-            target = urljoin(str(response.url), location)
-            response.release()
-            self._validate_login_target(target)
-            response = await self._session.get(
-                target,
-                allow_redirects=False,
-                timeout=REQUEST_TIMEOUT,
-            )
-            location = response.headers.get("Location", "")
-        return response, location
+                self._validate_login_target(target)
+                authentication_step = redirect_step
+                response = await self._session.get(
+                    target,
+                    allow_redirects=False,
+                    timeout=REQUEST_TIMEOUT,
+                )
+                location = response.headers.get("Location", "")
+            return response, location, authentication_step
+        except EdcApiError as error:
+            error.authentication_step = authentication_step
+            raise
+        except (ClientError, TimeoutError, ValueError):
+            raise EdcApiError(
+                "Spojení s přihlášením EDC selhalo.",
+                category="unavailable",
+                phase="authentication",
+                authentication_step=authentication_step,
+            ) from None
 
     @staticmethod
     def _require_supported_login_page(page: str) -> None:
@@ -243,7 +280,7 @@ class EdcApiClient:
             )
 
     @staticmethod
-    def _login_http_error(response: Any) -> EdcApiError:
+    def _login_http_error(response: Any, authentication_step: str) -> EdcApiError:
         """Pevný text a HTTP kategorie; nikdy neoznačit 5xx/429 jako špatné heslo."""
         return EdcApiError(
             f"Přihlašovací služba EDC vrátila HTTP {response.status}.",
@@ -253,6 +290,7 @@ class EdcApiClient:
                 response.headers.get("Retry-After"), datetime.now(UTC)
             ),
             phase="authentication",
+            authentication_step=authentication_step,
         )
 
     @staticmethod
@@ -295,7 +333,7 @@ class EdcApiClient:
         )
         try:
             if token_response.status != 200:
-                raise self._login_http_error(token_response)
+                raise self._login_http_error(token_response, "code_exchange_post")
             self._store_tokens(await token_response.json())
         finally:
             token_response.release()
@@ -447,6 +485,7 @@ class EdcApiClient:
                 "Obnova přihlášení EDC selhala.",
                 category="unavailable",
                 phase="authentication",
+                authentication_step="refresh_token_post",
             ) from None
         try:
             response = await self._session.request(
@@ -530,18 +569,22 @@ class EdcApiClient:
                 # Pouze odmítnutá platnost refresh tokenu dovoluje jeden nový
                 # login. Technická chyba/limit nesmí znovu odesílat heslo.
                 if response.status not in (400, 401):
-                    raise self._login_http_error(response)
+                    raise self._login_http_error(response, "refresh_token_post")
                 if response.status == 400:
                     try:
                         rejection = await response.json()
                     except (ClientError, ValueError):
-                        raise self._login_http_error(response) from None
+                        raise self._login_http_error(response, "refresh_token_post") from None
                     if (
                         not isinstance(rejection, dict)
                         or rejection.get("error") != "invalid_grant"
                     ):
-                        raise self._login_http_error(response)
+                        raise self._login_http_error(response, "refresh_token_post")
                 self._refresh_token = None
+            except EdcApiError as error:
+                if error.authentication_step is None:
+                    error.authentication_step = "refresh_token_post"
+                raise
             finally:
                 response.release()
         await self.async_login()

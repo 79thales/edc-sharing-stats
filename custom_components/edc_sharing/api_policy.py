@@ -62,6 +62,26 @@ _CATEGORIES = frozenset(
     }
 )
 _PHASES = frozenset({"read", "authentication", "profile_validation"})
+# Jde o názvy našich operací, nikoli cesty/URL získané ze serveru. Oddělení
+# formuláře, redirectu a tokenu dovolí určit zdroj HTTP chyby bez zveřejnění
+# session_code, autorizačního kódu, cookies nebo přihlašovacích údajů.
+_AUTHENTICATION_STEPS = frozenset(
+    {
+        "authorization_get",
+        "authorization_redirect_get",
+        "credentials_post",
+        "credentials_redirect_get",
+        "code_exchange_post",
+        "refresh_token_post",
+    }
+)
+
+
+def _safe_authentication_step(value: object) -> str | None:
+    """Přijmout jen pevný název; starý/neznámý krok nelze zpětně domýšlet."""
+    return value if isinstance(value, str) and value in _AUTHENTICATION_STEPS else None
+
+
 SAFE_ERROR_CODES = frozenset(
     {
         "INVALID_DATE",
@@ -148,6 +168,7 @@ def safe_failure_record(error: EdcApiError) -> dict:
         "reason": FAILURE_REASONS[code],
         "category": error.category if error.category in _CATEGORIES else "unknown",
         "phase": error.phase if error.phase in _PHASES else "read",
+        "authentication_step": _safe_authentication_step(error.authentication_step),
         "http_status": error.status
         if type(error.status) is int and 100 <= error.status <= 599
         else None,
@@ -161,7 +182,8 @@ class EdcApiError(Exception):
 
     Text musí vytvořit pouze integrace, nikdy vzdálená volná zpráva. Termín
     retry je UTC a nezkracuje serverový Retry-After. Staré volání s jediným
-    textovým argumentem zůstává podporované.
+    textovým argumentem zůstává podporované. authentication_step rozlišuje
+    vlastní HTTP operace loginu; export/Store jej znovu kontroluje whitelistem.
     """
 
     def __init__(
@@ -175,6 +197,7 @@ class EdcApiError(Exception):
         waiting: bool = False,
         request_context: str = "",
         validation_details: str = "",
+        authentication_step: str | None = None,
     ) -> None:
         super().__init__(message)
         self.category = category
@@ -184,6 +207,7 @@ class EdcApiError(Exception):
         self.waiting = waiting
         self.request_context = request_context
         self.validation_details = validation_details
+        self.authentication_step = authentication_step
 
 
 class EdcAuthenticationError(EdcApiError):
@@ -288,6 +312,9 @@ class ApiAccountState:
             "reason": FAILURE_REASONS[code],
             "category": value["category"],
             "phase": phase if isinstance(phase, str) and phase in _PHASES else "read",
+            "authentication_step": _safe_authentication_step(
+                value.get("authentication_step")
+            ),
             "http_status": status
             if type(status) is int and 100 <= status <= 599
             else None,
@@ -380,6 +407,7 @@ class ApiAccountState:
                 waiting=True,
                 request_context=record["request_context"],
                 validation_details=record["validation_details"],
+                authentication_step=record["authentication_step"],
             )
 
     def remaining(self, key: str, now: datetime) -> float:
@@ -430,20 +458,24 @@ class ApiAccountState:
             previous is None
             or any(
                 previous.get(field) != record[field]
-                for field in ("reason_code", "category", "phase", "http_status")
+                for field in (
+                    "reason_code", "category", "phase", "http_status",
+                    "authentication_step",
+                )
             )
             or previous.get("recovered_at")
         ):
             # Záznam vznikne i při prvním refreshi, který HA sám neloguje.
             # Opakované check() nezapisuje tentýž záznam a neposouvá lhůtu.
             _LOGGER.warning(
-                "EDC čtení selhalo: %s%s %s; kategorie=%s; HTTP=%s; fáze=%s; čekání=%s; další pokus UTC=%s",
+                "EDC čtení selhalo: %s%s %s; kategorie=%s; HTTP=%s; fáze=%s; krok=%s; čekání=%s; další pokus UTC=%s",
                 record["reason"],
                 record["request_context"],
                 record["validation_details"],
                 record["category"],
                 record["http_status"],
                 record["phase"],
+                record["authentication_step"] or "nezjištěno",
                 record["wait_source"],
                 until.isoformat(),
             )
@@ -471,7 +503,9 @@ class ApiAccountState:
             return
         record = safe_failure_record(error)
         previous = self.last_failure
-        fields = ("reason_code", "category", "phase", "http_status")
+        fields = (
+            "reason_code", "category", "phase", "http_status", "authentication_step"
+        )
         changed = (
             previous is None
             or previous.get("recovered_at")
@@ -488,11 +522,12 @@ class ApiAccountState:
         self.last_failure = record
         if changed:
             _LOGGER.warning(
-                "EDC selhalo bez nového síťového bloku: %s; kategorie=%s; HTTP=%s; fáze=%s",
+                "EDC selhalo bez nového síťového bloku: %s; kategorie=%s; HTTP=%s; fáze=%s; krok=%s",
                 record["reason"],
                 record["category"],
                 record["http_status"],
                 record["phase"],
+                record["authentication_step"] or "nezjištěno",
             )
         await self._save()
 

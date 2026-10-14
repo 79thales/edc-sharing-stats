@@ -200,10 +200,13 @@ class LoginRedirectTest(unittest.IsolatedAsyncioTestCase):
             location="https://sso.example/login?session_code=abc",
         )
 
-        final_response, location = await client._async_follow_login_redirects(response)
+        final_response, location, step = await client._async_follow_login_redirects(
+            response, "authorization_get"
+        )
 
         self.assertIs(final_response, login_page)
         self.assertEqual(location, "")
+        self.assertEqual(step, "authorization_redirect_get")
         self.assertEqual(len(session.get_calls), 1)
 
     async def test_missing_login_action_is_technical_error(self) -> None:
