@@ -151,6 +151,7 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
             options={},
         )
         coordinator = object.__new__(EdcSharingCoordinator)
+        coordinator.data_quality = {}
         coordinator.api = api
         coordinator.config_entry = entry
         coordinator.eans = ()

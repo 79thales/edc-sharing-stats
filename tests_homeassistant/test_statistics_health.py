@@ -95,7 +95,7 @@ async def test_real_recorder_read_correction_and_empty_period(
 ):
     """D09/D10: žádný mock zápisu/SQL; stejná ID a mean jako nativní graf."""
     freezer.move_to("2026-10-14T12:00:00Z")
-    hass.config.set_time_zone("Europe/Prague")
+    await hass.config.async_set_time_zone("Europe/Prague")
     entry = make_entry(hass)
     raw = profile()
     queue(hass, raw)
@@ -195,7 +195,7 @@ async def test_statistics_survive_real_recorder_restart(
         async_test_home_assistant(config_dir=hass.config.config_dir) as restarted,
         async_test_recorder(restarted) as instance,
     ):
-        restarted.config.set_time_zone("Europe/Prague")
+        await restarted.config.async_set_time_zone("Europe/Prague")
         entry = make_entry(restarted)
         result = await inspect_statistics_health(
             restarted, entry, date(2026, 10, 12), date(2026, 10, 13)

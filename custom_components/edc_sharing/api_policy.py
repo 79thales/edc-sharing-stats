@@ -126,6 +126,7 @@ class ApiAccountState:
                     )
                 )
                 or not isinstance(value, dict)
+                or not isinstance(value.get("category"), str)
                 or value.get("category") not in allowed
             ):
                 continue
@@ -136,7 +137,7 @@ class ApiAccountState:
                     self.deadlines[key] = (
                         time.monotonic() + (until - datetime.now(UTC)).total_seconds()
                     )
-            except (KeyError, TypeError, ValueError):
+            except (KeyError, TypeError, ValueError, OverflowError):
                 continue
 
     def check(self, scope: str) -> None:
@@ -185,6 +186,9 @@ class ApiAccountState:
             key: (now + timedelta(seconds=self.remaining(key, now)), value[1])
             for key, value in self.blocks.items()
             if self.remaining(key, now) > 0
+        }
+        self.deadlines = {
+            key: value for key, value in self.deadlines.items() if key in self.blocks
         }
         if self.persist is not None:
             try:

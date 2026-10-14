@@ -30,7 +30,7 @@ async def test_generated_graph_and_selected_day(
     """
     moment = datetime(2026, 10, 14, 12, tzinfo=UTC)
     freezer.move_to(moment)
-    hass.config.set_time_zone("Europe/Prague")
+    await hass.config.async_set_time_zone("Europe/Prague")
     assert await async_setup_component(hass, "frontend", {})
     assert await async_setup_component(hass, "lovelace", {"lovelace": {}})
     assert await async_setup_component(hass, "energy", {})
