@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta, tzinfo
@@ -339,10 +340,34 @@ def validate_profile_response(response: Any) -> None:
                 raise ValueError("EDC vrátilo nekonečnou měřenou hodnotu.")
 
 
+def _profile_clock_minutes(value: Any, *, end: bool = False) -> int:
+    """Převést místní čas EDC na minuty od půlnoci, bez změny rozlišení.
+
+    Minutový zápis HH:mm používá tabulka referenčního WebDownloaderu.
+    HH:mm:ss a jeho nulová desetinná část představují stejnou hranici;
+    nenulové sekundy nikdy nezaokrouhlujeme. Vstup musí být časový řetězec,
+    nikoli datum, UTC okamžik či libovolné číslo. Výstup 0–1439 slouží
+    rozlišení a agregaci; 1440 je dovoleno jen pro konec 24:00. Chybný
+    zápis vyvolá ValueError bez zveřejnění obsahu odpovědi. DST řeší až
+    převod místního dne a času na UTC, nikoli tato syntaktická kontrola.
+    """
+    match = (
+        re.fullmatch(r"([0-9]{2}):([0-9]{2})(?::00(?:\.0{1,9})?)?", value)
+        if isinstance(value, str) else None
+    )
+    if match is None:
+        raise ValueError("EDC vrátilo neplatnou časovou hranici profilu.")
+    hour, minute = map(int, match.groups())
+    if not (0 <= minute < 60 and (0 <= hour < 24 or (end and hour == 24 and minute == 0))):
+        raise ValueError("EDC vrátilo neplatnou časovou hranici profilu.")
+    return hour * 60 + minute
+
+
 def profile_resolution(response: dict[str, Any]) -> str:
     """Rozpoznat délku intervalů bez domýšlení denního součtu jako hodiny.
 
-    Bez času jde o denní řádky. End 24:00:00 je doložený konec dne; pro
+    Bez času jde o denní řádky. End 24:00 je konec dne; zápisy s nulovými
+    sekundami mají stejný význam. Pro
     intervaly přijímat 15/60 minut. Starší odpověď bez end lze rozpoznat jako
     čtvrthodinovou jen podle skutečných nenulových minut. Samé celé hodiny
     bez konce jsou nejednoznačné a do hodinových statistik se nezapisují.
@@ -358,20 +383,12 @@ def profile_resolution(response: dict[str, Any]) -> str:
             durations.add(1440)
             continue
         try:
-            parts = str(row["start"]).split(":")
-            hour, minute, second = map(int, parts)
-            if not (0 <= hour < 24 and 0 <= minute < 60 and second == 0):
-                return "unknown"
-            start = hour * 60 + minute
+            start = _profile_clock_minutes(row["start"])
             starts.append(start)
             if not row.get("end"):
                 missing_end = True
                 continue
-            end_hour, end_minute, end_second = map(int, str(row["end"]).split(":"))
-            if not (0 <= end_hour <= 24 and 0 <= end_minute < 60 and end_second == 0
-                    and (end_hour != 24 or end_minute == 0)):
-                return "unknown"
-            end = end_hour * 60 + end_minute
+            end = _profile_clock_minutes(row["end"], end=True)
             duration = (end - start) % 1440 or 1440
             if duration not in (15, 60, 1440) or (start == end and start != 0):
                 # Přechod DST může na hodinách přeskočit/vrátit 60 minut.
@@ -416,7 +433,7 @@ def _hour_completeness(response: dict[str, Any]) -> dict[tuple[date, int], bool]
     if resolution not in ("quarter_hour", "hour"):
         return slots
     for row in response["content"]:
-        hour, minute, _second = map(int, row["start"].split(":"))
+        hour, minute = divmod(_profile_clock_minutes(row["start"]), 60)
         key = (date.fromisoformat(row["date"][:10]), hour)
         slots.setdefault(key, set()).add(minute)
     expected = {0, 15, 30, 45} if resolution == "quarter_hour" else {0}
@@ -721,17 +738,14 @@ def parse_hourly_profile(
 
     values_by_hour: dict[datetime, list[Decimal]] = {}
     hour_slots: dict[datetime, set[int]] = {}
-    interval_occurrences: dict[tuple[date, str], int] = {}
+    interval_occurrences: dict[tuple[date, int], int] = {}
     for item in response["content"]:
-        start_text = str(item.get("start") or "")
-        hour_text = start_text.partition(":")[0]
-        if not hour_text.isdigit():
-            continue
-        hour = int(hour_text)
-        if not 0 <= hour <= 23:
-            continue
+        start_minutes = _profile_clock_minutes(item["start"])
+        hour, minute = divmod(start_minutes, 60)
         item_date = date.fromisoformat(str(item["date"])[:10])
-        interval_key = (item_date, start_text)
+        # Stejný čas HH:mm a HH:mm:00 je tentýž slot. Odlišný zápis nesmí
+        # obejít kontrolu duplicity ani spojit dva podzimní DST foldy.
+        interval_key = (item_date, start_minutes)
         occurrence = interval_occurrences.get(interval_key, 0)
         if occurrence and local_tz is None:
             raise ValueError("Duplicitní interval vyžaduje ověření časového pásma.")
@@ -747,7 +761,7 @@ def parse_hourly_profile(
             else local_hour
         )
         totals = values_by_hour.setdefault(hour_start, [ZERO] * len(columns))
-        hour_slots.setdefault(hour_start, set()).add(int(start_text.split(":")[1]))
+        hour_slots.setdefault(hour_start, set()).add(minute)
         _add_values(totals, item.get("values") or [], len(columns))
 
     hourly: list[HourlySharing] = []
@@ -785,17 +799,13 @@ def parse_hourly_target_profiles(
 
     values_by_hour: dict[datetime, list[Decimal]] = {}
     hour_slots: dict[datetime, set[int]] = {}
-    interval_occurrences: dict[tuple[date, str], int] = {}
+    interval_occurrences: dict[tuple[date, int], int] = {}
     for item in response["content"]:
-        start_text = str(item.get("start") or "")
-        hour_text = start_text.partition(":")[0]
-        if not hour_text.isdigit():
-            continue
-        hour = int(hour_text)
-        if not 0 <= hour <= 23:
-            continue
+        start_minutes = _profile_clock_minutes(item["start"])
+        hour, minute = divmod(start_minutes, 60)
         item_date = date.fromisoformat(str(item["date"])[:10])
-        interval_key = (item_date, start_text)
+        # Cílové statistiky používají stejné časové identity jako skupina.
+        interval_key = (item_date, start_minutes)
         occurrence = interval_occurrences.get(interval_key, 0)
         if occurrence and local_tz is None:
             raise ValueError("Duplicitní interval vyžaduje ověření časového pásma.")
@@ -809,7 +819,7 @@ def parse_hourly_target_profiles(
             else local_hour
         )
         totals = values_by_hour.setdefault(hour_start, [ZERO] * len(columns))
-        hour_slots.setdefault(hour_start, set()).add(int(start_text.split(":")[1]))
+        hour_slots.setdefault(hour_start, set()).add(minute)
         _add_values(totals, item.get("values") or [], len(columns))
 
     hourly: list[TargetHourlySharing] = []

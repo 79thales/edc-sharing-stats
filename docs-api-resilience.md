@@ -1,5 +1,17 @@
 # Odolnost EDC API – implementace a ověření
 
+## Minutové časové hranice profilů (vývojová oprava)
+
+Funkční reference je `H:\01.programovani\webdownloader\src\OrlenPriceDownloader\MainWindow.xaml.cs`: `ParseEdcRows` ponechává text intervalu a `ParseIntervalStartHour` čte hodinu. V tabulkovém exportu je doložen minutový zápis `HH:mm`. Kontrola přidaná po v0.2.4 požadovala tři celočíselné složky času, takže odpovídající minutový zápis odmítla jako `profile_resolution`. Nový společný parser přijímá `HH:mm`, `HH:mm:00` a nulovou desetinnou část sekund; nenulové sekundy ani jiné rozlišení nezaokrouhluje. Konec `24:00` označuje půlnoc následujícího dne a není povolen jako začátek intervalu.
+
+Rozlišení, úplnost a oba hodinové parsery používají stejnou časovou interpretaci. Identita slotu je místní den a počet minut od půlnoci, takže různý text téhož času neobchází kontrolu duplicit. Pořadí obou podzimních výskytů řeší dosavadní UTC převod v Europe/Prague. Denní součet se nemění v hodinový bod; mezery/null se nedoplňují nulou. Kontroly struktury, jednotek, délky intervalů a rozsahu požadavku zůstávají aktivní. API vrací původní odpověď beze změny a místní převod nijak nepřepisuje entity, statistiky, cache ani vyúčtování.
+
+`tests/fixtures/profile-clock-minutes.json` je syntetický regresní vzorek, nikoli zachycená živá JSON odpověď. Jeho čtyři čtvrthodiny představují spotřebu 10 kWh, síť 6 kWh, sdílení 4 kWh a pokrytí 40 %. Testy ověřují také úplné 23/24/25hodinové dny, denní/hodinové rozlišení, nulovou přesnost sekund, chybějící slot, neplatný čas, duplicity a přijetí/odmítnutí v API klientu bez opakování požadavku.
+
+Živá diagnostika 14. 10. 2026 stále doložila HTTP 200 a následné `profile_resolution` za uložený rozsah 1. 9.–1. 10. Jediný samostatný pokus o čtení 13. 10. skončil přihlašovacím HTTP 403, takže pole `start`/`end` nebyla získána. Nebyl opakován. Doložena je oprava syntaktické nekompatibility minutového času; není dosud prokázáno, že právě tento zápis způsobil poslední živé odmítnutí. Změna nebyla nasazena do produkčního HA ani vydána jako release.
+
+Lokálně prošlo 78 cílených testů a celá sada 234 nalezených testů (212 úspěšných, 22 HA kontrol vyžadujících samostatné prostředí). Resolver z PyPI při této opravě ověřil minimum HA 2026.8.0/plugin 0.13.354 a aktuální stabilní HA 2026.10.1/plugin 0.13.372. Linuxové CI navíc obsahuje skutečný HTTP průchod minutového profilu a parametrizovaný HA setup se třemi časovými zápisy: import nového dne, zachování historie a původního entity ID, osm statistik po 24 bodech a opakovaný import bez duplicity. Tyto HA testy se do výsledku lokální unit sady nezapočítávají.
+
 Zavedeno ve v0.2.5, zachování příčiny ve v0.2.6 a nezávislá dostupnost historie ve v0.2.7. Výsledky starších verzí níže jsou historický záznam, nikoli důkaz správnosti nového kódu. Příprava/publikování release automaticky neaktualizuje produkční HA; instalace a restart se provádějí samostatně.
 
 ## NaN/Infinity nesmí zastavit nové platné dny (v0.2.8)

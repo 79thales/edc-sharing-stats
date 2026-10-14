@@ -1,0 +1,14 @@
+{
+  "valueColumns": [
+    {"ean": "producer", "type": "D", "dir": "IN"},
+    {"ean": "producer", "type": "D", "dir": "OUT"},
+    {"ean": "target", "type": "O", "dir": "IN"},
+    {"ean": "target", "type": "O", "dir": "OUT"}
+  ],
+  "content": [
+    {"date": "2026-10-13", "start": "12:00", "end": "12:15", "values": [{"v": 1}, {"v": 0}, {"v": -2.5}, {"v": -1.5}]},
+    {"date": "2026-10-13", "start": "12:15", "end": "12:30", "values": [{"v": 1}, {"v": 0}, {"v": -2.5}, {"v": -1.5}]},
+    {"date": "2026-10-13", "start": "12:30", "end": "12:45", "values": [{"v": 1}, {"v": 0}, {"v": -2.5}, {"v": -1.5}]},
+    {"date": "2026-10-13", "start": "12:45", "end": "13:00", "values": [{"v": 1}, {"v": 0}, {"v": -2.5}, {"v": -1.5}]}
+  ]
+}

@@ -490,14 +490,18 @@ async def test_all_null_historical_day_cannot_advance_cursor(hass, recorder_mock
     await coordinator.async_shutdown()
 
 
+@pytest.mark.parametrize("clock_suffix", ["", ":00", ":00.0000000"])
 async def test_new_complete_day_imports_despite_nonfinite_neighbour_and_keeps_history(
-    hass, recorder_mock, caplog
+    hass, recorder_mock, caplog, clock_suffix
 ):
     """Regrese v0.2.5: HTTP 200 s NaN nesmí pohřbít nový platný den.
 
     Síť je nahrazena na hranici požadavku, nikoli validátor nebo koordinátor.
     Dřívější den zůstává uložený, nový obsahuje 96 čtvrthodin a Recorder musí
     mít skutečně 24 hodin pro skupinu i cíl. Další den není falešná nula.
+    Tentýž výsledek musí dát minutový zápis i obě nulové přesnosti sekund;
+    tím se zkouší skutečný HA setup, stávající entity a Recorder, nikoli
+    jen izolovaný parser nebo existence odpovědi HTTP 200.
     """
     await hass.config.async_set_time_zone("Europe/Prague")
     entry, api = make_entry(hass), make_api(hass)
@@ -518,8 +522,8 @@ async def test_new_complete_day_imports_despite_nonfinite_neighbour_and_keeps_hi
                     end_hour, end_minute = divmod((slot + 1) * 15, 60)
                     raw["content"].append({
                         "date": day,
-                        "start": f"{hour:02d}:{minute:02d}:00",
-                        "end": f"{end_hour:02d}:{end_minute:02d}:00",
+                        "start": f"{hour:02d}:{minute:02d}{clock_suffix}",
+                        "end": f"{end_hour:02d}:{end_minute:02d}{clock_suffix}",
                         "values": [1, 0, "NaN" if bad else -2.5, -1.5],
                     })
         return raw
