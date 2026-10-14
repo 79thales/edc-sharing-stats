@@ -85,7 +85,7 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(rows[0].complete)
 
     def test_D03_D04_missing_values_and_invalid_roles(self):
-        for value in ("", True, "NaN", "Infinity", "1e9999"):
+        for value in ("", True, "1e9999", "not-a-number", [], {}):
             profile = interval_profile()
             profile["content"][0]["values"][0]["v"] = value
             with self.subTest(value=value), self.assertRaises(ValueError):
@@ -133,6 +133,29 @@ class ContractTests(unittest.TestCase):
         profile["content"][0]["values"][0] = {"renamed": None}
         with self.assertRaises(ValueError):
             calculation.validate_profile_response(profile)
+
+    def test_nonfinite_values_isolate_interval_without_rejecting_valid_hours(self):
+        # Obě reprezentace vektorů zůstávají podporované. Chybějící čtvrtina
+        # nesmí vynulovat příjemce ani zrušit následující kompletní hodinu.
+        for value in ("NaN", "Infinity", "-Infinity", float("nan"), float("inf")):
+            for wrapped in (False, True):
+                with self.subTest(value=value, wrapped=wrapped):
+                    raw = interval_profile()
+                    valid = interval_profile()
+                    for row in valid["content"]:
+                        row["start"] = row["start"].replace("12:", "13:")
+                        row["end"] = row["end"].replace("13:", "14:").replace("12:", "13:")
+                    raw["content"] += valid["content"]
+                    raw["content"][0]["values"][2] = {"v": value} if wrapped else value
+                    calculation.validate_profile_response(raw)
+                    self.assertEqual(calculation.missing_measurement_counts(raw), (1, 1))
+                    hours = calculation.parse_hourly_profile(raw)
+                    self.assertEqual([row.complete for row in hours], [False, True])
+                    self.assertEqual([float(row.shared) for row in hours], [3, 4])
+                    targets = calculation.parse_hourly_target_profiles(raw)
+                    self.assertEqual([row.complete for row in targets], [False, True])
+                    self.assertEqual([float(row.shared) for row in targets], [3, 4])
+                    self.assertFalse(calculation.parse_daily_profile(raw)[0].complete)
 
     def test_null_autumn_dst_interval_does_not_shift_second_fold(self):
         raw = interval_profile()
@@ -536,15 +559,18 @@ class ResilienceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state.last_failure["reason_code"], "profile_lists")
 
     async def test_null_measurement_does_not_create_contract_quarantine(self):
-        raw = interval_profile()
-        raw["content"][0]["values"][0]["v"] = None
-        client, _ = self.client([_Response(200, "https://api.example", json_data=raw)])
-        result = await client.async_get_daily_profile(
-            1, date(2026, 10, 12), date(2026, 10, 13)
-        )
-        self.assertEqual(client.account_state.blocks, {})
-        self.assertIsNone(client.account_state.last_failure)
-        self.assertFalse(calculation.parse_hourly_profile(result)[0].complete)
+        for marker in (None, "NaN", "Infinity", "-Infinity", float("nan")):
+            with self.subTest(marker=marker):
+                raw = interval_profile()
+                raw["content"][0]["values"][0]["v"] = marker
+                client, _ = self.client([_Response(200, "https://api.example", json_data=raw)])
+                result = await client.async_get_daily_profile(
+                    1, date(2026, 10, 12), date(2026, 10, 13)
+                )
+                self.assertIs(result, raw)
+                self.assertEqual(client.account_state.blocks, {})
+                self.assertIsNone(client.account_state.last_failure)
+                self.assertFalse(calculation.parse_hourly_profile(result)[0].complete)
 
     async def test_server_retry_after_is_not_shortened_by_profile_policy(self):
         state = api.ApiAccountState()

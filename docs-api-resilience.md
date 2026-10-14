@@ -2,6 +2,29 @@
 
 Zavedeno ve v0.2.5, zachování příčiny ve v0.2.6 a nezávislá dostupnost historie ve v0.2.7. Výsledky starších verzí níže jsou historický záznam, nikoli důkaz správnosti nového kódu. Příprava/publikování release automaticky neaktualizuje produkční HA; instalace a restart se provádějí samostatně.
 
+## NaN/Infinity nesmí zastavit nové platné dny (v0.2.8)
+
+V0.2.5 zpřísnila validaci a proti v0.2.4 začala kvůli jedné NaN/Infinity
+hodnotě odmítat celý profil HTTP 200. To je chyba rozsahu odmítnutí, nikoli
+důkaz, že chybí celá historie. Kalendářní formát požadavku se nemění.
+V0.2.8 vynechá jen dotčený interval. Zbývající kompletní hodiny a dny lze
+načíst, zatímco starý uložený platný den nepřepíše neúplný nový výsledek.
+NaN/Infinity se **nepřevádí na nulu**; v0.2.4 je takto nulovala, což mohlo
+zkreslit sdílení. `missing_measurement_days`/`missing_measurement_intervals`
+počítají i tyto značky, bez EANů nebo naměřených hodnot. Známý chybný interval
+brání potvrzení úplnosti dané hodiny/dne a posunu historického kurzoru, ale
+nezahazuje ostatní dny. Zcela nepoužitelná odpověď není úspěšné měření.
+
+Příklad: uložený 12. říjen, v odpovědi neplatná hodnota pro 12. říjen,
+platných 96 čtvrthodin 13. října a nezveřejněný 14. říjen. Výsledek zachová
+uložený 12. říjen, přidá 13. říjen i jeho 24 hodin a nevytvoří nulu pro
+14. říjen. ID, data dřívějších dokladů a dashboard se nemění. Chybný text,
+bool, struktura, jednotka, role nebo konečné číslo přetékající float se
+nadále odmítají. Již uložené čekání i serverový Retry-After platí až do
+svého termínu; aktualizace je nemaže. Po HACS aktualizaci a restartu proto
+ověřte `result`, `last_success`, `latest_data_day` a body Recorderu, ne jen
+HTTP 200 nebo přítomnost entity.
+
 ## Kde najít původní chybu (v0.2.6)
 
 1. **Nastavení → Systém → Protokoly**, logger `custom_components.edc_sharing.api_policy`: první chyba je WARNING i před dokončením setupu. Záznam obsahuje pevný bezpečný důvod, HTTP status (také 200 při chybě validace odpovědi), fázi, známý endpoint/kalendářní rozsah, povolené validační kódy/pole, původ čekání a další UTC termín. Volné texty serveru, hodnoty polí, EANy a přihlašovací údaje se nelogují.

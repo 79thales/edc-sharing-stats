@@ -1,5 +1,21 @@
 # Přehled změn / Changelog
 
+## 0.2.8 – 2026-10-14
+
+### Čeština
+
+- Oprava regrese validace zavedené v0.2.5: `NaN` nebo `Infinity` v jedné naměřené hodnotě již neodmítne celý jinak platný profil HTTP 200 a nezaloží patnáctiminutové čekání pro celé období. Platné nové dny a hodiny se zpracují i vedle nepoužitelných intervalů. Formát požadavku z v0.2.4 zůstává nezměněný: místní `YYYY-MM-DD`, poslední den včetně.
+- Na rozdíl od starého převodu na nulu se vynechá celý dotčený interval. Neúplná hodina/den se neimportuje ani nevyúčtuje jako kompletní a nepřepíše dříve uložený platný den. Explicitní nula zůstává platné měření. `missing_measurement_days` a `missing_measurement_intervals` zahrnují také NaN/Infinity, nikoli automaticky celou historii. Neúplný backfill neposune kurzor.
+- Chybný text, bool, chybějící pole, krátký vektor, změněná jednotka/role a konečné číslo mimo rozsah float se dál odmítají. Serverové zákazy, Retry-After a již uložené lhůty se neobcházejí. Nemění se entity, unique/statistic ID, jednotky, vlastní názvy, dashboard, uložené doklady ani platby.
+- Aktualizujte přes HACS a restartujte HA. Nemažte konfiguraci ani historii. Sledujte výsledek nového načtení a skutečný poslední datový den; případnou dosud aktivní uloženou lhůtu nechte uplynout. Regresní testy kontrolují zpracování profilu na hranici API, zachování staršího dne, načtení nového dne se 96 čtvrthodinami a skutečné body Recorderu pro skupinu i odběratele.
+
+### English
+
+- Fix the v0.2.5 validation regression: a NaN/Infinity measurement no longer rejects an otherwise valid HTTP-200 profile or imposes a whole-period cooldown. Process valid new days/hours independently. Preserve the v0.2.4 local calendar request format and inclusive API end date.
+- Skip the affected interval rather than substitute zero. Incomplete hours/days are not imported or billed as complete and cannot replace retained valid days. Existing gap counters include nonfinite measurements; an affected interval does not mean all history is missing. Incomplete backfill still preserves its cursor.
+- Continue rejecting malformed fields, vectors, text, booleans, units/roles and finite numbers exceeding float range. Preserve server restrictions, Retry-After and existing deadlines. Entity/statistic IDs, units, custom names, dashboards, statements and payments are unchanged.
+- Update through HACS and restart HA without deleting configuration/history. Check the actual fetch result and latest data date after any existing deadline expires. Regression tests exercise the API boundary, retained history, a new complete 96-interval day and actual Recorder points for the group and target.
+
 ## 0.2.7 – 2026-10-14
 
 ### Čeština

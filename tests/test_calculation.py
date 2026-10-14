@@ -392,10 +392,9 @@ class CalculationTests(unittest.TestCase):
             ],
         }
 
-        with self.assertRaisesRegex(ValueError, "nekonečnou"):
-            calculation.parse_daily_profile(response)
-        response["content"] = response["content"][1:]
         days = calculation.parse_daily_profile(response)
+        self.assertEqual(tuple(row.day for row in days), (date(2026, 8, 1),))
+        self.assertEqual(calculation.missing_measurement_counts(response), (1, 1))
         summary = calculation.calculate_period_summary(days, Decimal("2"))
         values = (
             summary.consumption,

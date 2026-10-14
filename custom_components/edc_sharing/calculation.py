@@ -272,8 +272,9 @@ def report_date_range(
 def validate_profile_response(response: Any) -> None:
     """Ověřit významové schéma před změnou cache; nové volitelné klíče tolerovat.
 
-    Nula je platná kWh. Explicitní null znamená nedostupné měření, ne změnu
-    schématu; parser takový interval nepoužije a úplnost se ověří bez něj.
+    Nula je platná kWh. Null a nekonečné/NaN číselné značky znamenají
+    nepoužitelné měření, nikoli důvod zahodit celý profil. Parser vynechá
+    pouze dotčený interval a úplnost ověří bez něj; žádnou hodnotu nenuluje.
     Chybějící pole v, krátký vektor, bool a prázdný text jsou nadále chyby.
     Úmyslně nepoužívat
     hodnoty EANů ani chybného JSONu v textu výjimky. Platné prázdno má obě
@@ -329,18 +330,13 @@ def validate_profile_response(response: Any) -> None:
             if isinstance(value, dict) and "v" not in value:
                 raise ProfileSchemaError("EDC změnilo strukturu časových řádků.")
             value = value.get("v") if isinstance(value, dict) else value
-            if value is None:
+            if _missing_measurement(value):
                 continue
             if isinstance(value, bool) or value == "":
                 raise ValueError("EDC vrátilo chybějící měřenou hodnotu.")
             parsed = _decimal(value)
             if not math.isfinite(float(parsed)):
                 raise ValueError("EDC vrátilo nekonečnou měřenou hodnotu.")
-            try:
-                if not Decimal(str(value)).is_finite():
-                    raise ValueError("EDC vrátilo nekonečnou měřenou hodnotu.")
-            except InvalidOperation:
-                raise ValueError("EDC vrátilo neplatnou číselnou hodnotu.") from None
 
 
 def profile_resolution(response: dict[str, Any]) -> str:
@@ -497,14 +493,32 @@ def _profile_layout(
     return columns, content, producers, consumers
 
 
+def _missing_measurement(value: Any) -> bool:
+    """Rozlišit null/NaN/Infinity od konečné hodnoty a porušeného kontraktu.
+
+    Vstup je jedna rozbalená hodnota v kWh. Nekonečné číselné značky znala
+    již v0.2.4, která je nulovala; zde se jen označí nepoužitelný interval.
+    Náhodný text, bool, kontejner a konečné číslo přetékající float nejsou
+    mezery: nadále je musí odmítnout validátor. Funkce nemění surový profil.
+    """
+    if value is None:
+        return True
+    if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
+        return False
+    try:
+        return not Decimal(str(value)).is_finite()
+    except InvalidOperation:
+        return False
+
+
 def _row_missing_measurement(row: dict[str, Any]) -> bool:
-    """Explicitní JSON null je mezera v datech; nula měření zůstává platná."""
-    return any((value.get("v") if isinstance(value, dict) else value) is None
+    """Vynechat celý dotčený interval, nikdy nevymýšlet nulu za jeden EAN."""
+    return any(_missing_measurement(value.get("v") if isinstance(value, dict) else value)
                for value in row["values"])
 
 
 def missing_measurement_counts(response: dict[str, Any]) -> tuple[int, int]:
-    """Počty dnů/intervalů s null pro diagnostiku, bez EANů či hodnot.
+    """Počty dnů/intervalů s null/NaN/Infinity, bez EANů či hodnot.
 
     Volat až po validaci schématu. Žádnou mezeru nevyplňuje a neodvozuje
     platnost EANu; neznámá časová struktura se nadále odmítá samostatně.

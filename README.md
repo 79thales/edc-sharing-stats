@@ -39,7 +39,9 @@ If EDC rejects a request, diagnostics preserve the HTTP status and may show the 
 
 The download badges count only downloads of the `edc_sharing.zip` release asset, including HACS updates and manual downloads. They do not count unique users, source-code archives or default-branch installations. Counting starts with v0.1.32; earlier downloads cannot be reconstructed. HACS's download indicator refers to the selected release, while the total badge combines installer downloads across releases. GitHub, HACS and badge caches may update at different times. No usage tracking is added to the integration.
 
-### Odolnost API a diagnostika (od v0.2.5, dostupná historie od v0.2.7)
+### Odolnost API a diagnostika (od v0.2.5, opravy v0.2.7–0.2.8)
+
+Od v0.2.8 **NaN/Infinity v jednom intervalu nezahodí ostatní platné dny** stejné odpovědi EDC. Dotčený interval se nepřevádí na nulu a neúplný výsledek nepřepíše uložený platný den. Nové kompletní dny/hodiny se zpracují bez změny entit nebo dashboardu. Formát data požadavků zůstává jako ve v0.2.4; již uložené čekání a serverové limity se zachovávají. Podrobnosti a příklad jsou v [návodu](docs-api-resilience.md#naninfinity-nesmí-zastavit-nové-platné-dny-v028).
 
 Kontrola odmítá změněné schéma před uložením. Od v0.2.6 explicitní JSON `null` ve známém vektoru znamená chybějící interval, nikoli automaticky nové schéma: interval se vynechá, nula se nevymýšlí a neúplný den se nepoužije jako kompletní podklad vyúčtování. Chybějící pole `v`, změněná jednotka/role, krátký vektor a neznámé rozlišení se nadále odmítají. Denní součet není hodinová hodnota. Dříve uložené doklady a potvrzené platby se nepřepočítávají. Neúplný historický profil ani blok s null neposune kurzor jako úspěšně prohledaný.
 

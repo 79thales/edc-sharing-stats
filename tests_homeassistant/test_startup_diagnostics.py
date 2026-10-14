@@ -286,14 +286,14 @@ async def test_ean_metadata_survives_storage_reload_without_registry(
     await restored.async_shutdown()
 
 
-@pytest.mark.parametrize("pending_day", ("omitted", "null"))
+@pytest.mark.parametrize("pending_day", ("omitted", "null", "NaN", "Infinity"))
 async def test_pending_final_day_keeps_previous_day_and_existing_sensors_available(
     hass, recorder_mock, pending_day
 ):
     """Den čekající na zveřejnění neruší předchozí kWh ani jejich skutečné datum.
 
-    Testuje se obvyklé zpoždění EDC dvěma reprezentacemi: poslední den není
-    vůbec v odpovědi, nebo má známé sloupce s null. Žádná varianta nepřidává
+    Testuje se obvyklé zpoždění EDC: poslední den není vůbec v odpovědi,
+    nebo má známé sloupce s null/NaN/Infinity. Žádná varianta nepřidává
     falešný nulový den ani neposouvá hodnotu 12. října na 13. října.
     """
     await hass.config.async_set_time_zone("Europe/Prague")
@@ -307,9 +307,10 @@ async def test_pending_final_day_keeps_previous_day_and_existing_sensors_availab
             raw["content"].append(
                 {"date": "2026-10-12", "values": [10, 0, -16, -6]}
             )
-            if pending_day == "null":
+            if pending_day != "omitted":
+                marker = None if pending_day == "null" else pending_day
                 raw["content"].append(
-                    {"date": "2026-10-13", "values": [None, None, None, None]}
+                    {"date": "2026-10-13", "values": [marker] * 4}
                 )
         return raw
 
@@ -350,7 +351,7 @@ async def test_pending_final_day_keeps_previous_day_and_existing_sensors_availab
         assert float(hass.states.get(group_id).state) == 10
         assert hass.states.get(group_id).attributes["data_date"] == "2026-10-12"
         assert coordinator.data_quality["missing_measurement_days"] == (
-            1 if pending_day == "null" else 0
+            1 if pending_day != "omitted" else 0
         )
     await hass.config_entries.async_unload(entry.entry_id)
 
@@ -433,10 +434,11 @@ async def test_old_local_schema_failure_does_not_discard_valid_recent_day(
     await coordinator.async_shutdown()
 
 
-async def test_all_null_historical_day_cannot_advance_cursor(hass, recorder_mock):
+@pytest.mark.parametrize("marker", (None, "NaN", "Infinity"))
+async def test_all_null_historical_day_cannot_advance_cursor(hass, recorder_mock, marker):
     entry, api = make_entry(hass), make_api(hass)
     raw = profile()
-    raw["content"] = [{"date": "2026-10-12", "values": [None, None, None, None]}]
+    raw["content"] = [{"date": "2026-10-12", "values": [marker] * 4}]
     api._request_once.return_value = raw
     coordinator = EdcSharingCoordinator(hass, entry, api)
     coordinator.history_backfill_scan_start = date(2026, 10, 12)
@@ -449,3 +451,69 @@ async def test_all_null_historical_day_cannot_advance_cursor(hass, recorder_mock
     assert coordinator.history_backfill_imported_days == 0
     assert coordinator.history_backfill_imported_hours == 0
     await coordinator.async_shutdown()
+
+
+async def test_new_complete_day_imports_despite_nonfinite_neighbour_and_keeps_history(
+    hass, recorder_mock, caplog
+):
+    """Regrese v0.2.5: HTTP 200 s NaN nesmí pohřbít nový platný den.
+
+    Síť je nahrazena na hranici požadavku, nikoli validátor nebo koordinátor.
+    Dřívější den zůstává uložený, nový obsahuje 96 čtvrthodin a Recorder musí
+    mít skutečně 24 hodin pro skupinu i cíl. Další den není falešná nula.
+    """
+    await hass.config.async_set_time_zone("Europe/Prague")
+    entry, api = make_entry(hass), make_api(hass)
+    await cache_history(hass, entry)
+    registry = er.async_get(hass)
+    original = registry.async_get_or_create(
+        "sensor", "edc_sharing", "1_shared_today", config_entry=entry,
+        suggested_object_id="unchanged_original_sharing",
+    )
+
+    async def read(_method, _path, payload):
+        raw = profile()
+        raw["content"] = []
+        if payload["dateFrom"] <= "2026-10-12" <= payload["dateTo"]:
+            for day, bad in (("2026-10-12", True), ("2026-10-13", False), ("2026-10-14", True)):
+                for slot in range(96):
+                    hour, minute = divmod(slot * 15, 60)
+                    end_hour, end_minute = divmod((slot + 1) * 15, 60)
+                    raw["content"].append({
+                        "date": day,
+                        "start": f"{hour:02d}:{minute:02d}:00",
+                        "end": f"{end_hour:02d}:{end_minute:02d}:00",
+                        "values": [1, 0, "NaN" if bad else -2.5, -1.5],
+                    })
+        return raw
+
+    api._request_once.side_effect = read
+    with (
+        patch("custom_components.edc_sharing.async_setup", new=AsyncMock(return_value=True)),
+        patch("custom_components.edc_sharing.async_get_api_client", new=AsyncMock(return_value=api)),
+        patch("custom_components.edc_sharing.report.EdcReportManager.async_start"),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        await recorder_mock.async_block_till_done()
+        coordinator = entry.runtime_data.coordinator
+        assert coordinator.last_update_success
+        assert not coordinator.cached_startup
+        assert coordinator.data.latest_day == date(2026, 10, 13)
+        assert set(coordinator._history_days) == {date(2026, 10, 12), date(2026, 10, 13)}
+        assert float(coordinator._history_days[date(2026, 10, 12)].shared) == 10
+        assert float(coordinator.data.latest.shared) == 96
+        assert float(hass.states.get(original.entity_id).state) == 96
+        assert coordinator.data_quality["missing_measurement_intervals"] == 192
+        assert not api.account_state.blocks
+        assert "nekonečnou" not in caplog.text
+        health = await inspect_statistics_health(hass, entry, date(2026, 10, 13), date(2026, 10, 14))
+        assert len(health["statistics"]) == 8
+        assert all(item["points"] == 24 for item in health["statistics"].values())
+        # Opakované čtení nepřidává kopii stejné hodiny ani nezmění IDs.
+        await coordinator.async_refresh()
+        await recorder_mock.async_block_till_done()
+        repeated = await inspect_statistics_health(hass, entry, date(2026, 10, 13), date(2026, 10, 14))
+        assert all(item["points"] == 24 for item in repeated["statistics"].values())
+        assert registry.async_get_entity_id("sensor", "edc_sharing", "1_shared_today") == original.entity_id
+    await hass.config_entries.async_unload(entry.entry_id)
