@@ -64,3 +64,26 @@ class PortalTests(unittest.TestCase):
         self.assertEqual(first, same)
         self.assertNotEqual(first["build_hash"], new["build_hash"])
         self.assertNotIn("secret", json.dumps(first))
+
+    def test_flags_units_and_private_baseline_keys(self):
+        response = {
+            "valueColumns": [{"type": "O", "dir": "IN", "unit": "kWh"}],
+            "content": [{"values": [], "start": "12:00", "end": "12:15"}],
+        }
+        first = contract.profile_contract({"inputData": True}, response)
+        second = contract.profile_contract({"inputData": False}, response)
+        self.assertIn(
+            "request.inputData_value",
+            contract.compare_contracts(first, second)["differences"],
+        )
+        response["valueColumns"][0]["unit"] = "Wh"
+        self.assertIn(
+            "response.units",
+            contract.compare_contracts(
+                first, contract.profile_contract({"inputData": True}, response)
+            )["differences"],
+        )
+        first["request"]["private-password"] = "private-user"
+        result = contract.compare_contracts(first, second)
+        self.assertEqual(result["status"], "inconclusive")
+        self.assertNotIn("private", json.dumps(result))

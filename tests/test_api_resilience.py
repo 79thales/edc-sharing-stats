@@ -261,6 +261,72 @@ class ResilienceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(raised.exception.retry_at)
         self.assertEqual(len(session.request_calls), 1)
 
+    async def test_A08_refresh_limit_does_not_send_password(self):
+        response = _Response(429, "https://sso.example/token")
+        response.headers["Retry-After"] = "7200"
+        session = _Session([], [response], [])
+        client = api.EdcApiClient(session, "private-user", "private-password")
+        client._refresh_token = "private-refresh"
+        for _ in range(2):
+            with self.assertRaises(api.EdcApiError) as raised:
+                await client.async_get_groups()
+            self.assertEqual(raised.exception.category, "rate_limit")
+        self.assertEqual(len(session.post_calls), 1)
+        self.assertEqual(session.get_calls, [])
+        self.assertTrue(response.released)
+        self.sleep.assert_not_awaited()
+
+    async def test_A08_rejected_refresh_allows_one_supported_login(self):
+        response = _Response(
+            400, "https://sso.example/token", json_data={"error": "invalid_grant"}
+        )
+        session = _Session(
+            [], [response], [_Response(200, "https://api.example", json_data=[])]
+        )
+        client = api.EdcApiClient(session, "private-user", "private-password")
+        client._refresh_token = "private-refresh"
+        client.async_login = AsyncMock(
+            side_effect=lambda: client._store_tokens(
+                {"access_token": "new", "expires_in": 3600}
+            )
+        )
+        self.assertEqual(await client.async_get_groups(), [])
+        client.async_login.assert_awaited_once()
+        self.assertEqual(len(session.post_calls), 1)
+
+    async def test_A13_mfa_and_bad_state_are_not_wrong_password(self):
+        for page in ('"pageId": "login-otp.ftl"', '<div class="g-recaptcha"></div>'):
+            with self.assertRaises(api.EdcApiError) as raised:
+                client = api.EdcApiClient(
+                    _Session([_Response(200, "https://sso.example", text=page)], []),
+                    "private-user",
+                    "private-password",
+                )
+                await client.async_get_groups()
+            self.assertEqual(raised.exception.category, "user_action")
+            self.assertNotIsInstance(raised.exception, api.EdcAuthenticationError)
+        with self.assertRaises(api.EdcApiError) as raised:
+            api.EdcApiClient._validate_authorization_redirect(
+                {"state": ["wrong"]}, "expected"
+            )
+        self.assertEqual(raised.exception.category, "contract")
+
+    async def test_A11_persistence_failure_keeps_monotonic_wait(self):
+        state = api.ApiAccountState()
+        state.persist = AsyncMock(side_effect=OSError("private-error"))
+        error = api.EdcApiError("safe", category="rate_limit")
+        await state.block("scope", error)
+        self.assertTrue(state.persistence_failed)
+        state.restore({"account": {"category": [], "until": "private-invalid"}})
+        with (
+            patch.object(
+                api.time, "monotonic", return_value=state.deadlines["account"] - 60
+            ),
+            self.assertRaises(api.EdcApiError),
+        ):
+            state.check("other")
+        self.assertFalse(state.lock.locked())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -169,12 +169,10 @@ class EdcApiClient:
                 await self._async_exchange_code(code, verifier)
                 return
             if response.status >= 400:
-                response.release()
-                raise EdcApiError(
-                    f"Přihlašovací stránka EDC vrátila HTTP {response.status}."
-                )
+                raise self._login_http_error(response)
             response_text = await response.text()
             response.release()
+            self._require_supported_login_page(response_text)
             parser = _LoginFormParser()
             parser.feed(response_text)
             login_action = parser.action or _extract_keycloak_value(
@@ -204,23 +202,28 @@ class EdcApiClient:
             redirect_query = parse_qs(urlparse(location).query)
             code = redirect_query.get("code", [None])[0]
             if not code:
-                login_error = _extract_keycloak_error(await login_response.text())
+                login_text = await login_response.text()
+                login_error = _extract_keycloak_error(login_text)
                 login_response.release()
                 if login_error and _is_invalid_credentials_error(login_error):
                     raise EdcAuthenticationError("Neplatné jméno nebo heslo EDC.")
                 if login_response.status >= 400:
-                    raise EdcApiError(
-                        f"Přihlášení EDC vrátilo HTTP {login_response.status}."
-                    )
+                    raise self._login_http_error(login_response)
+                self._require_supported_login_page(login_text)
                 raise EdcApiError(
                     "EDC přihlášení nedokončilo přesměrováním.", category="contract"
                 )
             self._validate_authorization_redirect(redirect_query, state)
             await self._async_exchange_code(code, verifier)
-        except EdcApiError:
+        except EdcApiError as error:
+            error.phase = "authentication"
             raise
         except (ClientError, TimeoutError, ValueError):
-            raise EdcApiError("Spojení s EDC selhalo.") from None
+            raise EdcApiError(
+                "Spojení s přihlášením EDC selhalo.",
+                category="unavailable",
+                phase="authentication",
+            ) from None
         finally:
             for result in (response, login_response):
                 if result is not None:
@@ -248,6 +251,38 @@ class EdcApiClient:
         return response, location
 
     @staticmethod
+    def _require_supported_login_page(page: str) -> None:
+        """MFA/CAPTCHA není špatné heslo; bez podpory pokračování vyžaduje člověka.
+
+        Rozpoznáváme explicitní známé pageId nebo CAPTCHA prvek, nikoli volný
+        výskyt slova v JS překladech. Neznámá stránka se dál posoudí jako kontrakt.
+        """
+        page_id = _extract_keycloak_value(page, "pageId")
+        if page_id in (
+            "login-otp.ftl",
+            "login-recovery-authn-code-input.ftl",
+            "login-webauthn.ftl",
+        ) or re.search(r'class=["\'][^"\']*\b(?:g-recaptcha|h-captcha)\b', page):
+            raise EdcApiError(
+                "Přihlášení EDC vyžaduje ruční ověření MFA/CAPTCHA.",
+                category="user_action",
+                phase="authentication",
+            )
+
+    @staticmethod
+    def _login_http_error(response: Any) -> EdcApiError:
+        """Pevný text a HTTP kategorie; nikdy neoznačit 5xx/429 jako špatné heslo."""
+        return EdcApiError(
+            f"Přihlašovací služba EDC vrátila HTTP {response.status}.",
+            category=classify_api_failure(response.status),
+            status=response.status,
+            retry_at=retry_after(
+                response.headers.get("Retry-After"), datetime.now(UTC)
+            ),
+            phase="authentication",
+        )
+
+    @staticmethod
     def _validate_login_target(target: str, *, callback: bool = False) -> None:
         """Heslo/token nikdy neposílat na cizí origin získaný z HTML či redirectu."""
         parsed = urlparse(target)
@@ -266,7 +301,11 @@ class EdcApiClient:
         redirect_query: dict[str, list[str]], expected_state: str
     ) -> None:
         if redirect_query.get("state", [None])[0] != expected_state:
-            raise EdcAuthenticationError("EDC vrátilo neplatný stav přihlášení.")
+            raise EdcApiError(
+                "EDC vrátilo neplatný stav přihlášení.",
+                category="contract",
+                phase="authentication",
+            )
 
     async def _async_exchange_code(self, code: str, verifier: str) -> None:
         token_response = await self._session.post(
@@ -279,10 +318,11 @@ class EdcApiClient:
                 "code_verifier": verifier,
             },
             timeout=REQUEST_TIMEOUT,
+            allow_redirects=False,
         )
         try:
             if token_response.status != 200:
-                raise EdcAuthenticationError("Přihlášení EDC se nepodařilo dokončit.")
+                raise self._login_http_error(token_response)
             self._store_tokens(await token_response.json())
         finally:
             token_response.release()
@@ -372,6 +412,7 @@ class EdcApiClient:
                     self.last_status = error.status
                     if (
                         error.category == "unavailable"
+                        and error.phase == "read"
                         and error.retry_at is None
                         and attempt < 2
                     ):
@@ -386,6 +427,14 @@ class EdcApiClient:
     ) -> Any:
         try:
             await self._async_ensure_token()
+        except (ClientError, TimeoutError, ValueError):
+            # Opakování čtení nesmí opakovat přihlašovací POST po jeho timeoutu.
+            raise EdcApiError(
+                "Obnova přihlášení EDC selhala.",
+                category="unavailable",
+                phase="authentication",
+            ) from None
+        try:
             response = await self._session.request(
                 method,
                 f"{API_BASE_URL}{path}",
@@ -402,7 +451,11 @@ class EdcApiClient:
             )
             try:
                 if 300 <= response.status < 400:
-                    raise EdcApiError("EDC změnilo adresu čtecího API.", category="contract", status=response.status)
+                    raise EdcApiError(
+                        "EDC změnilo adresu čtecího API.",
+                        category="contract",
+                        status=response.status,
+                    )
                 if response.status == 401:
                     self._access_token = None
                     raise EdcAccessExpiredError("Platnost přihlášení EDC skončila.")
@@ -450,11 +503,27 @@ class EdcApiClient:
                     "refresh_token": self._refresh_token,
                 },
                 timeout=REQUEST_TIMEOUT,
+                allow_redirects=False,
             )
             try:
                 if response.status == 200:
                     self._store_tokens(await response.json())
                     return
+                # Pouze odmítnutá platnost refresh tokenu dovoluje jeden nový
+                # login. Technická chyba/limit nesmí znovu odesílat heslo.
+                if response.status not in (400, 401):
+                    raise self._login_http_error(response)
+                if response.status == 400:
+                    try:
+                        rejection = await response.json()
+                    except (ClientError, ValueError):
+                        raise self._login_http_error(response) from None
+                    if (
+                        not isinstance(rejection, dict)
+                        or rejection.get("error") != "invalid_grant"
+                    ):
+                        raise self._login_http_error(response)
+                self._refresh_token = None
             finally:
                 response.release()
         await self.async_login()
@@ -464,9 +533,17 @@ class EdcApiClient:
             access_token = data["access_token"]
             expires_in = int(data.get("expires_in", 300))
         except (KeyError, TypeError, ValueError) as err:
-            raise EdcApiError("EDC vrátilo neplatnou tokenovou odpověď.") from err
+            raise EdcApiError(
+                "EDC vrátilo neplatnou tokenovou odpověď.",
+                category="contract",
+                phase="authentication",
+            ) from err
         if not isinstance(access_token, str) or not access_token:
-            raise EdcApiError("EDC vrátilo neplatnou tokenovou odpověď.")
+            raise EdcApiError(
+                "EDC vrátilo neplatnou tokenovou odpověď.",
+                category="contract",
+                phase="authentication",
+            )
         refresh_token = data.get("refresh_token")
         self._access_token = access_token
         self._refresh_token = (

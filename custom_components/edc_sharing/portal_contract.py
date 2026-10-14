@@ -42,6 +42,10 @@ def profile_contract(payload: dict, response: dict) -> dict:
     """
     request = {key: _type(payload[key]) for key in sorted(FIELDS & payload.keys())}
     request["unrecognized_fields"] = len(payload.keys() - FIELDS)
+    for flag in ("inputData", "outputData"):
+        request[flag + "_value"] = (
+            payload.get(flag) if type(payload.get(flag)) is bool else "unknown"
+        )
     enum = payload.get("calculationType")
     request["calculation"] = (
         enum if enum in ("DAILY", "HOURLY", "QUARTER_HOURLY") else "unknown"
@@ -62,6 +66,17 @@ def profile_contract(payload: dict, response: dict) -> dict:
                 f"{column.get('type')}:{column.get('dir')}"
                 if column.get("type") in ("D", "O")
                 and column.get("dir") in ("IN", "OUT")
+                else "unknown"
+                for column in columns
+                if isinstance(column, dict)
+            }
+        )
+        shape["units"] = sorted(
+            {
+                column.get("unit")
+                if column.get("unit") in ("kWh", "Wh", "MWh", "%")
+                else "implicit"
+                if column.get("unit") is None
                 else "unknown"
                 for column in columns
                 if isinstance(column, dict)
@@ -97,8 +112,41 @@ def compare_contracts(baseline: dict, observed: dict) -> dict:
         }
     differences = []
     for section in ("request", "response"):
+        # Ani špatně zvolený soukromý baseline nesmí dostat vlastní tajné klíče
+        # do veřejného rozdílu; názvy výstupu zná pouze naše schéma.
+        allowed = (
+            (
+                FIELDS
+                | {
+                    "unrecognized_fields",
+                    "calculation",
+                    "dateFrom_format",
+                    "dateTo_format",
+                    "inputData_value",
+                    "outputData_value",
+                }
+            )
+            if section == "request"
+            else {
+                "valueColumns",
+                "content",
+                "column_roles",
+                "units",
+                "time_layout",
+                "values_types",
+            }
+        )
+        if (
+            not isinstance(baseline.get(section), dict)
+            or baseline[section].keys() - allowed
+        ):
+            return {
+                "status": "inconclusive",
+                "reason": "invalid_baseline",
+                "differences": [],
+            }
         for key in sorted(
-            baseline.get(section, {}).keys() | observed.get(section, {}).keys()
+            (baseline[section].keys() | observed.get(section, {}).keys()) & allowed
         ):
             if baseline.get(section, {}).get(key) != observed.get(section, {}).get(key):
                 # Ve veřejném diffu jsou jen názvy našeho vlastního schématu.

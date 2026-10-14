@@ -5,11 +5,14 @@ import json
 import re
 from datetime import UTC, datetime
 
+import pytest
 from homeassistant.setup import async_setup_component
 from playwright.async_api import async_playwright, expect
 
 from custom_components.edc_sharing.dashboard import build_dashboard
 from tests_homeassistant.test_statistics_health import profile, queue
+
+pytestmark = pytest.mark.freeze_time("2026-10-14T12:00:00Z")
 
 
 async def test_generated_graph_and_selected_day(

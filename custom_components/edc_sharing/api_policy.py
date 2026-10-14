@@ -25,11 +25,13 @@ class EdcApiError(Exception):
         category: str = "unknown",
         status: int | None = None,
         retry_at: datetime | None = None,
+        phase: str = "read",
     ) -> None:
         super().__init__(message)
         self.category = category
         self.status = status
         self.retry_at = retry_at
+        self.phase = phase
 
 
 class EdcAuthenticationError(EdcApiError):
@@ -114,6 +116,7 @@ class ApiAccountState:
             "rate_limit",
             "unavailable",
             "unknown",
+            "user_action",
         }
         for key, value in data.items():
             if (
@@ -170,13 +173,22 @@ class ApiAccountState:
     ) -> None:
         """Uložit čekání před vrácením chyby; případná delší stará lhůta platí."""
         now = datetime.now(UTC)
-        seconds = 21600 if error.category in ("contract", "permission") else 3600
+        seconds = (
+            21600
+            if error.category in ("contract", "permission", "user_action")
+            else 3600
+        )
         until = (
             server_until
             if server_until is not None and server_until > now
             else now + timedelta(seconds=seconds)
         )
-        key = "account" if error.category in ("rate_limit", "unavailable") else scope
+        key = (
+            "account"
+            if error.category in ("rate_limit", "unavailable")
+            or error.phase == "authentication"
+            else scope
+        )
         if key in self.blocks:
             until = max(until, now + timedelta(seconds=self.remaining(key, now)))
         self.blocks[key] = (until, error.category)

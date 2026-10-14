@@ -27,6 +27,9 @@ from custom_components.edc_sharing.history import (
     async_import_target_hourly_history,
 )
 
+# Čas zmrazit před vytvořením auth fixture: posun až v testu by zneplatnil JWT.
+pytestmark = pytest.mark.freeze_time("2026-10-14T12:00:00Z")
+
 
 def profile():
     return {
@@ -191,6 +194,7 @@ async def test_statistics_survive_real_recorder_restart(
     async with async_test_recorder(hass) as instance:
         queue(hass, profile())
         await instance.async_block_till_done()
+    await hass.async_stop(force=True)
     async with (
         async_test_home_assistant(config_dir=hass.config.config_dir) as restarted,
         async_test_recorder(restarted) as instance,
@@ -201,3 +205,6 @@ async def test_statistics_survive_real_recorder_restart(
             restarted, entry, date(2026, 10, 12), date(2026, 10, 13)
         )
         assert result["statistics"]["edc_sharing:1_target_shared_hourly"]["points"] == 1
+        # Pomocný contextmanager pouze vytvoří instanci; test musí provést
+        # skutečný shutdown, jinak zůstanou denní cleanup callbacky Recorderu.
+        await restarted.async_stop(force=True)
