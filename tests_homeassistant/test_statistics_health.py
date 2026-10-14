@@ -16,9 +16,11 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.edc_sharing.calculation import (
     EanInfo,
+    parse_daily_profile,
     parse_hourly_profile,
     parse_hourly_target_profiles,
 )
+from custom_components.edc_sharing.coordinator import EdcSharingCoordinator
 from custom_components.edc_sharing.diagnostics import async_get_config_entry_diagnostics
 from custom_components.edc_sharing.health import (
     async_register_health_commands,
@@ -286,6 +288,59 @@ async def test_partial_hours_are_not_queued(hass, recorder_mock):
         hass, entry, date(2026, 10, 12), date(2026, 10, 13)
     )
     assert all(item["points"] == 0 for item in result["statistics"].values())
+
+
+async def test_failed_backfill_preserves_cursor_history_and_restore(
+    hass, recorder_mock, hass_storage
+):
+    """Neúplný blok nesmí posunout kurzor, přepsat dobrou historii ani Recorder.
+
+    JSON persistence používá standardní HA storage fixture, nikoli nový vlastní
+    serializér. Obnovení probíhá v nové instanci HA; Recorder zápis/čtení zůstává
+    skutečné, bez mocku. Tento test neprohlašuje fixture za test fyzického disku.
+    """
+    await hass.config.async_set_time_zone("Europe/Prague")
+    entry = make_entry(hass)
+    queue(hass, profile())
+    await recorder_mock.async_block_till_done()
+    raw = profile()
+    raw["content"].pop()
+    api = SimpleNamespace(async_get_daily_profile=AsyncMock(return_value=raw))
+    coordinator = EdcSharingCoordinator(hass, entry, api)
+    coordinator.history_backfill_scan_start = date(2026, 10, 12)
+    coordinator.history_backfill_cursor = date(2026, 10, 13)
+    coordinator.history_backfill_status = "running"
+    prior = profile()
+    prior["content"] = [
+        {"date": "2026-10-10", "values": [{"v": 10}, {"v": 0}, {"v": -16}, {"v": -6}]}
+    ]
+    coordinator._history_days = {row.day: row for row in parse_daily_profile(prior)}
+    entry.runtime_data.coordinator = coordinator
+    await coordinator._async_backfill_history()
+    assert coordinator.history_backfill_status == "failed"
+    assert coordinator.history_backfill_cursor == date(2026, 10, 13)
+    assert coordinator.history_backfill_processed_chunks == 0
+    assert coordinator.history_backfill_imported_hours == 0
+    assert float(coordinator._history_days[date(2026, 10, 10)].shared) == 10
+    assert (
+        hass_storage[coordinator._history_store.key]["data"]["cursor"] == "2026-10-13"
+    )
+    await recorder_mock.async_block_till_done()
+    result = await inspect_statistics_health(
+        hass, entry, date(2026, 10, 12), date(2026, 10, 13)
+    )
+    assert result["statistics"]["edc_sharing:1_shared_hourly"]["points"] == 1
+    async with async_test_home_assistant(
+        config_dir=hass.config.config_dir
+    ) as restarted:
+        try:
+            restored = EdcSharingCoordinator(restarted, entry, api)
+            await restored.async_initialize()
+            assert restored.history_backfill_status == "failed"
+            assert restored.history_backfill_cursor == date(2026, 10, 13)
+            assert float(restored._history_days[date(2026, 10, 10)].shared) == 10
+        finally:
+            await restarted.async_stop(force=True)
 
 
 @pytest.mark.parametrize("persistent_database", [True])

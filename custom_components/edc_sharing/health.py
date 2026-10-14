@@ -80,7 +80,10 @@ async def inspect_statistics_health(
             if rows
             else "empty_period",
             "points": len(rows),
-            "unit": meta.get("unit_of_measurement") if meta else None,
+            # API seznamu používá statistics_unit_of_measurement, nikoli
+            # interní SQL metadata unit_of_measurement. Mean níže je v této
+            # uložené jednotce; uživatelská zobrazovací jednotka se může lišit.
+            "unit": meta.get("statistics_unit_of_measurement") if meta else None,
             "first": datetime.fromtimestamp(rows[0]["start"], UTC).isoformat()
             if rows
             else None,
