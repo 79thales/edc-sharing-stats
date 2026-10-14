@@ -39,13 +39,13 @@ If EDC rejects a request, diagnostics preserve the HTTP status and may show the 
 
 The download badges count only downloads of the `edc_sharing.zip` release asset, including HACS updates and manual downloads. They do not count unique users, source-code archives or default-branch installations. Counting starts with v0.1.32; earlier downloads cannot be reconstructed. HACS's download indicator refers to the selected release, while the total badge combines installer downloads across releases. GitHub, HACS and badge caches may update at different times. No usage tracking is added to the integration.
 
-### Odolnost API a diagnostika (vývojová větev, dosud nevydáno)
+### Odolnost API a diagnostika (od v0.2.5)
 
 Nová kontrola odmítá změněné schéma a chybějící hodnoty před uložením. Denní součet není hodinová hodnota. Chybějící čtvrthodina nezíská automaticky nulovou spotřebu a neúplný den se nepoužije jako kompletní podklad vyúčtování. Dříve uložené doklady a potvrzené platby se nepřepočítávají. Jednostranný historický profil bez potvrzené platnosti sdílení neposune kurzor jako úspěšně prohledaný blok.
 
 400/422 se neopakuje ihned; běžné čekání je hodina. Změna kontraktu nebo zákaz přístupu má čekání šest hodin. Dočasné selhání čtecího požadavku má nejvýše dva dodatečné pokusy za přibližně 5/30 sekund; platný serverový `Retry-After` určuje povolený další pokus. Omezení platí pro celý účet u dočasné nedostupnosti/429, u validace pro skupinu a endpoint. Sdílí je i nastavovací průvodce. Restart zachová UTC termín a běžící lhůtu chrání monotónní čas. Ruční načtení zákaz neobchází. Tyto intervaly jsou politikou integrace, ne tvrzením o oficiálních limitech EDC.
 
-Správce může přes přihlášené HA WebSocket API použít čtecí příkaz `edc_sharing/statistics/health` s `entry_id` a volitelnými `date_from`/`date_to` ve formátu ISO. Konec je bez posledního dne, maximálně 31 dnů. Bez období se čte poslední datový den. Výsledek vrací skutečné počty bodů, jednotky a první/poslední čas. ID jsou externí statistiky; běžná entita k nim nemusí existovat. Akce nevolá EDC. Sdílitelný export diagnostiky vynechává EANy, identity, bankovní účty a doklady.
+Správce může přes přihlášené HA WebSocket API použít čtecí příkaz `edc_sharing/statistics/health` s `entry_id` a volitelnými `date_from`/`date_to` ve formátu ISO. Konec je bez posledního dne, maximálně 31 dnů. Bez období se čte poslední datový den. Výsledek vrací skutečné počty bodů, jednotky a první/poslední čas. ID jsou externí statistiky; běžná entita k nim nemusí existovat. Výchozí akce nevolá EDC; pouze výslovný `fresh` provede nové čtení připojení pod stejnými limity. Sdílitelný export diagnostiky vynechává EANy, identity, bankovní účty a doklady.
 
 Nově vygenerované Detaily mají hodinové grafy posledních tří dnů pro skupinu i jednotlivá místa. Tlačítko **Vybrat den hodinových grafů** otevře samostatnou podstránku. Zvolte minulý den: EDC publikuje se zpožděním. Výběr dne nepřepíná ostatní Energy přehledy. Aktualizace existující dashboard sama nepřepisuje; použijte generátor nebo [distribuovaný příklad](examples/dashboard-hourly.yaml).
 

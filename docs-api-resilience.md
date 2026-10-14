@@ -1,6 +1,6 @@
 # Odolnost EDC API – implementace a ověření
 
-Vývojová větev `feature/api-contract-health`, základ v0.2.4. Tento návod popisuje připravovanou změnu, která dosud není vydána. Produkční HA se při vývoji neaktualizuje.
+Zavedeno ve v0.2.5, původně na větvi `feature/api-contract-health` nad v0.2.4. Tento návod popisuje chování vydání a skutečné výsledky ověření. Příprava ani publikování release neaktualizuje produkční HA; instalaci přes HACS a restart provádí správce.
 
 ## Ochrana dat a požadavků
 

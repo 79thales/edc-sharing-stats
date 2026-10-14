@@ -1,8 +1,10 @@
 # Přehled změn / Changelog
 
-## Unreleased – odolnost API a ověření hodinových statistik
+## 0.2.5 – 2026-10-14
 
 ### Čeština
+
+- Aktualizace přes HACS a následný restart HA; nemažte integraci ani statistiky. Existující vyúčtování a potvrzené úhrady zůstávají zachované. Nové grafy získáte novým generováním dashboardu nebo úpravou podle příkladu; již uložený dashboard se automaticky nepřepisuje. Zablokovaný neúplný backfill lze obnovit po doplnění/ověření zdrojových dat; chybějící data se nepovažují za nulu.
 
 - Validace požadavků a odpovědí: neplatné skupiny se odmítají před sítí, chybějící/null/nekonečné hodnoty a změny významových polí se nepřevádějí na nulu. Denní součet se nezapisuje jako půlnoční hodina; neúplné hodiny/dny se nezapočítávají jako kompletní data. Neověřený historický blok neposune kurzor backfillu.
 - Rozlišení validace, autentizace, oprávnění, dočasné nedostupnosti, omezení frekvence a změny kontraktu. HTTP 400/422 nemá okamžité retry; dočasná chyba čtení má nejvýše dva dodatečné pokusy (5/30 sekund s rozptylem). Serverový Retry-After se respektuje. Čekání se sdílí mezi skupinami, nastavením, reporty i backfillem a ukládá se bez hesel/tokenů. Prošlý API token se obnovuje jednou; odmítnuté heslo se znovu neposílá.
@@ -17,10 +19,14 @@
 
 ### English
 
+- Update through HACS and restart HA without deleting the integration or statistics. Existing settlements and confirmed payments are preserved. Regenerate the dashboard or apply the bundled example for the new charts; saved dashboards are not overwritten automatically. Resume an incomplete backfill after its source data has been completed or verified; missing data is not zero.
+
 - Validate request types and response semantics before publishing data. Missing, null and non-finite values are not zero; daily totals do not become midnight hours, incomplete periods are excluded, and unverified history does not advance the cursor.
 - Classify failures, bound read retries, honor Retry-After and share persistent cooldowns across groups and configuration flows. Refresh an expired API token once without repeating rejected credentials.
 - Add admin-only read-only Recorder health inspection and an allowlisted diagnostic export. Generated details include group/target hourly charts and a separate selected-period subview.
 - Add advisory public build observation and an opt-in private portal workflow probe. Neither a changed build nor disabled/inconclusive checks confirm live API compatibility. Coverage includes actual Recorder reads, correction, restart and native chart rendering on exact supported HA environments.
+- Verify group and target native charts on 23/25-hour DST days and actual stored kWh/% units. An explicit admin-only fresh probe reads group membership and one profile day without importing data or sending email. Token service failures do not resend passwords; unsupported MFA/CAPTCHA requires human intervention.
+- Read the official maintenance ICS as context, distinguishing EDC-SAKU, SEBI and AFLEX. The private browser probe is bounded to 120 seconds, one concurrent process and five profile requests. Validation passed 38 real HA tests on each exact pair 2026.8.0/0.13.354 and 2026.10.1/0.13.372, plus 182 unit tests. Live authenticated EDC compatibility remains unverified without a dedicated fresh test session. The public portal worked locally but was transport-unavailable from the GitHub runner; ICS worked in both environments. An advisory job passing does not mean the live API is available. No live customer HA installation is upgraded by this release workflow.
 
 ## 0.2.4 – 2026-10-13
 
