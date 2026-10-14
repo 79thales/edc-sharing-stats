@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 ZERO = Decimal(0)
 MAX_PROFILE_DAYS = 31
@@ -14,6 +16,10 @@ MAX_PROFILE_DAYS = 31
 
 class IncompleteProfileLayoutError(ValueError):
     """EDC profile data does not contain both sides of electricity sharing."""
+
+
+class ProfileSchemaError(ValueError):
+    """Neplatné vzdálené doménové schéma, nikoli chyba Python typu volajícího."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +43,7 @@ class DailySharing:
     unused_overflow: Decimal
     coverage: Decimal
     consistency_difference: Decimal
+    complete: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +56,7 @@ class TargetDailySharing:
     grid_purchase: Decimal
     shared: Decimal
     coverage: Decimal
+    complete: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +69,7 @@ class TargetHourlySharing:
     grid_purchase: Decimal
     shared: Decimal
     coverage: Decimal
+    complete: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +85,7 @@ class HourlySharing:
     unused_overflow: Decimal
     coverage: Decimal
     consistency_difference: Decimal
+    complete: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,6 +269,187 @@ def report_date_range(
     raise ValueError(f"Unsupported report period: {period}")
 
 
+def validate_profile_response(response: Any) -> None:
+    """Ověřit významové schéma před změnou cache; nové volitelné klíče tolerovat.
+
+    Nula je platná kWh, chybějící/null hodnota nikoli. Úmyslně nepoužívat
+    hodnoty EANů ani chybného JSONu v textu výjimky. Platné prázdno má obě
+    seznamová pole; neznámé role/směry a krátké vektory znamenají změnu dat.
+    Jednostranný, ale jinak správný profil může předcházet vzniku sdílení.
+    """
+    if not isinstance(response, dict) or not isinstance(response.get("content"), list):
+        raise ProfileSchemaError("EDC změnilo strukturu profilových seznamů.")
+    # Kompatibilní starší prázdná odpověď content=[] bez valueColumns.
+    # Chybějící content nebo null sem úmyslně nepatří.
+    if response["content"] == [] and "valueColumns" not in response:
+        return
+    if not isinstance(response.get("valueColumns"), list):
+        raise ProfileSchemaError("EDC změnilo strukturu profilových seznamů.")
+    columns, content = response["valueColumns"], response["content"]
+    seen = set()
+    for column in columns:
+        if not isinstance(column, dict):
+            raise ProfileSchemaError("EDC vrátilo neplatný popis sloupce.")
+        ean, role, direction = column.get("ean"), column.get("type"), column.get("dir")
+        if (not isinstance(ean, str) or not ean.strip()
+                or role not in ("D", "O") or direction not in ("IN", "OUT")):
+            raise ValueError("EDC změnilo identifikaci nebo role sloupců.")
+        identity = (ean, role, direction)
+        if identity in seen:
+            raise ValueError("EDC vrátilo duplicitní sloupec.")
+        seen.add(identity)
+    roles = {role for _ean, role, _direction in seen}
+    for ean, role, _direction in seen:
+        if {direction for item_ean, item_role, direction in seen
+                if item_ean == ean and item_role == role} != {"IN", "OUT"} and roles == {"D", "O"}:
+            raise ValueError("EDC vrátilo neúplné směry měření.")
+    if content and not columns:
+        raise ValueError("EDC nevrátilo popis profilových dat.")
+    for row in content:
+        if not isinstance(row, dict) or not isinstance(row.get("date"), str):
+            raise ProfileSchemaError("EDC změnilo strukturu časových řádků.")
+        try:
+            if len(row["date"]) == 10:
+                date.fromisoformat(row["date"])
+            else:
+                datetime.fromisoformat(row["date"])
+        except ValueError:
+            raise ValueError("EDC vrátilo neplatný den profilu.") from None
+        values = row.get("values")
+        if not isinstance(values, list) or len(values) != len(columns):
+            raise ValueError("EDC vrátilo neúplný vektor hodnot.")
+        for value in values:
+            value = value.get("v") if isinstance(value, dict) else value
+            if value is None or isinstance(value, bool) or value == "":
+                raise ValueError("EDC vrátilo chybějící měřenou hodnotu.")
+            parsed = _decimal(value)
+            if not math.isfinite(float(parsed)):
+                raise ValueError("EDC vrátilo nekonečnou měřenou hodnotu.")
+            try:
+                if not Decimal(str(value)).is_finite():
+                    raise ValueError("EDC vrátilo nekonečnou měřenou hodnotu.")
+            except InvalidOperation:
+                raise ValueError("EDC vrátilo neplatnou číselnou hodnotu.") from None
+
+
+def profile_resolution(response: dict[str, Any]) -> str:
+    """Rozpoznat délku intervalů bez domýšlení denního součtu jako hodiny.
+
+    Bez času jde o denní řádky. End 24:00:00 je doložený konec dne; pro
+    intervaly přijímat 15/60 minut. Starší odpověď bez end lze rozpoznat jako
+    čtvrthodinovou jen podle skutečných nenulových minut. Samé celé hodiny
+    bez konce jsou nejednoznačné a do hodinových statistik se nezapisují.
+    """
+    content = response["content"]
+    if not content:
+        return "empty"
+    durations: set[int] = set()
+    missing_end = False
+    starts: list[int] = []
+    for row in content:
+        if not row.get("start"):
+            durations.add(1440)
+            continue
+        try:
+            parts = str(row["start"]).split(":")
+            hour, minute, second = map(int, parts)
+            if not (0 <= hour < 24 and 0 <= minute < 60 and second == 0):
+                return "unknown"
+            start = hour * 60 + minute
+            starts.append(start)
+            if not row.get("end"):
+                missing_end = True
+                continue
+            end_hour, end_minute, end_second = map(int, str(row["end"]).split(":"))
+            if not (0 <= end_hour <= 24 and 0 <= end_minute < 60 and end_second == 0
+                    and (end_hour != 24 or end_minute == 0)):
+                return "unknown"
+            end = end_hour * 60 + end_minute
+            duration = (end - start) % 1440 or 1440
+            if duration not in (15, 60, 1440):
+                # Přechod DST může na hodinách přeskočit/vrátit 60 minut.
+                # Přijmout jen jednoznačně doložitelnou UTC délku, ne odhad.
+                local_tz = ZoneInfo("Europe/Prague")
+                day = date.fromisoformat(row["date"][:10])
+                local_start = datetime.combine(day, datetime.min.time()) + timedelta(minutes=start)
+                local_end = datetime.combine(day, datetime.min.time()) + timedelta(minutes=end)
+                possible = set()
+                for start_fold in (0, 1):
+                    for end_fold in (0, 1):
+                        left = local_start.replace(tzinfo=local_tz, fold=start_fold)
+                        right = local_end.replace(tzinfo=local_tz, fold=end_fold)
+                        if (left.astimezone(UTC).astimezone(local_tz).replace(tzinfo=None) == local_start
+                                and right.astimezone(UTC).astimezone(local_tz).replace(tzinfo=None) == local_end):
+                            minutes = (right.astimezone(UTC) - left.astimezone(UTC)).total_seconds() / 60
+                            if minutes in (15, 60):
+                                possible.add(int(minutes))
+                if len(possible) != 1:
+                    return "unknown"
+                duration = possible.pop()
+            durations.add(duration)
+        except (TypeError, ValueError, ZoneInfoNotFoundError):
+            return "unknown"
+    if missing_end:
+        if any(start % 60 for start in starts) and all(start % 15 == 0 for start in starts):
+            durations.add(15)
+        else:
+            return "unknown"
+    return {frozenset({15}): "quarter_hour", frozenset({60}): "hour",
+            frozenset({1440}): "daily"}.get(frozenset(durations), "unknown")
+
+
+def _hour_completeness(response: dict[str, Any]) -> dict[tuple[date, int], bool]:
+    """Označit hodiny s celými sloty; chybějící čtvrthodina není nulová kWh.
+
+    Opakování DST řeší parser pomocí UTC; mapa ověřuje přítomnost minut.
+    Denní a nerozpoznané rozlišení nikdy neposkytuje úplnou hodinu.
+    """
+    resolution = profile_resolution(response)
+    slots: dict[tuple[date, int], set[int]] = {}
+    if resolution not in ("quarter_hour", "hour"):
+        return slots
+    for row in response["content"]:
+        hour, minute, _second = map(int, row["start"].split(":"))
+        key = (date.fromisoformat(row["date"][:10]), hour)
+        slots.setdefault(key, set()).add(minute)
+    expected = {0, 15, 30, 45} if resolution == "quarter_hour" else {0}
+    return {key: minutes == expected for key, minutes in slots.items()}
+
+
+def _day_completeness(response: dict[str, Any], day: date,
+                      hours: tuple[HourlySharing, ...] = ()) -> bool:
+    """Ověřit všechny sloty místního dne pomocí databáze pásma Europe/Prague.
+
+    Nezakódovat pravidla DST: rozdíl UTC půlnocí dává 23/24/25 hodin.
+    Chybějící tzdata je neověřená úplnost, nikoli domnělých 24 hodin.
+    """
+    resolution = profile_resolution(response)
+    rows = [row for row in response["content"] if row["date"][:10] == day.isoformat()]
+    if resolution == "daily":
+        return len(rows) == 1
+    try:
+        local_tz = ZoneInfo("Europe/Prague")
+    except ZoneInfoNotFoundError:
+        return False
+    start = datetime.combine(day, datetime.min.time(), tzinfo=local_tz).astimezone(UTC)
+    stop = datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=local_tz).astimezone(UTC)
+    expected = (stop - start).total_seconds() / 3600
+    expected_hours = {start + timedelta(hours=index) for index in range(int(expected))}
+    actual_hours = {row.start for row in hours if start <= row.start < stop and row.complete}
+    return resolution in ("quarter_hour", "hour") and actual_hours == expected_hours
+
+
+def _profile_complete_hours(response: dict[str, Any]) -> tuple[HourlySharing, ...]:
+    """Jednou na celý blok ověřit UTC hodiny, včetně oddělených DST foldů."""
+    if profile_resolution(response) not in ("quarter_hour", "hour"):
+        return ()
+    try:
+        local_tz = ZoneInfo("Europe/Prague")
+    except ZoneInfoNotFoundError:
+        return ()
+    return parse_hourly_profile(response, local_tz=local_tz)
+
+
 def _profile_layout(
     response: dict[str, Any],
 ) -> tuple[
@@ -268,8 +459,9 @@ def _profile_layout(
     dict[str, dict[str, int]],
 ]:
     """Return content and the producer/consumer column mappings."""
-    columns = response.get("valueColumns") or []
-    content = response.get("content") or []
+    validate_profile_response(response)
+    columns = response.get("valueColumns", [])
+    content = response["content"]
     if not content:
         return columns, content, {}, {}
     if not columns:
@@ -385,6 +577,7 @@ def parse_daily_profile(response: dict[str, Any]) -> tuple[DailySharing, ...]:
     # sharing totals; otherwise the coordinator would retain only the final
     # interval of each day.
     values_by_day = _daily_value_totals(columns, content)
+    complete_hours = _profile_complete_hours(response)
 
     daily: list[DailySharing] = []
     for item_date in sorted(values_by_day):
@@ -400,6 +593,7 @@ def parse_daily_profile(response: dict[str, Any]) -> tuple[DailySharing, ...]:
                 unused_overflow=values[5],
                 coverage=values[6],
                 consistency_difference=values[7],
+                complete=_day_completeness(response, item_date, complete_hours),
             )
         )
 
@@ -415,6 +609,7 @@ def parse_daily_target_profiles(
         return ()
 
     values_by_day = _daily_value_totals(columns, content)
+    complete_hours = _profile_complete_hours(response)
     daily: list[TargetDailySharing] = []
     for item_date in sorted(values_by_day):
         values = values_by_day[item_date]
@@ -428,6 +623,7 @@ def parse_daily_target_profiles(
                     grid_purchase=grid_purchase,
                     shared=shared,
                     coverage=coverage,
+                    complete=_day_completeness(response, item_date, complete_hours),
                 )
             )
     return tuple(daily)
@@ -458,6 +654,8 @@ def _local_hour_as_utc(
         and second_exists
         and first.utcoffset() != second.utcoffset()
     )
+    if occurrence > 1 or (occurrence and not ambiguous):
+        raise ValueError("EDC vrátilo nerozlišitelné duplicitní časové intervaly.")
     resolved = second if ambiguous and occurrence else first
     return resolved.astimezone(UTC)
 
@@ -470,7 +668,13 @@ def parse_hourly_profile(
     if not content:
         return ()
 
+    completeness = _hour_completeness(response)
+    if not completeness:
+        return ()
+    expected_slots = {0, 15, 30, 45} if profile_resolution(response) == "quarter_hour" else {0}
+
     values_by_hour: dict[datetime, list[Decimal]] = {}
+    hour_slots: dict[datetime, set[int]] = {}
     interval_occurrences: dict[tuple[date, str], int] = {}
     for item in content:
         start_text = str(item.get("start") or "")
@@ -483,6 +687,8 @@ def parse_hourly_profile(
         item_date = date.fromisoformat(str(item["date"])[:10])
         interval_key = (item_date, start_text)
         occurrence = interval_occurrences.get(interval_key, 0)
+        if occurrence and local_tz is None:
+            raise ValueError("Duplicitní interval vyžaduje ověření časového pásma.")
         interval_occurrences[interval_key] = occurrence + 1
         local_hour = datetime.combine(item_date, datetime.min.time()).replace(hour=hour)
         hour_start = (
@@ -491,6 +697,7 @@ def parse_hourly_profile(
             else local_hour
         )
         totals = values_by_hour.setdefault(hour_start, [ZERO] * len(columns))
+        hour_slots.setdefault(hour_start, set()).add(int(start_text.split(":")[1]))
         _add_values(totals, item.get("values") or [], len(columns))
 
     hourly: list[HourlySharing] = []
@@ -507,6 +714,7 @@ def parse_hourly_profile(
                 unused_overflow=values[5],
                 coverage=values[6],
                 consistency_difference=values[7],
+                complete=hour_slots[hour_start] == expected_slots,
             )
         )
     return tuple(hourly)
@@ -520,7 +728,13 @@ def parse_hourly_target_profiles(
     if not content:
         return ()
 
+    completeness = _hour_completeness(response)
+    if not completeness:
+        return ()
+    expected_slots = {0, 15, 30, 45} if profile_resolution(response) == "quarter_hour" else {0}
+
     values_by_hour: dict[datetime, list[Decimal]] = {}
+    hour_slots: dict[datetime, set[int]] = {}
     interval_occurrences: dict[tuple[date, str], int] = {}
     for item in content:
         start_text = str(item.get("start") or "")
@@ -533,6 +747,8 @@ def parse_hourly_target_profiles(
         item_date = date.fromisoformat(str(item["date"])[:10])
         interval_key = (item_date, start_text)
         occurrence = interval_occurrences.get(interval_key, 0)
+        if occurrence and local_tz is None:
+            raise ValueError("Duplicitní interval vyžaduje ověření časového pásma.")
         interval_occurrences[interval_key] = occurrence + 1
         local_hour = datetime.combine(item_date, datetime.min.time()).replace(hour=hour)
         hour_start = (
@@ -541,6 +757,7 @@ def parse_hourly_target_profiles(
             else local_hour
         )
         totals = values_by_hour.setdefault(hour_start, [ZERO] * len(columns))
+        hour_slots.setdefault(hour_start, set()).add(int(start_text.split(":")[1]))
         _add_values(totals, item.get("values") or [], len(columns))
 
     hourly: list[TargetHourlySharing] = []
@@ -556,6 +773,7 @@ def parse_hourly_target_profiles(
                     grid_purchase=grid_purchase,
                     shared=shared,
                     coverage=coverage,
+                    complete=hour_slots[hour_start] == expected_slots,
                 )
             )
     return tuple(hourly)
@@ -565,7 +783,7 @@ def calculate_target_period_summary(
     days: tuple[TargetDailySharing, ...], sale_price: Decimal
 ) -> TargetPeriodSummary:
     """Sum available rows for one target EAN without rounding inputs."""
-    ordered = tuple(sorted(days, key=lambda row: row.day))
+    ordered = tuple(sorted((row for row in days if row.complete), key=lambda row: row.day))
     consumption = sum((row.consumption for row in ordered), ZERO)
     shared = sum((row.shared for row in ordered), ZERO)
     return TargetPeriodSummary(
@@ -587,7 +805,7 @@ def calculate_target_statistics(
     today: date,
 ) -> TargetSharingStatistics:
     """Calculate latest and calendar summaries for one target EAN."""
-    available = tuple(sorted((row for row in days if row.day <= today), key=lambda row: row.day))
+    available = tuple(sorted((row for row in days if row.complete and row.day <= today), key=lambda row: row.day))
     latest = calculate_target_period_summary(
         (available[-1],) if available else (), sale_price
     )
@@ -624,7 +842,7 @@ def calculate_statistics(
     target_prices: Mapping[str, Decimal] | None = None,
 ) -> SharingStatistics:
     """Calculate current values from already parsed daily rows."""
-    daily = sorted(days, key=lambda row: row.day)
+    daily = sorted((row for row in days if row.complete), key=lambda row: row.day)
     empty_today = DailySharing(today, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO)
     today_row = next((row for row in daily if row.day == today), empty_today)
     available_rows = [row for row in daily if row.day <= today]
@@ -687,6 +905,7 @@ def calculate_period_summary(
     days: tuple[DailySharing, ...], sale_price: Decimal
 ) -> PeriodSummary:
     """Sum daily rows for an arbitrary report period."""
+    days = tuple(row for row in days if row.complete)
     consumption = sum((row.consumption for row in days), ZERO)
     shared = sum((row.shared for row in days), ZERO)
     return PeriodSummary(

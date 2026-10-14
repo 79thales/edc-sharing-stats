@@ -1,5 +1,23 @@
 # Přehled změn / Changelog
 
+## Unreleased – odolnost API a ověření hodinových statistik
+
+### Čeština
+
+- Validace požadavků a odpovědí: neplatné skupiny se odmítají před sítí, chybějící/null/nekonečné hodnoty a změny významových polí se nepřevádějí na nulu. Denní součet se nezapisuje jako půlnoční hodina; neúplné hodiny/dny se nezapočítávají jako kompletní data. Neověřený historický blok neposune kurzor backfillu.
+- Rozlišení validace, autentizace, oprávnění, dočasné nedostupnosti, omezení frekvence a změny kontraktu. HTTP 400/422 nemá okamžité retry; dočasná chyba čtení má nejvýše dva dodatečné pokusy (5/30 sekund s rozptylem). Serverový Retry-After se respektuje. Čekání se sdílí mezi skupinami, nastavením, reporty i backfillem a ukládá se bez hesel/tokenů. Prošlý API token se obnovuje jednou; odmítnuté heslo se znovu neposílá.
+- Administrátorská čtecí kontrola `edc_sharing/statistics/health` vrací počty skutečně uložených bodů. Odděluje chybějící statistiku, prázdné období a existující body od samotného zařazení do fronty. Sdílitelná diagnostika používá whitelist bez osobních údajů a bankovních účtů.
+- Generátor zachovává Přehled a Detaily, do detailů přidává skupinové a individuální hodinové průběhy posledních tří dnů. Samostatná podstránka nabízí nativní výběr dne bez ovlivnění výchozího přehledu. Aktualizován distribuovaný příklad; existující dashboard se automaticky nepřepisuje.
+- Veřejný monitor rozpoznává nový build portálu jako podnět ke kontrole, nikoli důkaz nekompatibility API. Soukromý průchod kontroluje aktivní prvky a skutečný požadavek po zobrazení tabulky; je vypnutý do spuštění s testovací session. Disabled/inconclusive/unavailable nejsou ověření živého API.
+- Nové regresní scénáře a skutečné testy Recorderu, čtení bodů přes frontendové API, opakovaného importu, korekce, restartu a vykreslení nativního grafu. CI zachovává přesné minimum a nejnovější stabilní HA. Konkrétní provedené kontroly jsou v dokumentaci implementace; unit testy samotné nepotvrzují funkčnost živého EDC.
+
+### English
+
+- Validate request types and response semantics before publishing data. Missing, null and non-finite values are not zero; daily totals do not become midnight hours, incomplete periods are excluded, and unverified history does not advance the cursor.
+- Classify failures, bound read retries, honor Retry-After and share persistent cooldowns across groups and configuration flows. Refresh an expired API token once without repeating rejected credentials.
+- Add admin-only read-only Recorder health inspection and an allowlisted diagnostic export. Generated details include group/target hourly charts and a separate selected-period subview.
+- Add advisory public build observation and an opt-in private portal workflow probe. Neither a changed build nor disabled/inconclusive checks confirm live API compatibility. Coverage includes actual Recorder reads, correction, restart and native chart rendering on exact supported HA environments.
+
 ## 0.2.4 – 2026-10-13
 
 ### Čeština

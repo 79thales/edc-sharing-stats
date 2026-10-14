@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 PANEL_PATH = "edc-sharing-dashboard"
@@ -58,6 +58,7 @@ class DashboardTarget:
 
     name: str
     entities: Mapping[str, str]
+    statistics: Mapping[str, str] = field(default_factory=dict)
 
 
 def validate_dashboard_name(title: str, url_path: str) -> None:
@@ -136,12 +137,18 @@ def build_dashboard(
         ]
 
     def graph(
-        period: str, days: int, cs: str, en: str, metrics: tuple[str, ...]
+        period: str,
+        days: int,
+        cs: str,
+        en: str,
+        metrics: tuple[str, ...],
+        source: Mapping[str, str] | None = None,
     ) -> list[dict]:
+        source = statistics if source is None else source
         series = [
-            {"entity": statistics[f"{metric}_{period}"], "name": text(*labels[metric])}
+            {"entity": source[f"{metric}_{period}"], "name": text(*labels[metric])}
             for metric in metrics
-            if statistics.get(f"{metric}_{period}")
+            if source.get(f"{metric}_{period}")
         ]
         return (
             [
@@ -652,4 +659,89 @@ def build_dashboard(
                 ],
             }
         )
+    if include_details:
+        # Výchozí detaily mají poslední tři dny, tedy i zpožděná data EDC.
+        # Nativní volba dne je samostatná podstránka: její dnešní výchozí
+        # období nesmí potlačit tento základní přehled.
+        groups = [(text("Celá skupina", "Whole group"), statistics)] + [
+            (target.name, target.statistics) for target in targets
+        ]
+        selected_sections = []
+        collection = "energy_edc_" + url_path.replace("-", "_") + "_hours"
+        for name, source in groups:
+            cards = graph(
+                "hourly",
+                3,
+                f"Sdílení, spotřeba a síť – {name}",
+                f"Sharing, consumption and grid – {name}",
+                ("shared", "consumption", "grid"),
+                source,
+            )
+            cards += graph(
+                "hourly",
+                3,
+                f"Pokrytí sdílením – {name}",
+                f"Sharing coverage – {name}",
+                ("coverage",),
+                source,
+            )
+            if not cards:
+                continue
+            for card in cards:
+                card["min_y_axis"] = 0
+                if len(card["entities"]) == 1 and card["entities"][0][
+                    "entity"
+                ].endswith("_coverage_hourly"):
+                    card["max_y_axis"] = 100
+            views[1]["sections"].append(section(cards))
+            selected = json.loads(json.dumps(cards))
+            for card in selected:
+                card.update(energy_date_selection=True, collection_key=collection)
+            selected_sections.append(section(selected))
+        if selected_sections:
+            views[1]["sections"].append(
+                section(
+                    [
+                        {
+                            "type": "button",
+                            "name": text(
+                                "Vybrat den hodinových grafů", "Select hourly chart day"
+                            ),
+                            "icon": "mdi:calendar-search",
+                            "tap_action": {
+                                "action": "navigate",
+                                "navigation_path": f"/{url_path}/hourly-date",
+                            },
+                        }
+                    ]
+                )
+            )
+            views.append(
+                {
+                    "title": text("Hodiny – vybrané období", "Hours – selected period"),
+                    "path": "hourly-date",
+                    "subview": True,
+                    "back_path": f"/{url_path}/details",
+                    "type": "sections",
+                    "max_columns": 4,
+                    "sections": [
+                        section(
+                            [
+                                {
+                                    "type": "energy-date-selection",
+                                    "collection_key": collection,
+                                },
+                                {
+                                    "type": "markdown",
+                                    "content": text(
+                                        "Vyberte minulý den: EDC zveřejňuje data se zpožděním. Každý bod je energie za hodinu (kWh); pokrytí je procento. Prázdné období není nula. Výchozí detaily zobrazují poslední tři dny.",
+                                        "Select a past day: EDC publishes delayed data. Points are hourly energy (kWh); coverage is percent. An empty period is not zero. Default details display the last three days.",
+                                    ),
+                                },
+                            ]
+                        ),
+                        *selected_sections,
+                    ],
+                }
+            )
     return {"title": title.strip(), "views": views}

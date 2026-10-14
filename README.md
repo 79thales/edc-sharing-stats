@@ -39,6 +39,18 @@ If EDC rejects a request, diagnostics preserve the HTTP status and may show the 
 
 The download badges count only downloads of the `edc_sharing.zip` release asset, including HACS updates and manual downloads. They do not count unique users, source-code archives or default-branch installations. Counting starts with v0.1.32; earlier downloads cannot be reconstructed. HACS's download indicator refers to the selected release, while the total badge combines installer downloads across releases. GitHub, HACS and badge caches may update at different times. No usage tracking is added to the integration.
 
+### Odolnost API a diagnostika (vývojová větev, dosud nevydáno)
+
+Nová kontrola odmítá změněné schéma a chybějící hodnoty před uložením. Denní součet není hodinová hodnota. Chybějící čtvrthodina nezíská automaticky nulovou spotřebu a neúplný den se nepoužije jako kompletní podklad vyúčtování. Dříve uložené doklady a potvrzené platby se nepřepočítávají. Jednostranný historický profil bez potvrzené platnosti sdílení neposune kurzor jako úspěšně prohledaný blok.
+
+400/422 se neopakuje ihned; běžné čekání je hodina. Změna kontraktu nebo zákaz přístupu má čekání šest hodin. Dočasné selhání čtecího požadavku má nejvýše dva dodatečné pokusy za přibližně 5/30 sekund; platný serverový `Retry-After` určuje povolený další pokus. Omezení platí pro celý účet u dočasné nedostupnosti/429, u validace pro skupinu a endpoint. Sdílí je i nastavovací průvodce. Restart zachová UTC termín a běžící lhůtu chrání monotónní čas. Ruční načtení zákaz neobchází. Tyto intervaly jsou politikou integrace, ne tvrzením o oficiálních limitech EDC.
+
+Správce může přes přihlášené HA WebSocket API použít čtecí příkaz `edc_sharing/statistics/health` s `entry_id` a volitelnými `date_from`/`date_to` ve formátu ISO. Konec je bez posledního dne, maximálně 31 dnů. Bez období se čte poslední datový den. Výsledek vrací skutečné počty bodů, jednotky a první/poslední čas. ID jsou externí statistiky; běžná entita k nim nemusí existovat. Akce nevolá EDC. Sdílitelný export diagnostiky vynechává EANy, identity, bankovní účty a doklady.
+
+Nově vygenerované Detaily mají hodinové grafy posledních tří dnů pro skupinu i jednotlivá místa. Tlačítko **Vybrat den hodinových grafů** otevře samostatnou podstránku. Zvolte minulý den: EDC publikuje se zpožděním. Výběr dne nepřepíná ostatní Energy přehledy. Aktualizace existující dashboard sama nepřepisuje; použijte generátor nebo [distribuovaný příklad](examples/dashboard-hourly.yaml).
+
+Nástroje pro vývojáře, postup ověření a přejímací matice jsou v [návodu kontroly API](docs-api-resilience.md). Veřejný otisk je reference zachycená 14. 10. 2026 a ověřuje pouze veřejný build. Přihlášená kontrola portálu je výchozím stavem vypnutá; její neprovedení není úspěšná kontrola API. Playwright není závislost produkční integrace.
+
 ### Per-target hourly history (v0.2.0)
 
 Each target now has group-scoped external statistics for shared electricity, consumption, grid import (kWh) and sharing coverage (%): `edc_sharing:<group>_<EAN>_<metric>_hourly`, where the metric is `shared`, `consumption`, `grid` or `coverage`. The corresponding latest-day sensor exposes its exact `hourly_statistic_id`. Select hourly periods and `mean` for hourly charts: these are interval values, not cumulative `sum` counters or live power. Coverage is calculated from hourly energy totals, not averaged quarter-hour percentages. Use existing daily aggregates for daily totals and coverage. EDC's usual reporting delay still applies.

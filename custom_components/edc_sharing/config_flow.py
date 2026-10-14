@@ -11,9 +11,9 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFl
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
 from homeassistant.helpers import selector
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import EdcApiClient, EdcApiError, EdcAuthenticationError
+from .api import EdcApiError, EdcAuthenticationError
+from .connection import async_get_api_client
 from .billing import PANEL_PATH as BILLING_PANEL_PATH
 from .const import (
     CONF_DAILY_REPORT,
@@ -59,13 +59,8 @@ class EdcSharingConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            api = EdcApiClient(
-                async_get_clientsession(self.hass),
-                user_input[CONF_USERNAME],
-                user_input[CONF_PASSWORD],
-            )
             try:
-                await api.async_login()
+                api = await async_get_api_client(self.hass, user_input[CONF_USERNAME], user_input[CONF_PASSWORD])
                 groups = await api.async_get_groups()
             except EdcAuthenticationError:
                 errors["base"] = "invalid_auth"
@@ -460,12 +455,8 @@ class EdcSharingOptionsFlow(ProfileOptionsMixin, OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
-        api = EdcApiClient(
-            async_get_clientsession(self.hass),
-            self._entry.data[CONF_USERNAME],
-            self._entry.data[CONF_PASSWORD],
-        )
         try:
+            api = await async_get_api_client(self.hass, self._entry.data[CONF_USERNAME], self._entry.data[CONF_PASSWORD])
             groups = await api.async_get_groups()
             choices = {
                 str(item["sseId"]): str(item.get("name") or item["sseId"])

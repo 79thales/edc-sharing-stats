@@ -1,0 +1,78 @@
+# Příklad doplňku generátoru: Přehled → Detaily (poslední 3 dny) → vlastní den.
+# ID 1/example_target jsou syntetická. Nahraďte je ID vlastních externích
+# statistik. mean v kWh představuje energii jedné hodiny, coverage je %.
+# Výběr dne řídí jen poslední podstránku. Prázdné období není nula.
+title: EDC – hodinové průběhy
+views:
+  - title: Přehled
+    path: overview
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: button
+            name: Detaily
+            tap_action: {action: navigate, navigation_path: /edc-example/details}
+  - title: Detaily
+    path: details
+    subview: true
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          # Zahrnuje zpožděná data, výchozí denní volba je neomezí.
+          - type: statistics-graph
+            title: Sdílení, spotřeba a síť – Celá skupina
+            chart_type: line
+            period: hour
+            days_to_show: 3
+            stat_types: [mean]
+            entities:
+              - entity: edc_sharing:1_shared_hourly
+                name: Nasdíleno
+              - entity: edc_sharing:1_consumption_hourly
+                name: Spotřeba
+              - entity: edc_sharing:1_grid_hourly
+                name: Ze sítě
+          - type: button
+            name: Vybrat den hodinových grafů
+            tap_action: {action: navigate, navigation_path: /edc-example/hourly-date}
+  - title: Hodiny – vybrané období
+    path: hourly-date
+    subview: true
+    back_path: /edc-example/details
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          # Stejný klíč výběru a grafů; nezávislý na ostatních Energy přehledech.
+          - type: energy-date-selection
+            collection_key: energy_edc_edc_example_hours
+          - type: markdown
+            content: Vyberte minulý den. EDC zveřejňuje data se zpožděním.
+          - type: statistics-graph
+            title: Sdílení – cílové místo
+            chart_type: line
+            period: hour
+            stat_types: [mean]
+            energy_date_selection: true
+            collection_key: energy_edc_edc_example_hours
+            entities:
+              - entity: edc_sharing:1_example_target_shared_hourly
+                name: Nasdíleno
+              - entity: edc_sharing:1_example_target_consumption_hourly
+                name: Spotřeba
+              - entity: edc_sharing:1_example_target_grid_hourly
+                name: Ze sítě
+          - type: statistics-graph
+            title: Pokrytí sdílením – cílové místo
+            chart_type: line
+            period: hour
+            stat_types: [mean]
+            min_y_axis: 0
+            max_y_axis: 100
+            energy_date_selection: true
+            collection_key: energy_edc_edc_example_hours
+            entities:
+              - entity: edc_sharing:1_example_target_coverage_hourly
+                name: Pokrytí sdílením

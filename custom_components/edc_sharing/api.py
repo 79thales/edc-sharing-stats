@@ -8,45 +8,89 @@ import hashlib
 import html
 import json
 import os
+import random
 import re
 import time
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
-from .calculation import MAX_PROFILE_DAYS
+from .api_policy import (
+    ApiAccountState,
+    EdcAccessExpiredError,
+    EdcApiError,
+    EdcAuthenticationError,
+    classify_api_failure,
+    retry_after,
+)
+from .calculation import MAX_PROFILE_DAYS, profile_resolution, validate_profile_response
 from .const import API_BASE_URL, AUTHORITY_URL, CLIENT_ID, REDIRECT_URI
 
 REQUEST_TIMEOUT = ClientTimeout(total=30)
 ERROR_BODY_LIMIT = 16 * 1024
 # Diagnostika smí zobrazit jen pevně známé kódy a názvy polí. Volné zprávy,
 # hodnoty, identifikátory skupin/EANů ani přihlašovací údaje se nikdy nevypisují.
-SAFE_ERROR_CODES = frozenset({
-    "INVALID_DATE", "INVALID_ENTERED_DATE", "MAX_PERIOD_RANGE",
-    "MAX_PERIOD_RANGE_FOR_EXPORT", "MISSING_DATA_FOR_PERIOD", "NOT_EMPTY",
-    "NOT_FOUND", "MAX_LENGTH", "MIN_LENGTH", "NUMBER_BETWEEN",
-    "INTERNAL_ERROR", "TIME_INTERVAL_EXCEEDS_LIMIT",
-    "PRODUCER_IS_NOT_VALID_WHOLE_PERIOD",
-})
-SAFE_ERROR_FIELDS = frozenset({
-    "sseId", "eans", "dateFrom", "dateTo", "calculationType", "inputData",
-    "outputData", "fileName", "currentEnteredDateTime",
-})
-SAFE_API_PATHS = frozenset({
-    "/profiles-data/get-sse", "/profiles-data/standard/overview",
-})
+SAFE_ERROR_CODES = frozenset(
+    {
+        "INVALID_DATE",
+        "INVALID_ENTERED_DATE",
+        "MAX_PERIOD_RANGE",
+        "MAX_PERIOD_RANGE_FOR_EXPORT",
+        "MISSING_DATA_FOR_PERIOD",
+        "NOT_EMPTY",
+        "NOT_FOUND",
+        "MAX_LENGTH",
+        "MIN_LENGTH",
+        "NUMBER_BETWEEN",
+        "INTERNAL_ERROR",
+        "TIME_INTERVAL_EXCEEDS_LIMIT",
+        "PRODUCER_IS_NOT_VALID_WHOLE_PERIOD",
+    }
+)
+SAFE_ERROR_FIELDS = frozenset(
+    {
+        "sseId",
+        "eans",
+        "dateFrom",
+        "dateTo",
+        "calculationType",
+        "inputData",
+        "outputData",
+        "fileName",
+        "currentEnteredDateTime",
+    }
+)
+SAFE_API_PATHS = frozenset(
+    {
+        "/profiles-data/get-sse",
+        "/profiles-data/standard/overview",
+    }
+)
 
 
-class EdcApiError(Exception):
-    """Base EDC API error."""
-
-
-class EdcAuthenticationError(EdcApiError):
-    """Authentication failed."""
+def build_profile_request(
+    sse_id: int, date_from: date, date_to: date
+) -> dict[str, Any]:
+    """Jediný builder pro místní [od, do); bez přihlášení a vedlejších účinků."""
+    if type(sse_id) is not int or sse_id <= 0:
+        raise ValueError("Profil EDC vyžaduje kladné celočíselné ID skupiny.")
+    if type(date_from) is not date or type(date_to) is not date:
+        raise ValueError("Profil EDC vyžaduje kalendářní data bez času.")
+    if not 1 <= (date_to - date_from).days <= MAX_PROFILE_DAYS:
+        raise ValueError("Profil EDC vyžaduje rozsah 1 až 31 kalendářních dnů.")
+    return {
+        "sseId": sse_id,
+        "calculationType": "DAILY",
+        "inputData": True,
+        "outputData": True,
+        "dateFrom": date_from.isoformat(),
+        "dateTo": (date_to - timedelta(days=1)).isoformat(),
+        "fileName": "_",
+    }
 
 
 class _LoginFormParser(HTMLParser):
@@ -59,7 +103,7 @@ class _LoginFormParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attributes = dict(attrs)
-        if tag == "form" and (attributes.get("id") == "kc-form-login" or self.action is None):
+        if tag == "form" and attributes.get("id") == "kc-form-login":
             if attributes.get("id") == "kc-form-login":
                 self.fields.clear()
                 self._target_form = True
@@ -76,14 +120,23 @@ class _LoginFormParser(HTMLParser):
 class EdcApiClient:
     """Client using the same public OIDC PKCE flow as portal.edc-cr.cz."""
 
-    def __init__(self, session: ClientSession, username: str, password: str) -> None:
+    def __init__(
+        self,
+        session: ClientSession,
+        username: str,
+        password: str,
+        account_state: ApiAccountState | None = None,
+    ) -> None:
         self._session = session
         self._username = username
         self._password = password
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self._expires_at = 0.0
-        self._request_lock = asyncio.Lock()
+        self.account_state = account_state or ApiAccountState()
+        self._request_lock = self.account_state.lock
+        self.last_failure_category: str | None = None
+        self.last_status: int | None = None
 
     async def async_login(self) -> None:
         verifier = _base64url(os.urandom(48))
@@ -100,6 +153,8 @@ class EdcApiClient:
             "state": state,
             "nonce": _base64url(os.urandom(24)),
         }
+        response = None
+        login_response = None
         try:
             response = await self._session.get(
                 f"{AUTHORITY_URL}/protocol/openid-connect/auth?{urlencode(params)}",
@@ -114,39 +169,51 @@ class EdcApiClient:
                 await self._async_exchange_code(code, verifier)
                 return
             if response.status >= 400:
-                raise EdcApiError(f"Přihlašovací stránka EDC vrátila HTTP {response.status}.")
+                response.release()
+                raise EdcApiError(
+                    f"Přihlašovací stránka EDC vrátila HTTP {response.status}."
+                )
             response_text = await response.text()
+            response.release()
             parser = _LoginFormParser()
             parser.feed(response_text)
-            login_action = parser.action or _extract_keycloak_value(response_text, "loginAction")
+            login_action = parser.action or _extract_keycloak_value(
+                response_text, "loginAction"
+            )
             if not login_action:
                 raise EdcApiError(
-                    "Přihlašovací stránka EDC neobsahuje adresu loginAction."
+                    "Přihlašovací stránka EDC neobsahuje adresu loginAction.",
+                    category="contract",
                 )
             form = parser.fields | {
                 "username": self._username,
                 "password": self._password,
                 "credentialId": "",
             }
+            login_target = urljoin(str(response.url), login_action)
+            self._validate_login_target(login_target)
             login_response = await self._session.post(
-                urljoin(str(response.url), login_action),
+                login_target,
                 data=form,
                 allow_redirects=False,
                 timeout=REQUEST_TIMEOUT,
             )
-            login_response, location = await self._async_follow_login_redirects(login_response)
+            login_response, location = await self._async_follow_login_redirects(
+                login_response
+            )
             redirect_query = parse_qs(urlparse(location).query)
             code = redirect_query.get("code", [None])[0]
             if not code:
                 login_error = _extract_keycloak_error(await login_response.text())
+                login_response.release()
                 if login_error and _is_invalid_credentials_error(login_error):
-                    raise EdcAuthenticationError(login_error)
+                    raise EdcAuthenticationError("Neplatné jméno nebo heslo EDC.")
                 if login_response.status >= 400:
                     raise EdcApiError(
                         f"Přihlášení EDC vrátilo HTTP {login_response.status}."
                     )
                 raise EdcApiError(
-                    login_error or "EDC přihlášení nedokončilo přesměrováním."
+                    "EDC přihlášení nedokončilo přesměrováním.", category="contract"
                 )
             self._validate_authorization_redirect(redirect_query, state)
             await self._async_exchange_code(code, verifier)
@@ -154,24 +221,45 @@ class EdcApiClient:
             raise
         except (ClientError, TimeoutError, ValueError):
             raise EdcApiError("Spojení s EDC selhalo.") from None
+        finally:
+            for result in (response, login_response):
+                if result is not None:
+                    result.release()
 
-    async def _async_follow_login_redirects(
-        self, response: Any
-    ) -> tuple[Any, str]:
+    async def _async_follow_login_redirects(self, response: Any) -> tuple[Any, str]:
         """Follow Keycloak redirects while preserving the authorization callback."""
         location = response.headers.get("Location", "")
         for _ in range(5):
             if parse_qs(urlparse(location).query).get("code"):
+                response.release()
+                self._validate_login_target(location, callback=True)
                 break
             if response.status not in (301, 302, 303, 307, 308) or not location:
                 break
+            target = urljoin(str(response.url), location)
+            response.release()
+            self._validate_login_target(target)
             response = await self._session.get(
-                urljoin(str(response.url), location),
+                target,
                 allow_redirects=False,
                 timeout=REQUEST_TIMEOUT,
             )
             location = response.headers.get("Location", "")
         return response, location
+
+    @staticmethod
+    def _validate_login_target(target: str, *, callback: bool = False) -> None:
+        """Heslo/token nikdy neposílat na cizí origin získaný z HTML či redirectu."""
+        parsed = urlparse(target)
+        allowed = urlparse(REDIRECT_URI if callback else AUTHORITY_URL)
+        if (
+            parsed.scheme != "https"
+            or parsed.netloc.lower() != allowed.netloc.lower()
+            or parsed.username is not None
+            or parsed.password is not None
+            or (callback and parsed.path != allowed.path)
+        ):
+            raise EdcApiError("EDC změnilo cíl přihlašování.", category="contract")
 
     @staticmethod
     def _validate_authorization_redirect(
@@ -192,9 +280,12 @@ class EdcApiClient:
             },
             timeout=REQUEST_TIMEOUT,
         )
-        if token_response.status != 200:
-            raise EdcAuthenticationError("Přihlášení EDC se nepodařilo dokončit.")
-        self._store_tokens(await token_response.json())
+        try:
+            if token_response.status != 200:
+                raise EdcAuthenticationError("Přihlášení EDC se nepodařilo dokončit.")
+            self._store_tokens(await token_response.json())
+        finally:
+            token_response.release()
 
     async def async_get_groups(self) -> list[dict[str, Any]]:
         data = await self._request("GET", "/profiles-data/get-sse")
@@ -215,63 +306,137 @@ class EdcApiClient:
         přes UTC by v létě posunul datum na předchozí den. Neplatný interval
         odmítneme před přihlášením/HTTP, odpověď profilu vracíme beze změny.
         """
-        if type(date_from) is not date or type(date_to) is not date:
-            raise ValueError("Profil EDC vyžaduje kalendářní data bez času.")
-        if not 1 <= (date_to - date_from).days <= MAX_PROFILE_DAYS:
-            raise ValueError("Profil EDC vyžaduje rozsah 1 až 31 kalendářních dnů.")
-        payload = {
-            "sseId": sse_id,
-            "calculationType": "DAILY",
-            "inputData": True,
-            "outputData": True,
-            "dateFrom": date_from.isoformat(),
-            "dateTo": (date_to - timedelta(days=1)).isoformat(),
-            "fileName": "_",
-        }
+        payload = build_profile_request(sse_id, date_from, date_to)
         data = await self._request("POST", "/profiles-data/standard/overview", payload)
-        if not isinstance(data, dict):
-            raise EdcApiError("EDC vrátilo neplatná profilová data.")
+        try:
+            validate_profile_response(data)
+            if profile_resolution(data) == "unknown":
+                raise ValueError("EDC vrátilo nerozpoznané časové rozlišení.")
+            if any(
+                not date_from <= date.fromisoformat(row["date"][:10]) < date_to
+                for row in data["content"]
+            ):
+                raise ValueError("EDC vrátilo data mimo požadovaný interval.")
+        except ValueError as err:
+            failure = EdcApiError(str(err), category="contract")
+            self.last_failure_category = failure.category
+            async with self._request_lock:
+                await self.account_state.block(
+                    self.account_state.scope(
+                        "/profiles-data/standard/overview", payload
+                    ),
+                    failure,
+                )
+            raise failure from None
         return data
 
-    async def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+    async def _request(
+        self, method: str, path: str, payload: dict[str, Any] | None = None
+    ) -> Any:
+        """Serializovat čtení účtu a nejvýše dva krátké transportní pokusy.
+
+        Serverové čekání se ukládá a vrací plánovači. 400/422 neopakujeme;
+        401 obnovíme právě jednou. Délka každého HTTP pokusu je 30 s; čekání
+        5/30 s neblokuje event loop. CancelledError vždy propaguje.
+        """
+        if path not in SAFE_API_PATHS or method not in ("GET", "POST"):
+            raise ValueError("Nepovolená čtecí cesta EDC.")
         async with self._request_lock:
-            try:
-                await self._async_ensure_token()
-                response = await self._session.request(
-                    method,
-                    f"{API_BASE_URL}{path}",
-                    json=payload,
-                    timeout=REQUEST_TIMEOUT,
-                    headers={
-                        "Accept": "application/json",
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {self._access_token}",
-                        "Edc-Contract-Type": "STANDARD",
-                        "X-Correlation-ID": str(uuid.uuid4()),
-                    },
-                )
+            scope = self.account_state.scope(path, payload)
+            self.account_state.check(scope)
+            refreshed = False
+            for attempt in range(3):
                 try:
-                    if response.status == 401:
-                        self._access_token = None
-                        raise EdcAuthenticationError(
-                            "Platnost přihlášení EDC skončila."
-                        )
-                    if response.status >= 400:
-                        details = await _async_safe_error_details(response)
-                        context = _safe_request_context(method, path, payload)
-                        raise EdcApiError(
-                            f"EDC API vrátilo HTTP {response.status}{context}."
-                            + (f" {details}" if details else "")
-                        )
-                    return await response.json()
-                finally:
-                    # Uvolnit spojení i při 401, chybě JSONu nebo velkém těle
-                    # chyby; diagnostika nesmí zadržovat HTTP pool při retry.
-                    response.release()
-            except EdcApiError:
-                raise
-            except (ClientError, TimeoutError, ValueError):
-                raise EdcApiError("Spojení s EDC selhalo.") from None
+                    return await self._request_once(method, path, payload)
+                except EdcAccessExpiredError:
+                    self.last_failure_category = "authentication"
+                    self.last_status = 401
+                    if refreshed:
+                        raise
+                    self._access_token = None
+                    refreshed = True
+                    # Autentizační opakování není transportní retry.
+                    try:
+                        return await self._request_once(method, path, payload)
+                    except EdcAuthenticationError:
+                        raise
+                    except EdcApiError as error:
+                        await self.account_state.block(scope, error, error.retry_at)
+                        raise
+                except EdcAuthenticationError:
+                    # Potvrzené odmítnutí loginu nevynucuje druhé zadání hesla.
+                    self.last_failure_category = "authentication"
+                    raise
+                except EdcApiError as error:
+                    self.last_failure_category = error.category
+                    self.last_status = error.status
+                    if (
+                        error.category == "unavailable"
+                        and error.retry_at is None
+                        and attempt < 2
+                    ):
+                        await asyncio.sleep((5, 30)[attempt] + random.uniform(0, 1))
+                        continue
+                    await self.account_state.block(scope, error, error.retry_at)
+                    raise
+            raise AssertionError("EDC retry vyčerpal neočekávanou větev")
+
+    async def _request_once(
+        self, method: str, path: str, payload: dict[str, Any] | None
+    ) -> Any:
+        try:
+            await self._async_ensure_token()
+            response = await self._session.request(
+                method,
+                f"{API_BASE_URL}{path}",
+                json=payload,
+                timeout=REQUEST_TIMEOUT,
+                allow_redirects=False,
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self._access_token}",
+                    "Edc-Contract-Type": "STANDARD",
+                    "X-Correlation-ID": str(uuid.uuid4()),
+                },
+            )
+            try:
+                if 300 <= response.status < 400:
+                    raise EdcApiError("EDC změnilo adresu čtecího API.", category="contract", status=response.status)
+                if response.status == 401:
+                    self._access_token = None
+                    raise EdcAccessExpiredError("Platnost přihlášení EDC skončila.")
+                if response.status >= 400:
+                    details = await _async_safe_error_details(response)
+                    context = _safe_request_context(method, path, payload)
+                    raise EdcApiError(
+                        f"EDC API vrátilo HTTP {response.status}{context}."
+                        + (f" {details}" if details else ""),
+                        category=classify_api_failure(response.status),
+                        status=response.status,
+                        retry_at=retry_after(
+                            response.headers.get("Retry-After"), datetime.now(UTC)
+                        ),
+                    )
+                try:
+                    data = await response.json()
+                except (ValueError, ClientError):
+                    raise EdcApiError(
+                        "EDC vrátilo neplatnou JSON odpověď.", category="contract"
+                    ) from None
+                self.last_status = response.status
+                self.last_failure_category = None
+                return data
+            finally:
+                # Uvolnit spojení i při 401, chybě JSONu nebo velkém těle
+                # chyby; diagnostika nesmí zadržovat HTTP pool při retry.
+                response.release()
+        except EdcApiError:
+            raise
+        except (ClientError, TimeoutError, ValueError):
+            raise EdcApiError(
+                "Spojení s EDC selhalo.", category="unavailable"
+            ) from None
 
     async def _async_ensure_token(self) -> None:
         if self._access_token and time.monotonic() < self._expires_at - 30:
@@ -286,9 +451,12 @@ class EdcApiClient:
                 },
                 timeout=REQUEST_TIMEOUT,
             )
-            if response.status == 200:
-                self._store_tokens(await response.json())
-                return
+            try:
+                if response.status == 200:
+                    self._store_tokens(await response.json())
+                    return
+            finally:
+                response.release()
         await self.async_login()
 
     def _store_tokens(self, data: dict[str, Any]) -> None:
@@ -323,7 +491,9 @@ def _safe_request_context(
         try:
             if all(isinstance(value, str) and len(value) == 10 for value in bounds):
                 parsed = [date.fromisoformat(value) for value in bounds]
-                context += f"; období {parsed[0].isoformat()} až {parsed[1].isoformat()}"
+                context += (
+                    f"; období {parsed[0].isoformat()} až {parsed[1].isoformat()}"
+                )
         except ValueError:
             pass
     return context

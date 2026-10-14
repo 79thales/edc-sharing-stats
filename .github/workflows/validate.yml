@@ -52,7 +52,10 @@ jobs:
           requirement="$(python -c 'import json; from pathlib import Path; import homeassistant; print(json.loads((Path(homeassistant.__file__).parent / "components/frontend/manifest.json").read_text())["requirements"][0])')"
           python -m pip install "$requirement"
       - name: Test real HA permissions, dashboard creation, billing storage and SMTP
-        run: pytest tests_homeassistant -q
+        run: |
+          python -m pip install "playwright==1.64.0"
+          python -m playwright install --with-deps chromium
+          pytest tests_homeassistant -q --basetemp=test-output
 
   dashboard-home-assistant:
     name: Dashboard and billing tests – HA ${{ matrix.homeassistant }}
@@ -84,7 +87,10 @@ jobs:
           requirement="$(python -c 'import json; from pathlib import Path; import homeassistant; print(json.loads((Path(homeassistant.__file__).parent / "components/frontend/manifest.json").read_text())["requirements"][0])')"
           python -m pip install "$requirement"
       - name: Test real HA permissions, dashboard creation, billing storage and SMTP
-        run: pytest tests_homeassistant -q
+        run: |
+          python -m pip install "playwright==1.64.0"
+          python -m playwright install --with-deps chromium
+          pytest tests_homeassistant -q --basetemp=test-output
 
   latest-home-assistant:
     name: Latest stable Home Assistant compatibility
@@ -122,6 +128,26 @@ jobs:
         run: |
           python -m pip install "ruff==0.16.6"
           python -m ruff check custom_components/edc_sharing/billing.py custom_components/edc_sharing/billing_api.py custom_components/edc_sharing/billing_document.py tests/test_billing.py tests_homeassistant/test_billing.py
+      - name: Lint API contract and observability
+        run: python -m ruff check custom_components/edc_sharing/api.py custom_components/edc_sharing/api_policy.py custom_components/edc_sharing/calculation.py custom_components/edc_sharing/health.py custom_components/edc_sharing/diagnostics.py custom_components/edc_sharing/portal_contract.py scripts/check_edc_portal.py scripts/probe_edc_portal.py tests/test_api_resilience.py tests/test_portal_contract.py tests_homeassistant/test_statistics_health.py tests_homeassistant/test_api_wire.py tests_homeassistant/test_hourly_browser.py
+
+  public-portal-monitor:
+    # Pouze existující denní/ruční běh; bez účtu a bez tajných proměnných.
+    # Výsledek je advisory JSON: nový build není prokázaná změna API.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Observe public portal build
+        run: python scripts/check_edc_portal.py --output edc-public-check.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edc-public-portal-observation
+          path: edc-public-check.json
+          retention-days: 14
 
   home-assistant-compatibility:
     runs-on: ubuntu-latest

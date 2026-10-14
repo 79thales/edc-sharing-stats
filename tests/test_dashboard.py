@@ -44,7 +44,7 @@ class DashboardTests(unittest.TestCase):
 
     def test_sections_style_and_details_navigation(self) -> None:
         config = self.build()
-        overview, details = config["views"]
+        overview, details = config["views"][:2]
         self.assertEqual(overview["type"], "sections")
         self.assertEqual(overview["max_columns"], 4)
         self.assertTrue(details["subview"])

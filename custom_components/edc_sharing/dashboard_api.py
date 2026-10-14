@@ -24,6 +24,7 @@ from .dashboard import (
     build_dashboard,
 )
 from .ean_settings import ean_location, ean_name
+from .energy import target_hourly_statistic_id
 
 MODULE_PATH = "/edc_sharing/dashboard-generator.js"
 PANEL_ELEMENT = "edc-sharing-dashboard-generator-v1"
@@ -104,7 +105,18 @@ def _registered_sources(
             name = f"EAN …{ean[-4:]}"
         if location := ean_location(ean, entry.options):
             name += f" — {location}"
-        targets.append(DashboardTarget(name, sensors))
+        targets.append(
+            DashboardTarget(
+                name,
+                sensors,
+                {
+                    f"{metric}_hourly": target_hourly_statistic_id(
+                        group_id, ean, metric
+                    )
+                    for metric in ("shared", "consumption", "grid", "coverage")
+                },
+            )
+        )
     return entities, buttons, targets
 
 

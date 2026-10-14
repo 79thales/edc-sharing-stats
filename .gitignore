@@ -18,6 +18,10 @@ home-assistant_v2.db*
 *.sqlite
 *.sqlite3
 cookies*.json
+storage-state*.json
+edc-probe.private*.json
+portal-contract.private*.json
+test-output/
 credentials*.json
 edc-denni-hodnoty*.json
 edc-export*/

@@ -460,11 +460,13 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
                 {
                     "date": "2026-10-25",
                     "start": "02:00:00",
+                    "end": "03:00:00",
                     "values": [{"v": 1}, {"v": 0}, {"v": -1}, {"v": 0}],
                 },
                 {
                     "date": "2026-10-25",
                     "start": "02:00:00",
+                    "end": "03:00:00",
                     "values": [{"v": 2}, {"v": 0}, {"v": -2}, {"v": 0}],
                 },
             ],

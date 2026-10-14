@@ -662,6 +662,9 @@ class EdcUpdateAttemptSensor(
             if self.coordinator.next_attempt_at is not None
             else None,
             "error": self.coordinator.last_attempt_error,
+            "data_quality": self.coordinator.data_quality,
+            "http_status": getattr(self.coordinator.api, "last_status", None),
+            "failure_category": getattr(self.coordinator.api, "last_failure_category", None),
             **_history_backfill_attributes(self.coordinator),
         }
 

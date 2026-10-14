@@ -11,7 +11,7 @@ import unittest
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 try:
     import aiohttp  # noqa: F401
@@ -80,7 +80,7 @@ class _Response:
         self.url = url
         self.headers = {"Location": location} if location else {}
         self._text = text
-        self._json_data = {} if json_data is None else json_data
+        self._json_data = {"content": [], "valueColumns": []} if json_data is None else json_data
         self.content = _Content(
             json.dumps(self._json_data).encode() if body is None else body
         )
@@ -158,6 +158,8 @@ class KeycloakPageTest(unittest.TestCase):
 
 
 class LoginRedirectTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.enterContext(patch.object(api, "AUTHORITY_URL", "https://sso.example/auth"))
     async def test_existing_edc_session_exchanges_redirect_code(self) -> None:
         authorization_url = "https://sso.example/auth"
         callback_url = "https://portal.edc-cr.cz/?code=auth-code&state=state"
@@ -230,6 +232,8 @@ class LoginRedirectTest(unittest.IsolatedAsyncioTestCase):
 
 
 class ApiRequestTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.enterContext(patch.object(api.asyncio, "sleep", new=AsyncMock()))
     @staticmethod
     def _authenticated_client(session: _Session):
         client = api.EdcApiClient(session, "user@example.com", "secret")
@@ -237,7 +241,7 @@ class ApiRequestTest(unittest.IsolatedAsyncioTestCase):
         return client
 
     async def test_profile_request_has_explicit_timeout(self) -> None:
-        session = _Session([], [], [_Response(200, "https://api.example", json_data={})])
+        session = _Session([], [], [_Response(200, "https://api.example")])
         client = self._authenticated_client(session)
 
         await client.async_get_daily_profile(1, date(2026, 9, 1), date(2026, 10, 2))
@@ -343,7 +347,7 @@ class ApiRequestTest(unittest.IsolatedAsyncioTestCase):
                      b'{"validationErrors": [{"code": [], "field": {}}]}'):
             with self.subTest(body_size=len(body)):
                 response = _Response(503, "https://api.example", body=body)
-                session = _Session([], [], [response])
+                session = _Session([], [], [response] * 3)
                 with self.assertRaisesRegex(api.EdcApiError, "HTTP 503") as raised:
                     await self._authenticated_client(session).async_get_groups()
                 self.assertNotIn("secret", str(raised.exception))
@@ -352,7 +356,7 @@ class ApiRequestTest(unittest.IsolatedAsyncioTestCase):
     async def test_generic_error_code_is_supported_without_free_text(self) -> None:
         session = _Session([], [], [_Response(500, "https://api.example", json_data={
             "genericError": {"code": "INTERNAL_ERROR", "message": "password=secret"}
-        })])
+        })] * 3)
         with self.assertRaisesRegex(api.EdcApiError, "INTERNAL_ERROR") as raised:
             await self._authenticated_client(session).async_get_groups()
         self.assertNotIn("secret", str(raised.exception))
@@ -362,7 +366,7 @@ class ApiRequestTest(unittest.IsolatedAsyncioTestCase):
         async def failed_read(_size):
             raise TimeoutError("secret transport data")
         response.content.readexactly = failed_read
-        session = _Session([], [], [response])
+        session = _Session([], [], [response] * 3)
         with self.assertRaisesRegex(api.EdcApiError, "HTTP 504") as raised:
             await self._authenticated_client(session).async_get_groups()
         self.assertNotIn("secret", str(raised.exception))
@@ -377,7 +381,7 @@ class ApiRequestTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("2026-99-99", message)
 
     async def test_timeout_is_wrapped_without_credentials(self) -> None:
-        session = _Session([], [], [TimeoutError("session_code=sensitive")])
+        session = _Session([], [], [TimeoutError("session_code=sensitive")] * 3)
         client = self._authenticated_client(session)
 
         with self.assertRaisesRegex(api.EdcApiError, "Spojení s EDC selhalo") as raised:
@@ -390,8 +394,9 @@ class ApiRequestTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(raised.exception.__cause__)
 
     async def test_unauthorized_response_requires_reauthentication(self) -> None:
-        session = _Session([], [], [_Response(401, "https://api.example")])
+        session = _Session([], [], [_Response(401, "https://api.example")] * 2)
         client = self._authenticated_client(session)
+        client._async_ensure_token = AsyncMock()
 
         with self.assertRaises(api.EdcAuthenticationError):
             await client.async_get_groups()

@@ -67,6 +67,7 @@ def _dst_profile(day: str, starts: tuple[str, ...]) -> dict:
             {
                 "date": day,
                 "start": start,
+                "end": f"{int(start.split(':')[0]) + 1:02d}:00:00",
                 "values": [{"v": index + 1}, {"v": 0}, {"v": -(index + 1)}, {"v": 0}],
             }
             for index, start in enumerate(starts)
@@ -391,6 +392,9 @@ class CalculationTests(unittest.TestCase):
             ],
         }
 
+        with self.assertRaisesRegex(ValueError, "nekonečnou"):
+            calculation.parse_daily_profile(response)
+        response["content"] = response["content"][1:]
         days = calculation.parse_daily_profile(response)
         summary = calculation.calculate_period_summary(days, Decimal("2"))
         values = (

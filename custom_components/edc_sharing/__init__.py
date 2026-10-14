@@ -9,10 +9,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from .api import EdcApiClient
+from .connection import async_get_api_client
 from .const import CONF_SSE_ID, config_entry_unique_id
 from .coordinator import EdcSharingCoordinator
 from .report import EdcReportManager
@@ -35,18 +35,25 @@ type EdcConfigEntry = ConfigEntry[EdcRuntimeData]
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register the optional dashboard generator without contacting EDC."""
-    from .dashboard_api import async_setup_dashboard_generator
     from .billing_api import async_setup_billing
+    from .dashboard_api import async_setup_dashboard_generator
+    from .health import async_register_health_commands
+
+    async_register_health_commands(hass)
 
     try:
         await async_setup_dashboard_generator(hass)
     except (HomeAssistantError, OSError, ValueError, RuntimeError):
         # A presentation feature must not prevent existing data/report setup.
-        _LOGGER.warning("The optional EDC dashboard generator is unavailable; EDC data setup remains enabled")
+        _LOGGER.warning(
+            "The optional EDC dashboard generator is unavailable; EDC data setup remains enabled"
+        )
     try:
         await async_setup_billing(hass)
     except (HomeAssistantError, OSError, ValueError, RuntimeError):
-        _LOGGER.warning("The optional EDC billing panel is unavailable; EDC data and reports remain enabled")
+        _LOGGER.warning(
+            "The optional EDC billing panel is unavailable; EDC data and reports remain enabled"
+        )
     return True
 
 
@@ -65,8 +72,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: EdcConfigEntry) -> bool:
     """Set up EDC sharing from a config entry."""
-    api = EdcApiClient(
-        async_get_clientsession(hass),
+    api = await async_get_api_client(
+        hass,
         entry.data[CONF_USERNAME],
         entry.data[CONF_PASSWORD],
     )

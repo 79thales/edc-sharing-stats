@@ -33,6 +33,7 @@ from .calculation import (
     parse_hourly_target_profiles,
     profile_date_ranges,
     profile_date_ranges_backwards,
+    profile_resolution,
     two_calendar_month_start,
 )
 from .const import (
@@ -224,6 +225,8 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self.next_attempt_at: datetime | None = None
         self.last_attempt_result = "never"
         self.last_attempt_error: str | None = None
+        self.data_quality: dict[str, Any] = {"resolution": "unknown", "incomplete_days": 0,
+                                           "incomplete_hours": 0, "queued_hours": 0}
         self.history_backfill_status = "not_started"
         self.history_backfill_started_at: datetime | None = None
         self.history_backfill_completed_at: datetime | None = None
@@ -340,6 +343,9 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             fetched_hours: dict[datetime, HourlySharing] = {}
             fetched_target_hours: dict[str, dict[datetime, TargetHourlySharing]] = {}
             fetched_eans: set[EanInfo] = set()
+            resolutions: set[str] = set()
+            incomplete_days = 0
+            incomplete_hours = 0
             for chunk_from, chunk_to in profile_date_ranges(date_from, date_to):
                 # Zachovat kalendářní interval [od, do). API klient převede
                 # poslední den na včetně; UTC patří až k hodinovým statistikám.
@@ -348,29 +354,34 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     chunk_from,
                     chunk_to,
                 )
+                resolutions.add(profile_resolution(raw))
                 try:
+                    parsed_days = parse_daily_profile(raw)
+                    parsed_hours = parse_hourly_profile(raw, local_tz=local_tz)
+                    incomplete_days += sum(not row.complete for row in parsed_days)
+                    incomplete_hours += sum(not row.complete for row in parsed_hours)
                     fetched.update(
                         {
                             row.day: row
-                            for row in parse_daily_profile(raw)
-                            if date_from <= row.day < date_to
+                            for row in parsed_days
+                            if row.complete and date_from <= row.day < date_to
                         }
                     )
                     for row in parse_daily_target_profiles(raw):
-                        if date_from <= row.day < date_to:
+                        if row.complete and date_from <= row.day < date_to:
                             fetched_target_days.setdefault(row.ean, {})[row.day] = row
                     fetched_hours.update(
                         {
                             row.start: row
-                            for row in parse_hourly_profile(raw, local_tz=local_tz)
-                            if date_from
+                            for row in parsed_hours
+                            if row.complete and date_from
                             <= _hour_local_date(row.start, local_tz)
                             < date_to
                         }
                     )
                     for row in parse_hourly_target_profiles(raw, local_tz=local_tz):
                         if (
-                            date_from
+                            row.complete and date_from
                             <= _hour_local_date(row.start, local_tz)
                             < date_to
                         ):
@@ -456,6 +467,15 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             self.last_success_at = completed_at
             self.next_attempt_at = completed_at + DEFAULT_SCAN_INTERVAL
             self.last_attempt_result = "success"
+            self.data_quality.pop("failure_category", None)
+            self.data_quality.update(
+                resolution=next(iter(resolutions)) if len(resolutions) == 1 else "mixed",
+                incomplete_days=incomplete_days, incomplete_hours=incomplete_hours,
+                latest_data_day=result.latest_day.isoformat() if result.latest_day else None,
+                hourly_reason=("unknown_resolution" if "unknown" in resolutions else
+                               "daily_only" if resolutions == {"daily"} else
+                               "incomplete" if incomplete_hours else "available" if fetched_hours else "empty"),
+            )
             if history_changed:
                 await self._async_save_history_backfill_state()
             return result
@@ -467,8 +487,10 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         except (EdcApiError, ValueError, KeyError) as err:
             self.last_attempt_result = "failed"
             self.last_attempt_error = str(err)
-            self.next_attempt_at = dt_util.now() + DEFAULT_SCAN_INTERVAL
-            raise UpdateFailed(str(err)) from err
+            self.next_attempt_at = getattr(err, "retry_at", None) or dt_util.now() + DEFAULT_SCAN_INTERVAL
+            self.data_quality["failure_category"] = getattr(err, "category", "contract")
+            retry_seconds = max(0, (self.next_attempt_at - dt_util.now()).total_seconds())
+            raise UpdateFailed(str(err), retry_after=retry_seconds) from err
 
     @callback
     def async_start_history_backfill(self, *, resume_only: bool = False) -> bool:
@@ -575,27 +597,32 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     chunk_to,
                 )
                 try:
+                    # Neúplný uzavřený den se nesmí označit jako prohledaný.
+                    # Zachovat kurzor a umožnit pozdější opravu odpovědi EDC.
+                    parsed_days = parse_daily_profile(raw)
+                    if any(not row.complete and row.day < dt_util.now().date() for row in parsed_days):
+                        raise EdcApiError("Historický blok obsahuje neúplné intervaly.", category="contract")
                     days = tuple(
                         row
-                        for row in parse_daily_profile(raw)
-                        if chunk_from <= row.day < chunk_to
+                        for row in parsed_days
+                        if row.complete and chunk_from <= row.day < chunk_to
                     )
                     hours = tuple(
                         row
                         for row in parse_hourly_profile(raw, local_tz=local_tz)
-                        if chunk_from
+                        if row.complete and chunk_from
                         <= _hour_local_date(row.start, local_tz)
                         < chunk_to
                     )
                     target_days = tuple(
                         row
                         for row in parse_daily_target_profiles(raw)
-                        if chunk_from <= row.day < chunk_to
+                        if row.complete and chunk_from <= row.day < chunk_to
                     )
                     target_hours = tuple(
                         row
                         for row in parse_hourly_target_profiles(raw, local_tz=local_tz)
-                        if chunk_from
+                        if row.complete and chunk_from
                         <= _hour_local_date(row.start, local_tz)
                         < chunk_to
                     )
@@ -604,16 +631,9 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     # return a valid profile containing only one side. Such a
                     # block is outside this integration's usable history and
                     # must not stop the backwards scan.
-                    _LOGGER.debug(
-                        "Skipping incomplete EDC history block %s to %s: %s",
-                        chunk_from,
-                        chunk_to,
-                        err,
-                    )
-                    days = ()
-                    hours = ()
-                    target_days = ()
-                    target_hours = ()
+                    # Známá jednostranná struktura není důkaz počátku skupiny.
+                    # Bez potvrzené platnosti neoznačit tento rozsah jako hotový.
+                    raise EdcApiError("Historický blok má neověřenou platnost sdílení.", category="contract") from err
                 now = dt_util.now()
                 self.history_backfill_imported_days += async_import_daily_history(
                     self.hass,
@@ -855,6 +875,8 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             _LOGGER.warning("Could not import EDC history: %s", err)
             return
         self._history_import_signature = signature
+        self.data_quality["queued_hours"] = imported_hours
+        self.data_quality["queued_target_hours"] = imported_target_hours
         if imported_days:
             _LOGGER.debug(
                 "Queued %s finalized EDC days for long-term statistics",

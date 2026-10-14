@@ -203,7 +203,7 @@ def async_import_daily_history(
     local_tz: tzinfo,
 ) -> int:
     """Queue finalized EDC days as idempotent external statistics."""
-    finalized = tuple(row for row in days if row.day < today)
+    finalized = tuple(row for row in days if row.complete and row.day < today)
     if not finalized:
         return 0
 
@@ -256,7 +256,7 @@ def async_import_target_hourly_history(
     # UTC keys keep DST folds distinct and replace overlapping/corrected points.
     finalized: dict[datetime, TargetHourlySharing] = {}
     for row in hours:
-        if row.ean != ean:
+        if not row.complete or row.ean != ean:
             continue
         start = (
             row.start if row.start.tzinfo is not None
@@ -315,7 +315,7 @@ def async_import_hourly_history(
     finalized = tuple(
         row
         for row in hours
-        if (
+        if row.complete and (
             row.start
             if row.start.tzinfo is not None
             else row.start.replace(tzinfo=local_tz).astimezone(UTC)
