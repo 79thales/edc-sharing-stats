@@ -163,11 +163,12 @@ async def test_login_step_is_exported_and_persisted_by_real_ha_setup(
     failure = diagnostic["original_failure"]
     assert failure["authentication_step"] == "credentials_redirect_get"
     assert failure["http_status"] == 403
-    assert failure["wait_source"] == "local_policy"
+    assert failure["wait_source"] == "not_scheduled"
     assert "krok=credentials_redirect_get" in caplog.text
     persisted = hass_storage["edc_sharing.test.api_wait"]["data"]
     restored = ApiAccountState()
     restored.restore(persisted)
+    assert restored.blocks == {}
     assert restored.diagnostic_failure()["authentication_step"] == "credentials_redirect_get"
     assert "private" not in str((diagnostic, persisted))
 

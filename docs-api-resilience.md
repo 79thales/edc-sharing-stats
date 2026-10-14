@@ -46,13 +46,23 @@ samotné HTTP 403 zůstává `http`/`permission` a neurčuje příčinu odmítnu
 
 Tato změna opravuje ztrátu diagnostického kroku, **neprokazuje odstranění
 živé HTTP 403**. Parametry OIDC, formulář, práce s cookies, počty požadavků,
-statistická ID, historie, dashboardy a doklady se tím nemění. Místní fallback
-pro `permission` bez serverového Retry-After zůstává 21600 sekund (6 hodin).
-To je rozhodnutí integrace, nikoli potvrzený serverový zákaz. Serverový
-Retry-After se nadále respektuje a aktualizace uloženou lhůtu nemaže ani
-nezkracuje. Kratší politika vyžaduje doložené provozní údaje, které nyní
-nemáme. Po instalaci by se přesný krok zachytil až při příštím běžném pokusu;
-aktualizace ani diagnostické čtení samo další přihlášení nevynucuje.
+statistická ID, historie, dashboardy a doklady se tím nemění.
+
+### Zrušení místní šestihodinové blokace login HTTP 403
+
+Po výslovném požadavku uživatele nemá přihlašovací HTTP 403 kategorie
+`permission` bez platného serverového `Retry-After` vlastní šestihodinový
+blok. Chyba a její přesný krok se uloží; jeden neúspěšný požadavek se uvnitř
+operace neopakuje. Další pokus řídí běžný plánovač HA (výchozí obnova hodinu),
+stejně jako před přidáním této blokace ve v0.2.5. Aktualizace s restartem
+umožní běžný nový pokus a sama nepotvrzuje obnovení přístupu.
+
+Při načtení Store se zruší i již uložený blok `account`, ale pouze pokud
+výslovně nese `local_policy`, fázi `authentication`, kategorii `permission`
+a HTTP 403. Původní důvod se zachová bez falešného `recovered_at`.
+Serverový `Retry-After`, staré neznámé blokace, MFA/CAPTCHA a omezení
+čtecího API zůstávají platné. Opětovné odmítnutí kvůli souběžnému sezení
+se touto změnou neřeší ani neobchází.
 
 ## Kde najít původní chybu (v0.2.6)
 

@@ -82,6 +82,21 @@ def _safe_authentication_step(value: object) -> str | None:
     return value if isinstance(value, str) and value in _AUTHENTICATION_STEPS else None
 
 
+def _retired_login_wait(record: dict | None) -> bool:
+    """Rozpoznat výhradně doloženou místní blokaci login HTTP 403 z v0.2.5.
+
+    Serverové Retry-After, neznámé staré záznamy, MFA a chyby čtecího API
+    se tímto nemigrují. Původní důvod chyby zůstane dostupný v diagnostice.
+    """
+    return bool(
+        record
+        and record.get("wait_source") == "local_policy"
+        and record.get("phase") == "authentication"
+        and record.get("category") == "permission"
+        and record.get("http_status") == 403
+    )
+
+
 SAFE_ERROR_CODES = frozenset(
     {
         "INVALID_DATE",
@@ -341,6 +356,9 @@ class ApiAccountState:
         if not isinstance(data, dict):
             return
         self.last_failure = self._restore_failure(data.get("last_failure"))
+        if _retired_login_wait(self.last_failure):
+            self.last_failure["wait_source"] = "not_scheduled"
+            self.last_failure.pop("retry_at", None)
         for key, value in data.items():
             if (
                 not isinstance(key, str)
@@ -359,6 +377,13 @@ class ApiAccountState:
             try:
                 until = datetime.fromisoformat(value["until"])
                 record = self._restore_failure(value)
+                if key == "account" and _retired_login_wait(record):
+                    # Zrušit jen vlastní šestihodinovou politiku. Neoznačit
+                    # účet za obnovený a neodstranit důkaz původní HTTP 403.
+                    record["wait_source"] = "not_scheduled"
+                    record.pop("retry_at", None)
+                    self.failures[key] = record
+                    continue
                 if until.tzinfo is not None and record is not None:
                     record["retry_at"] = until.astimezone(UTC).isoformat()
                     self.failures[key] = record
@@ -423,6 +448,17 @@ class ApiAccountState:
     ) -> None:
         """Uložit čekání před vrácením chyby; případná delší stará lhůta platí."""
         now = datetime.now(UTC)
+        if (
+            error.phase == "authentication"
+            and error.category == "permission"
+            and error.status == 403
+            and (server_until is None or server_until <= now)
+        ):
+            # Prosté odmítnutí loginu není doložený šestihodinový zákaz.
+            # V tomto volání se neopakuje HTTP; další pokus řídí běžný HA
+            # plánovač stejně jako před v0.2.5. Důvod se přesto uloží.
+            await self.note_failure(error)
+            return
         seconds = (
             900
             if error.phase == "profile_validation"
