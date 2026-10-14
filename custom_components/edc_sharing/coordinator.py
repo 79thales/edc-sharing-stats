@@ -26,6 +26,7 @@ from .calculation import (
     TargetHourlySharing,
     calculate_statistics,
     extract_eans,
+    missing_measurement_counts,
     one_calendar_year_ago,
     parse_daily_profile,
     parse_daily_target_profiles,
@@ -225,6 +226,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self.next_attempt_at: datetime | None = None
         self.last_attempt_result = "never"
         self.last_attempt_error: str | None = None
+        self.cached_startup = False
         self.data_quality: dict[str, Any] = {"resolution": "unknown", "incomplete_days": 0,
                                            "incomplete_hours": 0, "queued_hours": 0}
         self.history_backfill_status = "not_started"
@@ -285,6 +287,32 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self._history_target_days = _stored_target_daily_rows(
             stored.get("target_daily_rows")
         )
+
+    @callback
+    def async_restore_startup_cache(self) -> bool:
+        """Umožnit diagnostický start pouze s existující platnou historií.
+
+        Po neúspěšném prvním čtení nepředstírat úspěch: výpočtové senzory
+        zůstanou unavailable, ale nastavení, archiv a diagnostika jsou přístupné.
+        Cache je jen vstup pro paměťový přehled; nic nezapisovat do Recorderu,
+        neobnovovat backfill a neposílat plánované reporty. Další síťový pokus
+        naplánovat až po uložené lhůtě. Bez cache zůstává běžný setup_retry HA.
+        """
+        if not self._history_days or self.last_attempt_result != "failed":
+            return False
+        now = dt_util.now()
+        price = Decimal(str(self.config_entry.options.get(
+            CONF_SALE_PRICE, self.config_entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE))))
+        self.data = self._calculate_statistics(price, now.date())
+        self.cached_startup = True
+        self.last_update_success = False
+        self.eans = tuple(EanInfo(ean, "target") for ean in sorted(self._history_target_days))
+        self.data_quality.update(cached_only=True, latest_data_day=self.data.latest_day.isoformat()
+                                 if self.data.latest_day else None)
+        if self.next_attempt_at is not None:
+            self.update_interval = max(timedelta(seconds=1), self.next_attempt_at - now)
+        _LOGGER.warning("EDC startuje pouze s uchovanou historií; aktuální čtení selhalo, diagnostika je dostupná a automatické importy/reporty čekají na obnovu")
+        return True
 
     def _target_prices(self, default_price: Decimal) -> dict[str, Decimal]:
         """Return safe per-target prices while preserving the group default."""
@@ -347,15 +375,28 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             incomplete_days = 0
             incomplete_hours = 0
             incomplete_blocks = 0
-            for chunk_from, chunk_to in profile_date_ranges(date_from, date_to):
+            missing_days = 0
+            missing_intervals = 0
+            profile_failures: list[EdcApiError] = []
+            # Nejnovější blok zkusit první: stará lokální chyba schématu
+            # nemá zastavit platné současné období. Serverový/account blok
+            # se neskáče a dál zastaví celý pokus bez dalšího HTTP volání.
+            for chunk_from, chunk_to in reversed(profile_date_ranges(date_from, date_to)):
                 # Zachovat kalendářní interval [od, do). API klient převede
                 # poslední den na včetně; UTC patří až k hodinovým statistikám.
-                raw = await self.api.async_get_daily_profile(
-                    int(self.config_entry.data[CONF_SSE_ID]),
-                    chunk_from,
-                    chunk_to,
-                )
+                try:
+                    raw = await self.api.async_get_daily_profile(
+                        int(self.config_entry.data[CONF_SSE_ID]), chunk_from, chunk_to)
+                except EdcApiError as error:
+                    if error.category != "contract" or error.phase != "profile_validation":
+                        raise
+                    profile_failures.append(error)
+                    incomplete_blocks += 1
+                    continue
                 resolutions.add(profile_resolution(raw))
+                block_missing_days, block_missing_intervals = missing_measurement_counts(raw)
+                missing_days += block_missing_days
+                missing_intervals += block_missing_intervals
                 try:
                     parsed_days = parse_daily_profile(raw)
                     parsed_hours = parse_hourly_profile(raw, local_tz=local_tz)
@@ -400,6 +441,13 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                         err,
                     )
                     incomplete_blocks += 1
+
+            if profile_failures and not fetched and not fetched_hours:
+                # Samotná stará cache není důkaz obnovy API; aktivuje pouze
+                # samostatně popsaný diagnostický start, nikoli import/report.
+                raise profile_failures[0]
+            if missing_intervals and not fetched and not fetched_hours:
+                raise EdcApiError("EDC vrátilo chybějící měřenou hodnotu.", category="unknown", status=200)
 
             if full_history_refresh:
                 self._days = {
@@ -469,14 +517,18 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             self.last_success_at = completed_at
             self.next_attempt_at = completed_at + DEFAULT_SCAN_INTERVAL
             self.last_attempt_result = "success"
+            self.cached_startup = False
+            self.update_interval = DEFAULT_SCAN_INTERVAL
             self.data_quality.pop("failure_category", None)
             self.data_quality.update(
+                cached_only=False, missing_measurement_days=missing_days,
+                missing_measurement_intervals=missing_intervals,
                 resolution=next(iter(resolutions)) if len(resolutions) == 1 else "mixed",
                 incomplete_days=incomplete_days, incomplete_hours=incomplete_hours, incomplete_blocks=incomplete_blocks,
                 latest_data_day=result.latest_day.isoformat() if result.latest_day else None,
                 hourly_reason=("unknown_resolution" if "unknown" in resolutions else
                                "daily_only" if resolutions == {"daily"} else
-                               "incomplete" if incomplete_hours or incomplete_blocks else "available" if fetched_hours else "empty"),
+                               "incomplete" if incomplete_hours or incomplete_blocks or missing_intervals else "available" if fetched_hours else "empty"),
             )
             if history_changed:
                 await self._async_save_history_backfill_state()
@@ -491,6 +543,17 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             self.last_attempt_error = str(err)
             self.next_attempt_at = getattr(err, "retry_at", None) or dt_util.now() + DEFAULT_SCAN_INTERVAL
             self.data_quality["failure_category"] = getattr(err, "category", "contract")
+            self.data_quality["cached_only"] = True
+            state = getattr(self.api, "account_state", None)
+            if state is not None and (not isinstance(err, EdcApiError) or err.retry_at is None):
+                failure = err if isinstance(err, EdcApiError) else EdcApiError(
+                    "EDC profil nelze bezpečně spočítat.", category="contract", phase="profile_validation",
+                    status=getattr(self.api, "last_status", None))
+                failure.retry_at = self.next_attempt_at
+                async with state.lock:
+                    await state.note_failure(failure)
+                self.api.last_failure_category = failure.category
+                self.api.last_status = failure.status
             retry_seconds = max(0, (self.next_attempt_at - dt_util.now()).total_seconds())
             raise UpdateFailed(str(err), retry_after=retry_seconds) from err
 
@@ -602,6 +665,10 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     # Neúplný uzavřený den se nesmí označit jako prohledaný.
                     # Zachovat kurzor a umožnit pozdější opravu odpovědi EDC.
                     parsed_days = parse_daily_profile(raw)
+                    if missing_measurement_counts(raw)[1]:
+                        # Celý null den nemusí mít žádný parsed row, takže
+                        # kontrola complete níže by sama chybně posunula kurzor.
+                        raise EdcApiError("Historický blok obsahuje neúplné intervaly.", category="contract")
                     if any(not row.complete and row.day < dt_util.now().date() for row in parsed_days):
                         raise EdcApiError("Historický blok obsahuje neúplné intervaly.", category="contract")
                     days = tuple(

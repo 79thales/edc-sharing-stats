@@ -180,13 +180,24 @@ def async_register_health_commands(hass: HomeAssistant) -> None:
 async def websocket_statistics_health(hass, connection, msg) -> None:
     """Chyba/stará data/timeout nejsou úspěch; chybová větev nevrací soukromý obsah."""
     entry = hass.config_entries.async_get_entry(msg["entry_id"])
-    if (
-        entry is None
-        or entry.domain != DOMAIN
-        or getattr(entry, "runtime_data", None) is None
-    ):
+    if entry is None or entry.domain != DOMAIN:
         connection.send_error(
             msg["id"], "entry_not_ready", "EDC instance není připravena."
+        )
+        return
+    if getattr(entry, "runtime_data", None) is None:
+        from .diagnostics import async_get_config_entry_diagnostics
+
+        # Správce musí dostat zachovaný důvod i při setup_retry. Fresh není
+        # oprávnění obejít start nebo uložený zákaz; zde se neposílá žádné HTTP.
+        connection.send_result(
+            msg["id"],
+            {
+                "ready": False,
+                "status": "entry_not_ready",
+                "diagnostics": await async_get_config_entry_diagnostics(hass, entry),
+                "connection_probe": {"status": "not_probed"},
+            },
         )
         return
     try:

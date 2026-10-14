@@ -272,7 +272,10 @@ def report_date_range(
 def validate_profile_response(response: Any) -> None:
     """Ověřit významové schéma před změnou cache; nové volitelné klíče tolerovat.
 
-    Nula je platná kWh, chybějící/null hodnota nikoli. Úmyslně nepoužívat
+    Nula je platná kWh. Explicitní null znamená nedostupné měření, ne změnu
+    schématu; parser takový interval nepoužije a úplnost se ověří bez něj.
+    Chybějící pole v, krátký vektor, bool a prázdný text jsou nadále chyby.
+    Úmyslně nepoužívat
     hodnoty EANů ani chybného JSONu v textu výjimky. Platné prázdno má obě
     seznamová pole; neznámé role/směry a krátké vektory znamenají změnu dat.
     Jednostranný, ale jinak správný profil může předcházet vzniku sdílení.
@@ -323,8 +326,12 @@ def validate_profile_response(response: Any) -> None:
         if not isinstance(values, list) or len(values) != len(columns):
             raise ValueError("EDC vrátilo neúplný vektor hodnot.")
         for value in values:
+            if isinstance(value, dict) and "v" not in value:
+                raise ProfileSchemaError("EDC změnilo strukturu časových řádků.")
             value = value.get("v") if isinstance(value, dict) else value
-            if value is None or isinstance(value, bool) or value == "":
+            if value is None:
+                continue
+            if isinstance(value, bool) or value == "":
                 raise ValueError("EDC vrátilo chybějící měřenou hodnotu.")
             parsed = _decimal(value)
             if not math.isfinite(float(parsed)):
@@ -465,7 +472,10 @@ def _profile_layout(
     """Return content and the producer/consumer column mappings."""
     validate_profile_response(response)
     columns = response.get("valueColumns", [])
-    content = response["content"]
+    # Neúplný interval vynechat jako celek: nulová náhrada by mohla vytvořit
+    # falešné sdílení nebo vyúčtovat neexistující spotřebu. Zbytek původního
+    # profilu zachovat; hodinová/denní úplnost kontroluje chybějící sloty.
+    content = [row for row in response["content"] if not _row_missing_measurement(row)]
     if not content:
         return columns, content, {}, {}
     if not columns:
@@ -485,6 +495,22 @@ def _profile_layout(
             "V odpovědi EDC nebyl rozpoznán výrobní a odběrný EAN."
         )
     return columns, content, producers, consumers
+
+
+def _row_missing_measurement(row: dict[str, Any]) -> bool:
+    """Explicitní JSON null je mezera v datech; nula měření zůstává platná."""
+    return any((value.get("v") if isinstance(value, dict) else value) is None
+               for value in row["values"])
+
+
+def missing_measurement_counts(response: dict[str, Any]) -> tuple[int, int]:
+    """Počty dnů/intervalů s null pro diagnostiku, bez EANů či hodnot.
+
+    Volat až po validaci schématu. Žádnou mezeru nevyplňuje a neodvozuje
+    platnost EANu; neznámá časová struktura se nadále odmítá samostatně.
+    """
+    rows = [row for row in response["content"] if _row_missing_measurement(row)]
+    return len({row["date"][:10] for row in rows}), len(rows)
 
 
 def extract_eans(response: dict[str, Any]) -> tuple[EanInfo, ...]:
@@ -581,6 +607,7 @@ def parse_daily_profile(response: dict[str, Any]) -> tuple[DailySharing, ...]:
     # sharing totals; otherwise the coordinator would retain only the final
     # interval of each day.
     values_by_day = _daily_value_totals(columns, content)
+    complete_profile = {**response, "content": content}
     complete_hours = _profile_complete_hours(response)
 
     daily: list[DailySharing] = []
@@ -597,7 +624,7 @@ def parse_daily_profile(response: dict[str, Any]) -> tuple[DailySharing, ...]:
                 unused_overflow=values[5],
                 coverage=values[6],
                 consistency_difference=values[7],
-                complete=_day_completeness(response, item_date, complete_hours),
+                complete=_day_completeness(complete_profile, item_date, complete_hours),
             )
         )
 
@@ -613,6 +640,7 @@ def parse_daily_target_profiles(
         return ()
 
     values_by_day = _daily_value_totals(columns, content)
+    complete_profile = {**response, "content": content}
     complete_hours = _profile_complete_hours(response)
     daily: list[TargetDailySharing] = []
     for item_date in sorted(values_by_day):
@@ -627,7 +655,7 @@ def parse_daily_target_profiles(
                     grid_purchase=grid_purchase,
                     shared=shared,
                     coverage=coverage,
-                    complete=_day_completeness(response, item_date, complete_hours),
+                    complete=_day_completeness(complete_profile, item_date, complete_hours),
                 )
             )
     return tuple(daily)
@@ -680,7 +708,7 @@ def parse_hourly_profile(
     values_by_hour: dict[datetime, list[Decimal]] = {}
     hour_slots: dict[datetime, set[int]] = {}
     interval_occurrences: dict[tuple[date, str], int] = {}
-    for item in content:
+    for item in response["content"]:
         start_text = str(item.get("start") or "")
         hour_text = start_text.partition(":")[0]
         if not hour_text.isdigit():
@@ -694,6 +722,10 @@ def parse_hourly_profile(
         if occurrence and local_tz is None:
             raise ValueError("Duplicitní interval vyžaduje ověření časového pásma.")
         interval_occurrences[interval_key] = occurrence + 1
+        # Výskyt počítat i pro null: jinak by se při podzimním DST druhá
+        # 02:xx chybně přesunula do prvního UTC foldu a spojila cizí sloty.
+        if _row_missing_measurement(item):
+            continue
         local_hour = datetime.combine(item_date, datetime.min.time()).replace(hour=hour)
         hour_start = (
             _local_hour_as_utc(local_hour, local_tz, occurrence)
@@ -740,7 +772,7 @@ def parse_hourly_target_profiles(
     values_by_hour: dict[datetime, list[Decimal]] = {}
     hour_slots: dict[datetime, set[int]] = {}
     interval_occurrences: dict[tuple[date, str], int] = {}
-    for item in content:
+    for item in response["content"]:
         start_text = str(item.get("start") or "")
         hour_text = start_text.partition(":")[0]
         if not hour_text.isdigit():
@@ -754,6 +786,8 @@ def parse_hourly_target_profiles(
         if occurrence and local_tz is None:
             raise ValueError("Duplicitní interval vyžaduje ověření časového pásma.")
         interval_occurrences[interval_key] = occurrence + 1
+        if _row_missing_measurement(item):
+            continue
         local_hour = datetime.combine(item_date, datetime.min.time()).replace(hour=hour)
         hour_start = (
             _local_hour_as_utc(local_hour, local_tz, occurrence)

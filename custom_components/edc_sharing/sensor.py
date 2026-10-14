@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, ClassVar
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -53,12 +53,12 @@ class TargetSensorDescription(SensorEntityDescription):
     ) = None
 
 
-ENERGY_TOTAL = dict(
-    device_class=SensorDeviceClass.ENERGY,
-    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-    state_class=SensorStateClass.TOTAL,
-    suggested_display_precision=2,
-)
+ENERGY_TOTAL = {
+    "device_class": SensorDeviceClass.ENERGY,
+    "native_unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
+    "state_class": SensorStateClass.TOTAL,
+    "suggested_display_precision": 2,
+}
 
 
 def _latest_attributes(statistics: SharingStatistics) -> dict[str, Any]:
@@ -82,12 +82,12 @@ def _utilization_attributes(value: SurplusUtilization) -> dict[str, Any]:
     }
 
 
-SURPLUS_UTILIZATION = dict(
-    native_unit_of_measurement=PERCENTAGE,
-    state_class=SensorStateClass.MEASUREMENT,
-    suggested_display_precision=1,
-    icon="mdi:solar-power-variant",
-)
+SURPLUS_UTILIZATION = {
+    "native_unit_of_measurement": PERCENTAGE,
+    "state_class": SensorStateClass.MEASUREMENT,
+    "suggested_display_precision": 1,
+    "icon": "mdi:solar-power-variant",
+}
 
 
 def _target_latest_attributes(
@@ -651,9 +651,17 @@ class EdcUpdateAttemptSensor(
         return self.coordinator.last_attempt_at is not None
 
     @property
-    def extra_state_attributes(self) -> dict[str, str | int | None]:
-        """Expose regular updates and full-history backfill progress."""
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Zpřístupnit původní příčinu i při startu pouze s uchovanou cache.
+
+        Aktuální čekání nesmí zastřít původní HTTP status/fázi. Ochranný
+        whitelist neobsahuje EANy, hesla ani vzdálené volné zprávy; historické
+        diagnostické atributy zůstávají zachované. Časy jsou aware ISO.
+        """
+        state = getattr(self.coordinator.api, "account_state", None)
         return {
+            "original_failure": state.diagnostic_failure() if state is not None else None,
+            "cached_startup": getattr(self.coordinator, "cached_startup", False),
             "result": self.coordinator.last_attempt_result,
             "last_success": self.coordinator.last_success_at.isoformat()
             if self.coordinator.last_success_at is not None
@@ -678,7 +686,7 @@ class EdcHistoryBackfillStatusSensor(
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_has_entity_name = True
     _attr_translation_key = "history_backfill_status"
-    _attr_options = ["not_started", "running", "paused", "failed", "completed"]
+    _attr_options: ClassVar[list[str]] = ["not_started", "running", "paused", "failed", "completed"]
 
     def __init__(self, entry: EdcConfigEntry) -> None:
         super().__init__(entry.runtime_data.coordinator)

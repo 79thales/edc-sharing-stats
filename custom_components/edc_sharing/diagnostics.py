@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .const import DOMAIN
+
 
 async def async_get_config_entry_diagnostics(hass, entry) -> dict:
     """Neexportovat config/options, EANy, zprávy, účty, tokeny ani uložené doklady.
@@ -10,15 +12,30 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict:
     Soukromý čtecí příkaz pro správce vrací více detailů než tento export.
     """
     runtime = getattr(entry, "runtime_data", None)
-    if runtime is None:
-        return {"ready": False}
-    coordinator = runtime.coordinator
+    startup = (
+        hass.data.get(DOMAIN, {}).get("startup_diagnostics", {}).get(entry.entry_id, {})
+    )
+    coordinator = (
+        runtime.coordinator if runtime is not None else startup.get("coordinator")
+    )
+    api = runtime.api if runtime is not None else startup.get("api")
+    if coordinator is None or api is None:
+        return {"ready": False, "startup_stage": "loading_local_policy"}
     quality = coordinator.data_quality
+    state = getattr(api, "account_state", None)
+    # Znovu whitelist i interní záznam: budoucí přidaný atribut se nesmí stát
+    # automaticky součástí veřejného exportu. Text byl už dříve mapován na kód.
+    failure = state.diagnostic_failure() if state is not None else None
     return {
-        "ready": True,
+        "ready": runtime is not None,
+        "cached_startup": getattr(coordinator, "cached_startup", False),
+        "original_failure": failure,
+        "wait_persistence_failed": state.persistence_failed
+        if state is not None
+        else None,
         "result": coordinator.last_attempt_result,
-        "http_status": runtime.api.last_status,
-        "failure_category": runtime.api.last_failure_category,
+        "http_status": api.last_status,
+        "failure_category": api.last_failure_category,
         "last_success": coordinator.last_success_at.isoformat()
         if coordinator.last_success_at
         else None,
@@ -36,6 +53,9 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict:
                 "queued_target_hours",
                 "latest_data_day",
                 "hourly_reason",
+                "cached_only",
+                "missing_measurement_days",
+                "missing_measurement_intervals",
             )
         },
     }

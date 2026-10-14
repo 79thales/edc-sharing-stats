@@ -1,6 +1,22 @@
 # Odolnost EDC API – implementace a ověření
 
-Zavedeno ve v0.2.5, původně na větvi `feature/api-contract-health` nad v0.2.4. Tento návod popisuje chování vydání a skutečné výsledky ověření. Příprava ani publikování release neaktualizuje produkční HA; instalaci přes HACS a restart provádí správce.
+Zavedeno ve v0.2.5, oprava prvního startu a zachování příčiny je ve v0.2.6. Tento návod popisuje chování vydání; výsledky kontrol v0.2.5 níže jsou historický záznam, nikoli důkaz správnosti nového kódu. Příprava ani publikování release neaktualizuje produkční HA; instalaci přes HACS a restart provádí správce.
+
+## Kde najít původní chybu (v0.2.6)
+
+1. **Nastavení → Systém → Protokoly**, logger `custom_components.edc_sharing.api_policy`: první chyba je WARNING i před dokončením setupu. Záznam obsahuje pevný bezpečný důvod, HTTP status (také 200 při chybě validace odpovědi), fázi, známý endpoint/kalendářní rozsah, povolené validační kódy/pole, původ čekání a další UTC termín. Volné texty serveru, hodnoty polí, EANy a přihlašovací údaje se nelogují.
+2. **Stáhnout diagnostiku instance**: `original_failure` existuje také při `setup_retry`, kdy `entry.runtime_data` dosud nevznikl. `ready` znamená existenci runtime, nikoli ověřenou funkčnost API. Když ještě probíhá čtení místní politiky, export ukáže fázi `loading_local_policy`; nevymýšlí HTTP příčinu.
+3. Diagnostická entita **Poslední pokus o načtení dat** nabízí `original_failure`, `cached_startup`, výsledek a termín dalšího pokusu. Admin-only `edc_sharing/statistics/health` vrací startup diagnostiku i bez runtime; v tomto stavu je `connection_probe: not_probed`, také s `fresh: true`. Bez připravené instance se žádný nový request nespustí.
+
+Uložení používá dosavadní HA Store `.storage/edc_sharing.api_wait.<hash účtu>` včetně `last_failure`; soubor neobsahuje hesla/tokeny nebo nezahashovaný účet. Volný uložený text se při obnově znovu odmítá: důvod vzniká z whitelist kódu. Příčina zůstává i po vypršení čekání; ověřená obnova má samostatný čas `recovered_at`. Stejné čekání samo původní příčinu nepřepisuje, neprodlužuje lhůtu a nezapisuje další WARNING při každém pokusu HA. Chyba ukládání má vlastní varování a příznak `wait_persistence_failed`; paměťové omezení zůstane platné.
+
+`wait_source` je `local_policy`, `server_retry_after`, `not_scheduled` (například odmítnuté heslo přechází na reauth) nebo `legacy_unknown`. Starý v0.2.5 soubor měl pouze kategorii a termín. Z něj **nelze** zjistit původní HTTP status, detail parseru ani prokázat, zda šlo o Retry-After. Proto se starý termín nemění automaticky a původ se poctivě označuje jako neznámý. To, že v0.2.6 opravuje null/regresní scénář, není důkaz, že právě null způsobilo původní živou chybu.
+
+## Nouzový diagnostický start s historií (v0.2.6)
+
+Po selhání prvního refreshu se může použít pouze existující validní denní cache. Výpočtové senzory zůstávají `unavailable`, `last_update_success` je false, `result` je failed a příznaky `cached_startup`/`cached_only` jsou true. Nastavení, archiv a diagnostické entity jsou přístupné, ale data nejsou prezentována jako nové úspěšné načtení. Hodnoty a původní dny cache se nemažou ani nenahrazují nulami. Bez cache zůstává setup_retry; neplatné heslo se takto neobchází.
+
+Do skutečné obnovy čtení jsou automatické importy do Recorderu/Energy, pokračování backfillu a plánované reporty vypnuté. Aktivační listener je spustí jednou po úspěchu; při dalších aktualizacích nevytváří další plánovače. První další pokus je naplánován až po uloženém termínu, potom se obnoví běžný hodinový interval. Unload/restart používá standardní rušení listenerů a časovačů HA. Obnova sama neodesílá okamžitý e-mail, nevystavuje doklad ani nepotvrzuje úhradu. Ruční již existující funkce mají své původní kontroly a potvrzení.
 
 ## Ochrana dat a požadavků
 
@@ -12,7 +28,9 @@ Validace odpovědi kontroluje seznamy, sloupce, role, směry, vektory hodnot, č
 
 ## Obnova po chybě
 
-Čtení používá jeden sdílený zámek a čekání pro účet, včetně nastavovacích průvodců. Validace se omezuje pro skupinu/cestu, 429 a dočasná nedostupnost pro celý účet. 400/422 se neopakuje okamžitě. Dočasná chyba čtecího požadavku má nejvýše dva další pokusy s čekáním přibližně 5 a 30 sekund; čekání je asynchronní. Platný Retry-After má přednost. Bez něj je následná běžná lhůta hodina, u změny kontraktu nebo oprávnění šest hodin. Jde o politiku integrace, nikoli zjištěný limit EDC.
+Čtení používá jeden sdílený zámek a čekání pro účet, včetně nastavovacích průvodců. HTTP odmítnutí se omezuje pro skupinu/cestu, 429 a dočasná nedostupnost pro celý účet. 400/422 se neopakuje okamžitě. Dočasná chyba čtecího požadavku má nejvýše dva další pokusy s čekáním přibližně 5 a 30 sekund; čekání je asynchronní. Platný Retry-After má přednost. Bez něj je následná běžná lhůta hodina, u HTTP změny kontraktu nebo oprávnění šest hodin. Od v0.2.6 lokální validace již přijatého profilu chrání pouze přesné období patnáct minut; nejnovější blok se načítá první a platná data nezahodí chyba schématu starého bloku. Jde o politiku integrace, nikoli zjištěný limit EDC; serverové ani staré neznámé ochrany se nezkracují.
+
+Explicitní null ve známém vektoru je nedostupné měření. Parser vynechá celý interval bez nulové náhrady, úplnost hodin/dnů ověří ze zbylých skutečných slotů. `missing_measurement_days`/`missing_measurement_intervals` ukazují rozsah mezer, ne období před vznikem EANu. Nula je stále validní měření. Chybějící `v`, bool, prázdný text, krátký vektor a změněné významové schéma nejsou tímto povolené. Zcela null uzavřený den nesmí posunout backfill kurzor ani tehdy, když parser nemá žádný denní řádek. Při podzimním opakování hodiny se výskyt slotu počítá i pro null, aby druhý UTC fold zůstal správný.
 
 API 401 smí vyvolat jedno obnovení přihlášení a jedno zopakování čtení. Potvrzené odmítnutí hesla se nezopakuje. Přihlašovací cíle jsou omezeny na známý HTTPS origin a callback; cizí formulář/redirect se nepoužije. Přesměrování čtecího API se neprovádí automaticky.
 

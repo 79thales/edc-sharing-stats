@@ -21,6 +21,8 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
 from .api_policy import (
+    SAFE_ERROR_CODES,
+    SAFE_ERROR_FIELDS,
     ApiAccountState,
     EdcAccessExpiredError,
     EdcApiError,
@@ -35,36 +37,6 @@ REQUEST_TIMEOUT = ClientTimeout(total=30)
 ERROR_BODY_LIMIT = 16 * 1024
 # Diagnostika smí zobrazit jen pevně známé kódy a názvy polí. Volné zprávy,
 # hodnoty, identifikátory skupin/EANů ani přihlašovací údaje se nikdy nevypisují.
-SAFE_ERROR_CODES = frozenset(
-    {
-        "INVALID_DATE",
-        "INVALID_ENTERED_DATE",
-        "MAX_PERIOD_RANGE",
-        "MAX_PERIOD_RANGE_FOR_EXPORT",
-        "MISSING_DATA_FOR_PERIOD",
-        "NOT_EMPTY",
-        "NOT_FOUND",
-        "MAX_LENGTH",
-        "MIN_LENGTH",
-        "NUMBER_BETWEEN",
-        "INTERNAL_ERROR",
-        "TIME_INTERVAL_EXCEEDS_LIMIT",
-        "PRODUCER_IS_NOT_VALID_WHOLE_PERIOD",
-    }
-)
-SAFE_ERROR_FIELDS = frozenset(
-    {
-        "sseId",
-        "eans",
-        "dateFrom",
-        "dateTo",
-        "calculationType",
-        "inputData",
-        "outputData",
-        "fileName",
-        "currentEnteredDateTime",
-    }
-)
 SAFE_API_PATHS = frozenset(
     {
         "/profiles-data/get-sse",
@@ -345,6 +317,10 @@ class EdcApiClient:
                     self.account_state.scope("/profiles-data/get-sse", None), error
                 )
             raise error
+        async with self._request_lock:
+            await self.account_state.recovered(
+                self.account_state.scope("/profiles-data/get-sse", None)
+            )
         return data
 
     async def async_get_daily_profile(
@@ -370,16 +346,31 @@ class EdcApiClient:
             ):
                 raise ValueError("EDC vrátilo data mimo požadovaný interval.")
         except ValueError as err:
-            failure = EdcApiError(str(err), category="contract")
+            failure = EdcApiError(
+                str(err),
+                category="contract",
+                status=self.last_status,
+                phase="profile_validation",
+                request_context=_safe_request_context(
+                    "POST", "/profiles-data/standard/overview", payload
+                ),
+            )
             self.last_failure_category = failure.category
             async with self._request_lock:
                 await self.account_state.block(
                     self.account_state.scope(
-                        "/profiles-data/standard/overview", payload
+                        "/profiles-data/standard/overview", payload, period=True
                     ),
                     failure,
                 )
             raise failure from None
+        async with self._request_lock:
+            await self.account_state.recovered(
+                self.account_state.scope("/profiles-data/standard/overview", payload),
+                self.account_state.scope(
+                    "/profiles-data/standard/overview", payload, period=True
+                ),
+            )
         return data
 
     async def _request(
@@ -395,7 +386,16 @@ class EdcApiClient:
             raise ValueError("Nepovolená čtecí cesta EDC.")
         async with self._request_lock:
             scope = self.account_state.scope(path, payload)
-            self.account_state.check(scope)
+            try:
+                self.account_state.check(
+                    scope, self.account_state.scope(path, payload, period=True)
+                )
+            except EdcApiError as error:
+                # Ani nový klient po restartu nesmí ztratit HTTP status a
+                # kategorii tím, že už pouze čeká na uložený termín.
+                self.last_failure_category = error.category
+                self.last_status = error.status
+                raise
             refreshed = False
             for attempt in range(3):
                 try:
@@ -410,14 +410,16 @@ class EdcApiClient:
                     # Autentizační opakování není transportní retry.
                     try:
                         return await self._request_once(method, path, payload)
-                    except EdcAuthenticationError:
+                    except EdcAuthenticationError as error:
+                        await self.account_state.note_failure(error)
                         raise
                     except EdcApiError as error:
                         await self.account_state.block(scope, error, error.retry_at)
                         raise
-                except EdcAuthenticationError:
+                except EdcAuthenticationError as error:
                     # Potvrzené odmítnutí loginu nevynucuje druhé zadání hesla.
                     self.last_failure_category = "authentication"
+                    await self.account_state.note_failure(error)
                     raise
                 except EdcApiError as error:
                     self.last_failure_category = error.category
@@ -482,12 +484,16 @@ class EdcApiClient:
                         retry_at=retry_after(
                             response.headers.get("Retry-After"), datetime.now(UTC)
                         ),
+                        request_context=context,
+                        validation_details=details,
                     )
                 try:
                     data = await response.json()
                 except (ValueError, ClientError):
                     raise EdcApiError(
-                        "EDC vrátilo neplatnou JSON odpověď.", category="contract"
+                        "EDC vrátilo neplatnou JSON odpověď.",
+                        category="contract",
+                        status=response.status,
                     ) from None
                 self.last_status = response.status
                 self.last_failure_category = None
