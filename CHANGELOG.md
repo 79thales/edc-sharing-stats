@@ -1,5 +1,24 @@
 # Přehled změn / Changelog
 
+## 0.2.7 – 2026-10-14
+
+### Čeština
+
+- Opravena regrese v0.2.6: neúspěch nového stahování už neznepřístupní existující platnou historii. Stejné skupinové a individuální senzory zobrazují poslední dostupný den, měsíční součty, využití přetoku i původní atributy s rozsahem a počtem dnů. Chybějící poslední den se nevymýšlí ani nepožaduje k zobrazení předchozích dnů; chování posledního dostupného dne odpovídá v0.2.4. Platná historie není označena jako neplatná nebo „zastaralá“ jen proto, že se nové stahování nezdařilo.
+- Beze změny všech entity ID, unique ID, jednotek, ID statistik a vlastních názvů. Existující dashboard ani jeho karty nemusíte měnit, mazat nebo znovu generovat. Výrobní a cílové EANy se při startu obnoví z vlastní cache nebo z existujícího registru stejné instance; uložená identita EAN není tvrzení o aktuální platnosti alokace.
+- Stav čtení zůstává poctivě `failed` / `authentication_failed`; `last_update_success` se nepřepíná na true kvůli cache. Atributy `data_source: retained_history` a `last_fetch_result` oddělují původ hodnot od stavu stahování; export navíc uvádí `history_available`. Diagnostika se aktualizuje i při opakovaných selháních. Výpadek neodstraní kWh, datum ani atributy, kvůli jejichž skrytí předchozí dashboard zobrazoval prázdno a náhradní nuly.
+- Existující body Recorderu se při tomto startu nemažou, nepřepisují, nepřenášejí na dnešek ani znovu neimportují. Zobrazované souhrny se počítají pouze ze skutečných uložených dnů. Skutečně prázdná historie nadále není nulová energie; nakonfigurovaná cena není měření. Doklady, ceny v již vystavených dokladech a potvrzené platby se nemění.
+- Serverové Retry-After a původní čekání se zachovají; dostupnost historie žádný síťový zákaz neobchází. Automatické importy, backfill a plánované reporty se po startu pouze s historií zapnou až po úspěšném čtení. Při odmítnutém hesle je historie dostupná a otevře se standardní reauth; bez časovače se heslo neopakuje do opravy přihlášení. Bez validní historie zůstává standardní setup retry/reauth.
+- Aktualizujte v HACS a restartujte HA. Nemažte integraci, entity, `.storage`, statistiky ani dashboard. Výsledkem mají být původní hodnoty a skutečné datum posledního dostupného EDC dne, nikoli nové entity. Vlastní dashboard zůstává uložený beze změny. Podrobnosti v [návodu](docs-api-resilience.md).
+
+### English
+
+- Fix v0.2.6 hiding valid retained history after a failed fetch. Existing group/target sensors expose the last available day, period totals and original coverage attributes independently of network success. A pending final day does not invalidate previous days or become a fabricated zero; last-available-day behavior matches v0.2.4.
+- Preserve entity/unique IDs, statistic IDs, units and custom names. No dashboard rewrite or regeneration is required. Restore producer/target identities from retained metadata or the same entry's existing registry; this is not a claim about current allocation validity.
+- Keep fetch failures and `last_update_success` truthful. Separate data provenance using `data_source`, `last_fetch_result` and `history_available`; refresh diagnostics on repeated failures. Existing Recorder points are neither removed nor reimported at retained-history startup. No valid history still means unavailable energy, not a zero measurement.
+- Retain server/legacy deadlines and disable automatic imports/backfill/reports until verified recovery. Rejected credentials trigger normal reauthentication without repeated coordinator logins while retained values remain accessible. Frozen statements and confirmed payments are unchanged.
+- Update through HACS and restart HA without deleting integration, entities, storage, statistics or dashboards. The existing dashboard should display its original values and actual EDC data date under the same IDs. See the [guide](docs-api-resilience.md).
+
 ## 0.2.6 – 2026-10-14
 
 ### Čeština

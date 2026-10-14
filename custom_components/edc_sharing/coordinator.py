@@ -11,6 +11,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -227,6 +228,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self.last_attempt_result = "never"
         self.last_attempt_error: str | None = None
         self.cached_startup = False
+        self._awaiting_reauth = False
         self.data_quality: dict[str, Any] = {"resolution": "unknown", "incomplete_days": 0,
                                            "incomplete_hours": 0, "queued_hours": 0}
         self.history_backfill_status = "not_started"
@@ -287,32 +289,93 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self._history_target_days = _stored_target_daily_rows(
             stored.get("target_daily_rows")
         )
+        # Metadata EAN nejsou živá měření. Po výpadku je obnovit z vlastní
+        # cache a ze stávajícího registru stejné config entry, bez vytváření
+        # nebo přejmenování entit. Starší soubory výrobní EAN neukládaly.
+        known = {EanInfo(ean, "target") for ean in self._history_target_days}
+        if isinstance(stored.get("eans"), list):
+            for item in stored["eans"]:
+                if (isinstance(item, dict) and item.get("role") in ("sharing", "target")
+                        and isinstance(item.get("ean"), str) and 0 < len(item["ean"].strip()) <= 32):
+                    known.add(EanInfo(item["ean"].strip(), item["role"]))
+        registry = er.async_get(self.hass)
+        for registered in er.async_entries_for_config_entry(registry, self.config_entry.entry_id):
+            if registered.platform != DOMAIN or registered.domain != "sensor":
+                continue
+            for role in ("sharing", "target"):
+                prefix = f"{self.config_entry.data[CONF_SSE_ID]}_{role}_ean_"
+                if registered.unique_id.startswith(prefix):
+                    ean = registered.unique_id[len(prefix):]
+                    if 0 < len(ean.strip()) <= 32:
+                        known.add(EanInfo(ean.strip(), role))
+        self.eans = tuple(sorted(known, key=lambda item: (item.role, item.ean)))
+
+    @property
+    def has_available_history(self) -> bool:
+        """Platné historické hodnoty jsou dostupné nezávisle na posledním HTTP.
+
+        Existence objektu se součty nula nestačí: musí obsahovat skutečný
+        datový den. Nevyžadovat včerejšek/dnešek, EDC publikuje se zpožděním.
+        Tato podmínka nepovoluje síť, importy, platby ani automatické reporty.
+        """
+        return self.data is not None and self.data.latest_day is not None
+
+    @callback
+    def _refresh_retained_statistics(self) -> bool:
+        """Přepočítat jen zobrazované kalendářní souhrny z existujících dnů.
+
+        Vstupy jsou validní uložené denní kWh a nakonfigurované ceny CZK/kWh.
+        Žádný den se nepřidává, nepřenáší na dnešek a nenahrazuje nulou; datum
+        posledního dne i počty pokrytých dnů zůstávají skutečné. Při neplatné
+        ceně se starý výsledek nepřepíše. Žádný zápis do Recorderu nebo dokladů.
+        """
+        if not self._history_days:
+            return False
+        try:
+            price = Decimal(str(self.config_entry.options.get(
+                CONF_SALE_PRICE, self.config_entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE))))
+            if not price.is_finite() or price < 0:
+                return False
+        except (InvalidOperation, TypeError, ValueError):
+            return False
+        self.data = self._calculate_statistics(price, dt_util.now().date())
+        return self.has_available_history
 
     @callback
     def async_restore_startup_cache(self) -> bool:
-        """Umožnit diagnostický start pouze s existující platnou historií.
+        """Umožnit start s dostupnými hodnotami existující platné historie.
 
-        Po neúspěšném prvním čtení nepředstírat úspěch: výpočtové senzory
-        zůstanou unavailable, ale nastavení, archiv a diagnostika jsou přístupné.
-        Cache je jen vstup pro paměťový přehled; nic nezapisovat do Recorderu,
+        Neúspěšné HTTP nepředstírat jako úspěch, ale neodepřít platná data.
+        Entity, hodnoty i atributy historie zůstávají dostupné pod stejnými ID.
+        Cache je vstup pro paměťový přehled; nic nezapisovat do Recorderu,
         neobnovovat backfill a neposílat plánované reporty. Další síťový pokus
         naplánovat až po uložené lhůtě. Bez cache zůstává běžný setup_retry HA.
         """
-        if not self._history_days or self.last_attempt_result != "failed":
+        if not self._history_days or self.last_attempt_result not in ("failed", "authentication_failed"):
             return False
         now = dt_util.now()
-        price = Decimal(str(self.config_entry.options.get(
-            CONF_SALE_PRICE, self.config_entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE))))
-        self.data = self._calculate_statistics(price, now.date())
+        if not self._refresh_retained_statistics():
+            return False
         self.cached_startup = True
         self.last_update_success = False
-        self.eans = tuple(EanInfo(ean, "target") for ean in sorted(self._history_target_days))
         self.data_quality.update(cached_only=True, latest_data_day=self.data.latest_day.isoformat()
                                  if self.data.latest_day else None)
         if self.next_attempt_at is not None:
             self.update_interval = max(timedelta(seconds=1), self.next_attempt_at - now)
-        _LOGGER.warning("EDC startuje pouze s uchovanou historií; aktuální čtení selhalo, diagnostika je dostupná a automatické importy/reporty čekají na obnovu")
+        _LOGGER.warning("EDC zobrazuje uchovanou platnou historii; aktuální čtení selhalo a automatické importy/reporty čekají na obnovu")
         return True
+
+    @callback
+    def _async_refresh_finished(self) -> None:
+        """Při opakované chybě aktualizovat diagnostiku i dostupné atributy.
+
+        Základní koordinátor při dvou selháních za sebou listenery potlačuje.
+        Zde dostupnost historie nesmí zaležet na výsledku HTTP; chybový stav
+        a termín musí být aktuální. Aktivační listener reportů nadále vyžaduje
+        last_update_success, takže toto oznámení nic neposílá ani neimportuje.
+        """
+        if not self.last_update_success:
+            self.async_update_listeners()
 
     def _target_prices(self, default_price: Decimal) -> dict[str, Decimal]:
         """Return safe per-target prices while preserving the group default."""
@@ -351,6 +414,10 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         }
 
     async def _async_update_data(self) -> SharingStatistics:
+        if getattr(self, "_awaiting_reauth", False):
+            # Potvrzeně odmítnuté heslo neopakovat jen kvůli obnovení karty.
+            # Nové credentials používají standardní reauth a nový koordinátor.
+            raise ConfigEntryAuthFailed
         now = dt_util.now()
         self.last_attempt_at = now
         self.next_attempt_at = None
@@ -499,7 +566,9 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     or earliest_known < self.history_earliest_date
                 ):
                     self.history_earliest_date = earliest_known
+            eans_changed = False
             if fetched_eans:
+                eans_changed = set(self.eans) != fetched_eans
                 self.eans = tuple(
                     sorted(fetched_eans, key=lambda item: (item.role, item.ean))
                 )
@@ -530,15 +599,20 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                                "daily_only" if resolutions == {"daily"} else
                                "incomplete" if incomplete_hours or incomplete_blocks or missing_intervals else "available" if fetched_hours else "empty"),
             )
-            if history_changed:
+            if history_changed or eans_changed:
                 await self._async_save_history_backfill_state()
             return result
         except EdcAuthenticationError as err:
+            self._refresh_retained_statistics()
+            self._awaiting_reauth = True
+            self.update_interval = None
             self.last_attempt_result = "authentication_failed"
             self.last_attempt_error = "Přihlášení k EDC již není platné."
             self.next_attempt_at = None
+            self.data_quality["cached_only"] = True
             raise ConfigEntryAuthFailed from err
         except (EdcApiError, ValueError, KeyError) as err:
+            self._refresh_retained_statistics()
             self.last_attempt_result = "failed"
             self.last_attempt_error = str(err)
             self.next_attempt_at = getattr(err, "retry_at", None) or dt_util.now() + DEFAULT_SCAN_INTERVAL
@@ -809,6 +883,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 "imported_days": self.history_backfill_imported_days,
                 "imported_hours": self.history_backfill_imported_hours,
                 "error": self.history_backfill_error,
+                "eans": [{"ean": item.ean, "role": item.role} for item in self.eans],
                 "daily_rows": [
                     _serialize_daily_row(row)
                     for row in sorted(

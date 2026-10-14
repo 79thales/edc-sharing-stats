@@ -398,6 +398,17 @@ class EdcSharingSensor(CoordinatorEntity[EdcSharingCoordinator], SensorEntity):
         )
 
     @property
+    def available(self) -> bool:
+        """Zachovat poslední platný den/souhrny i při selhání nového načtení.
+
+        HTTP stav není dostupnost uložených kWh. Prázdná historie se nadále
+        nezobrazuje jako nulová energie; cena je známé nastavení, ne měření.
+        ID, jednotky i význam stávajících senzorů zůstávají beze změny.
+        """
+        return self.coordinator.data is not None and (
+            self.entity_description.key == "sale_price" or self.coordinator.has_available_history)
+
+    @property
     def native_value(self) -> Decimal:
         return self.entity_description.value_fn(self.coordinator.data)
 
@@ -408,6 +419,8 @@ class EdcSharingSensor(CoordinatorEntity[EdcSharingCoordinator], SensorEntity):
             if self.entity_description.attributes_fn is not None
             else {}
         )
+        attributes["last_fetch_result"] = self.coordinator.last_attempt_result
+        attributes["data_source"] = "retained_history" if not self.coordinator.last_update_success else "edc_history"
         history_key = HISTORY_KEYS.get(self.entity_description.key)
         if history_key is not None:
             sse_id = self.coordinator.config_entry.data[CONF_SSE_ID]
@@ -455,8 +468,12 @@ class EdcEanSensor(CoordinatorEntity[EdcSharingCoordinator], SensorEntity):
 
     @property
     def available(self) -> bool:
-        """Mark an EAN unavailable if EDC removes it from the group."""
-        return super().available and self._ean_info in self.coordinator.eans
+        """EAN je uložená identita, nikoli živé měření či potvrzení členství.
+
+        Neznepřístupnit známé ID pouze kvůli HTTP chybě. Diagnostika načtení
+        zůstává oddělená; tento senzor netvrdí aktuální platnost alokace.
+        """
+        return bool(self._ean_info.ean)
 
     @property
     def extra_state_attributes(self) -> dict[str, str]:
@@ -514,6 +531,8 @@ class EdcTargetSensor(
 
     @property
     def _statistics(self) -> TargetSharingStatistics | None:
+        if self.coordinator.data is None:
+            return None
         return next(
             (
                 item
@@ -533,12 +552,9 @@ class EdcTargetSensor(
     @property
     def available(self) -> bool:
         return (
-            super().available
-            and any(
-                item.role == "target" and item.ean == self._ean
-                for item in self.coordinator.eans
-            )
-            and self._statistics is not None
+            self._statistics is not None and (
+                self.entity_description.key == "electricity_sale_price"
+                or self._statistics.latest_day is not None)
         )
 
     @property
@@ -551,6 +567,8 @@ class EdcTargetSensor(
             if self.entity_description.attributes_fn is not None
             else {}
         )
+        attributes["last_fetch_result"] = self.coordinator.last_attempt_result
+        attributes["data_source"] = "retained_history" if not self.coordinator.last_update_success else "edc_history"
         if location := ean_location(self._ean, self.coordinator.config_entry.options):
             attributes["location"] = location
         metric = {

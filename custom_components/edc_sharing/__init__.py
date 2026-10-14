@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryNotReady,
+    HomeAssistantError,
+)
 from homeassistant.helpers.typing import ConfigType
 
 from .api import EdcApiClient
@@ -93,6 +97,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: EdcConfigEntry) -> bool:
     except ConfigEntryNotReady:
         if not coordinator.async_restore_startup_cache():
             raise
+    except ConfigEntryAuthFailed:
+        # Přihlášení vyžaduje opravu, nikoli smazání již uložených kWh.
+        # S validní historií zpřístupnit stejné entity a otevřít standardní
+        # reauth; koordinátor bez timeru neposílá znovu odmítnuté heslo.
+        if not coordinator.async_restore_startup_cache():
+            raise
+        entry.async_start_reauth_if_available(hass)
     reporter = EdcReportManager(hass, entry, coordinator)
     await reporter.async_initialize_profiles()
     entry.runtime_data = EdcRuntimeData(api, coordinator, reporter)

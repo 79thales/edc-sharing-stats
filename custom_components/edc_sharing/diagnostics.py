@@ -29,6 +29,7 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict:
     return {
         "ready": runtime is not None,
         "cached_startup": getattr(coordinator, "cached_startup", False),
+        "history_available": bool(getattr(coordinator, "has_available_history", False)),
         "original_failure": failure,
         "wait_persistence_failed": state.persistence_failed
         if state is not None

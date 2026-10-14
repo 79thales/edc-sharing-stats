@@ -18,7 +18,10 @@ from homeassistant.helpers.storage import Store
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.edc_sharing.api import EdcApiClient
-from custom_components.edc_sharing.api_policy import ApiAccountState
+from custom_components.edc_sharing.api_policy import (
+    ApiAccountState,
+    EdcAuthenticationError,
+)
 from custom_components.edc_sharing.calculation import (
     parse_daily_profile,
     parse_daily_target_profiles,
@@ -29,8 +32,11 @@ from custom_components.edc_sharing.coordinator import (
     _serialize_target_daily_row,
 )
 from custom_components.edc_sharing.diagnostics import async_get_config_entry_diagnostics
-from custom_components.edc_sharing.health import async_register_health_commands
-from tests_homeassistant.test_statistics_health import profile
+from custom_components.edc_sharing.health import (
+    async_register_health_commands,
+    inspect_statistics_health,
+)
+from tests_homeassistant.test_statistics_health import profile, queue
 
 pytestmark = pytest.mark.freeze_time("2026-10-14T07:00:00Z")
 
@@ -44,6 +50,7 @@ def make_entry(hass):
             "password": "private-password",
             "sse_id": 1,
             "sse_name": "Synthetic group",
+            "sale_price": 2,
         },
     )
     entry.add_to_hass(hass)
@@ -135,6 +142,33 @@ async def test_cached_start_exposes_diagnostics_but_does_not_import_or_send_unti
     await hass.config.async_set_time_zone("Europe/Prague")
     entry, api = make_entry(hass), make_api(hass)
     await cache_history(hass, entry)
+    # Před aktualizací existovaly tyto uživatelem přejmenované entity.
+    # Oprava nesmí vyžadovat nová ID, mazání zařízení ani regeneraci dashboardu.
+    registry = er.async_get(hass)
+    group_sensor = registry.async_get_or_create(
+        "sensor",
+        "edc_sharing",
+        "1_shared_today",
+        config_entry_id=entry.entry_id,
+        suggested_object_id="my_saved_group_sharing",
+    )
+    source_sensor = registry.async_get_or_create(
+        "sensor",
+        "edc_sharing",
+        "1_sharing_ean_producer",
+        config_entry_id=entry.entry_id,
+        suggested_object_id="my_saved_source_ean",
+    )
+    target_sensor = registry.async_get_or_create(
+        "sensor",
+        "edc_sharing",
+        "1_target_target_shared_latest_available_day",
+        config_entry_id=entry.entry_id,
+        suggested_object_id="my_saved_target_sharing",
+    )
+    registry.async_update_entity(group_sensor.entity_id, name="My retained sharing")
+    queue(hass, profile())
+    await recorder_mock.async_block_till_done()
     until = datetime.now(UTC) + timedelta(hours=6)
     scope = api.account_state.scope("/profiles-data/standard/overview", {"sseId": 1})
     api.account_state.restore(
@@ -174,11 +208,43 @@ async def test_cached_start_exposes_diagnostics_but_does_not_import_or_send_unti
         state = hass.states.get(diagnostic_id)
         assert state is not None and state.state != "unavailable"
         assert state.attributes["data_quality"]["cached_only"]
+        group_state = hass.states.get(group_sensor.entity_id)
+        assert float(group_state.state) == 10
+        assert group_state.attributes["data_date"] == "2026-10-12"
+        assert group_state.attributes["friendly_name"] == "My retained sharing"
+        assert group_state.attributes["data_source"] == "retained_history"
+        assert group_state.attributes["last_fetch_result"] == "failed"
+        assert hass.states.get(source_sensor.entity_id).state == "producer"
+        assert float(hass.states.get(target_sensor.entity_id).state) == 10
+        total_id = registry.async_get_entity_id(
+            "sensor", "edc_sharing", "1_surplus_utilization_total"
+        )
+        total_state = hass.states.get(total_id)
+        assert float(total_state.state) == 100
+        assert total_state.attributes["shared_kwh"] == 10
+        assert total_state.attributes["available_days"] == 1
+        assert total_state.attributes["data_start"] == "2026-10-12"
+        assert total_state.attributes["data_end"] == "2026-10-12"
+        history = await inspect_statistics_health(
+            hass, entry, date(2026, 10, 12), date(2026, 10, 13)
+        )
+        assert history["statistics"]["edc_sharing:1_shared_hourly"]["points"] == 1
         diagnostic = await async_get_config_entry_diagnostics(hass, entry)
         assert diagnostic["cached_startup"]
         assert diagnostic["original_failure"]["reason_code"] == "legacy"
         assert "Starší verze neuložila" in caplog.text
         assert "private" not in str(diagnostic)
+
+        # Opakovaná čekací chyba nesmí znepřístupnit hodnoty/atributy ani
+        # měnit jejich data. Diagnostika se přitom aktualizuje i po dvou chybách.
+        await coordinator.async_refresh()
+        assert float(hass.states.get(group_sensor.entity_id).state) == 10
+        assert (
+            hass.states.get(group_sensor.entity_id).attributes["data_date"]
+            == "2026-10-12"
+        )
+        api._request_once.assert_not_awaited()
+        start_reports.assert_not_called()
 
         # Simulovat až uplynutí původní lhůty; neobcházet živé omezení EDC.
         api.account_state.blocks.clear()
@@ -198,6 +264,78 @@ async def test_cached_start_exposes_diagnostics_but_does_not_import_or_send_unti
         start_reports.assert_called_once()
         await coordinator.async_refresh()
         start_reports.assert_called_once()
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_ean_metadata_survives_storage_reload_without_registry(
+    hass, hass_storage
+):
+    entry, api = make_entry(hass), make_api(hass)
+    await cache_history(hass, entry)
+    coordinator = EdcSharingCoordinator(hass, entry, api)
+    await coordinator.async_initialize()
+    from custom_components.edc_sharing.calculation import EanInfo
+
+    coordinator.eans = (EanInfo("producer", "sharing"), EanInfo("target", "target"))
+    await coordinator._async_save_history_backfill_state()
+    restored = EdcSharingCoordinator(hass, entry, api)
+    await restored.async_initialize()
+    assert restored.eans == coordinator.eans
+    assert float(restored._history_days[date(2026, 10, 12)].shared) == 10
+    await coordinator.async_shutdown()
+    await restored.async_shutdown()
+
+
+async def test_empty_history_does_not_create_zero_energy(hass, recorder_mock):
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from custom_components.edc_sharing.calculation import calculate_statistics
+    from custom_components.edc_sharing.sensor import SENSORS, EdcSharingSensor
+
+    entry, api = make_entry(hass), make_api(hass)
+    coordinator = EdcSharingCoordinator(hass, entry, api)
+    coordinator.data = calculate_statistics((), Decimal(2), date(2026, 10, 14))
+    entry.runtime_data = SimpleNamespace(coordinator=coordinator)
+    for description in SENSORS:
+        entity = EdcSharingSensor(entry, description)
+        assert entity.available == (description.key == "sale_price")
+    await coordinator.async_shutdown()
+
+
+async def test_bad_credentials_keep_history_without_repeating_password(
+    hass, recorder_mock
+):
+    entry, api = make_entry(hass), make_api(hass)
+    await cache_history(hass, entry)
+    api._request_once.side_effect = EdcAuthenticationError(
+        "Neplatné jméno nebo heslo EDC."
+    )
+    with (
+        patch(
+            "custom_components.edc_sharing.async_setup",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "custom_components.edc_sharing.async_get_api_client",
+            new=AsyncMock(return_value=api),
+        ),
+        patch.object(entry, "async_start_reauth_if_available") as reauth,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        coordinator = entry.runtime_data.coordinator
+        reauth.assert_called_once()
+        assert coordinator.has_available_history
+        assert not coordinator.last_update_success
+        assert coordinator.update_interval is None
+        registry = er.async_get(hass)
+        group_id = registry.async_get_entity_id(
+            "sensor", "edc_sharing", "1_shared_today"
+        )
+        assert float(hass.states.get(group_id).state) == 10
+        await coordinator.async_refresh()
+        assert api._request_once.await_count == 1
+        assert not coordinator._history_import_enabled
     await hass.config_entries.async_unload(entry.entry_id)
 
 

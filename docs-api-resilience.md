@@ -1,6 +1,6 @@
 # Odolnost EDC API – implementace a ověření
 
-Zavedeno ve v0.2.5, oprava prvního startu a zachování příčiny je ve v0.2.6. Tento návod popisuje chování vydání; výsledky kontrol v0.2.5 níže jsou historický záznam, nikoli důkaz správnosti nového kódu. Příprava ani publikování release neaktualizuje produkční HA; instalaci přes HACS a restart provádí správce.
+Zavedeno ve v0.2.5, zachování příčiny ve v0.2.6 a nezávislá dostupnost historie ve v0.2.7. Výsledky starších verzí níže jsou historický záznam, nikoli důkaz správnosti nového kódu. Příprava/publikování release automaticky neaktualizuje produkční HA; instalace a restart se provádějí samostatně.
 
 ## Kde najít původní chybu (v0.2.6)
 
@@ -12,9 +12,11 @@ Uložení používá dosavadní HA Store `.storage/edc_sharing.api_wait.<hash ú
 
 `wait_source` je `local_policy`, `server_retry_after`, `not_scheduled` (například odmítnuté heslo přechází na reauth) nebo `legacy_unknown`. Starý v0.2.5 soubor měl pouze kategorii a termín. Z něj **nelze** zjistit původní HTTP status, detail parseru ani prokázat, zda šlo o Retry-After. Proto se starý termín nemění automaticky a původ se poctivě označuje jako neznámý. To, že v0.2.6 opravuje null/regresní scénář, není důkaz, že právě null způsobilo původní živou chybu.
 
-## Nouzový diagnostický start s historií (v0.2.6)
+## Dostupná historie při neúspěšném stahování (v0.2.7)
 
-Po selhání prvního refreshu se může použít pouze existující validní denní cache. Výpočtové senzory zůstávají `unavailable`, `last_update_success` je false, `result` je failed a příznaky `cached_startup`/`cached_only` jsou true. Nastavení, archiv a diagnostické entity jsou přístupné, ale data nejsou prezentována jako nové úspěšné načtení. Hodnoty a původní dny cache se nemažou ani nenahrazují nulami. Bez cache zůstává setup_retry; neplatné heslo se takto neobchází.
+Platné uložené kWh, souhrny a data jejich měření jsou dostupné ve stejných entitách i při chybě nového čtení. Čekání na poslední den nesmí znepřístupnit předchozí dny. V0.2.6 nesprávně používala dostupnost posledního HTTP jako dostupnost celé historie; HA potom schoval i `data_date`, `available_days`, `shared_kwh` a rozsahy, takže markdown karty ukazovaly prázdno/náhradní nuly. V0.2.7 odděluje tyto podmínky: `has_available_history` ověřuje existenci skutečného datového dne; `last_update_success` zůstává false při chybě sítě. `cached_startup`/`cached_only` a `data_source: retained_history` označují původ, nikoli neplatnost nebo „zastaralost“ historie. ID, jednotky, vlastní názvy, datum posledního dne a externí body se zachovají; dashboard se nepřepisuje a generátor nepotřebuje měnit své odkazy.
+
+Výrobní/cílové identity se obnoví z metadat historie nebo z registru pouze stejné config entry a přesně známých unique ID. Registr se nemění ani se EAN neodvozuje z cizí instance. Tyto identity nejsou potvrzení aktuální alokace; platné historické hodnoty cíle nezmizí jen proto, že cíl není v posledním profilu. Bez validní cache se energie nevymyslí jako nula a zůstává standardní setup_retry. Odmítnuté heslo spustí reauth; s historií je přehled dál dostupný, timer se vypne a další pokusy koordinátoru nepřepošlou heslo před opravou přihlášení.
 
 Do skutečné obnovy čtení jsou automatické importy do Recorderu/Energy, pokračování backfillu a plánované reporty vypnuté. Aktivační listener je spustí jednou po úspěchu; při dalších aktualizacích nevytváří další plánovače. První další pokus je naplánován až po uloženém termínu, potom se obnoví běžný hodinový interval. Unload/restart používá standardní rušení listenerů a časovačů HA. Obnova sama neodesílá okamžitý e-mail, nevystavuje doklad ani nepotvrzuje úhradu. Ruční již existující funkce mají své původní kontroly a potvrzení.
 
