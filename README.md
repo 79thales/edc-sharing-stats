@@ -39,7 +39,9 @@ If EDC rejects a request, diagnostics preserve the HTTP status and may show the 
 
 The download badges count only downloads of the `edc_sharing.zip` release asset, including HACS updates and manual downloads. They do not count unique users, source-code archives or default-branch installations. Counting starts with v0.1.32; earlier downloads cannot be reconstructed. HACS's download indicator refers to the selected release, while the total badge combines installer downloads across releases. GitHub, HACS and badge caches may update at different times. No usage tracking is added to the integration.
 
-### Odolnost API a diagnostika (od v0.2.5, opravy v0.2.7–0.2.8)
+### Odolnost API a diagnostika (od v0.2.5, opravy v0.2.7–0.2.9)
+
+Od v0.2.9 parser přijímá minutové hranice `HH:mm` i jejich zápis s nulovými sekundami. Hodinové výpočty, úplnost a DST používají stejnou časovou interpretaci; skutečné mezery nejsou nula. Přihlašovací HTTP 403 již nezaloží vlastní šestihodinovou blokaci, zatímco serverové `Retry-After` se zachová. Diagnostika nově ukáže přesný krok přihlášení. Aktualizujte přes HACS a restartujte HA bez mazání entit nebo historie. Ověření kódu neprokazuje obnovení živého EDC přihlášení; poslední samostatný čtecí pokus skončil HTTP 403. Podrobnosti jsou v [návodu](docs-api-resilience.md).
 
 Od v0.2.8 **NaN/Infinity v jednom intervalu nezahodí ostatní platné dny** stejné odpovědi EDC. Dotčený interval se nepřevádí na nulu a neúplný výsledek nepřepíše uložený platný den. Nové kompletní dny/hodiny se zpracují bez změny entit nebo dashboardu. Formát data požadavků zůstává jako ve v0.2.4; již uložené čekání a serverové limity se zachovávají. Podrobnosti a příklad jsou v [návodu](docs-api-resilience.md#naninfinity-nesmí-zastavit-nové-platné-dny-v028).
 
