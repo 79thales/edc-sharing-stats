@@ -51,6 +51,36 @@ def profile():
     }
 
 
+def dst_profile(day):
+    """Nezávislé 23/25 hodinové vzorky: opakovaná 02:00 není duplicita energie.
+
+    Každý hodinový řádek má 16 kWh spotřebu, 6 kWh síť a 10 kWh sdílení.
+    Jarní interval 01–03 trvá v UTC hodinu, podzimní 02–02 rovněž.
+    """
+    result = profile()
+    starts = (
+        [0, 1, *range(3, 24)] if day == "2026-03-29" else [0, 1, 2, 2, *range(3, 24)]
+    )
+    result["content"] = []
+    for index, hour in enumerate(starts):
+        end = (
+            3
+            if day == "2026-03-29" and hour == 1
+            else 2
+            if day == "2026-10-25" and index == 2
+            else hour + 1
+        )
+        result["content"].append(
+            {
+                "date": day,
+                "start": f"{hour:02d}:00:00",
+                "end": f"{end:02d}:00:00",
+                "values": [{"v": 10}, {"v": 0}, {"v": -16}, {"v": -6}],
+            }
+        )
+    return result
+
+
 def make_entry(hass):
     entry = MockConfigEntry(
         domain="edc_sharing",
@@ -71,7 +101,7 @@ def make_entry(hass):
 
 def queue(hass, raw):
     tz = ZoneInfo("Europe/Prague")
-    now = datetime(2026, 10, 14, tzinfo=UTC)
+    now = datetime.now(UTC)
     async_import_hourly_history(
         hass,
         sse_id=1,

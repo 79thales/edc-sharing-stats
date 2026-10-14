@@ -31,6 +31,7 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict:
                 "resolution",
                 "incomplete_days",
                 "incomplete_hours",
+                "incomplete_blocks",
                 "queued_hours",
                 "queued_target_hours",
                 "latest_data_day",

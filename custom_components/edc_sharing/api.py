@@ -7,6 +7,7 @@ import base64
 import hashlib
 import html
 import json
+import math
 import os
 import random
 import re
@@ -531,13 +532,18 @@ class EdcApiClient:
     def _store_tokens(self, data: dict[str, Any]) -> None:
         try:
             access_token = data["access_token"]
-            expires_in = int(data.get("expires_in", 300))
-        except (KeyError, TypeError, ValueError) as err:
+            lifetime = data.get("expires_in", 300)
+            if isinstance(lifetime, bool):
+                raise TypeError("Neplatný typ délky tokenu.")
+            expires_in = int(lifetime)
+            if expires_in <= 0 or not math.isfinite(float(expires_in)):
+                raise ValueError("Neplatná délka tokenu.")
+        except (KeyError, TypeError, ValueError, OverflowError):
             raise EdcApiError(
                 "EDC vrátilo neplatnou tokenovou odpověď.",
                 category="contract",
                 phase="authentication",
-            ) from err
+            ) from None
         if not isinstance(access_token, str) or not access_token:
             raise EdcApiError(
                 "EDC vrátilo neplatnou tokenovou odpověď.",

@@ -8,6 +8,7 @@ import unittest
 from datetime import UTC, date, datetime, timedelta
 from email.utils import format_datetime
 from unittest.mock import AsyncMock, patch
+from zoneinfo import ZoneInfo
 
 from tests.test_api import _Response, _Session, api
 from tests.test_calculation import calculation
@@ -135,6 +136,42 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(float(hour.coverage), 40)
         self.assertEqual(hour.consumption, hour.grid_purchase + hour.shared)
 
+    def test_D06_complete_dst_days_keep_23_and_25_unique_utc_hours(self):
+        for day, starts, expected in (
+            ("2026-03-29", [0, 1, *range(3, 24)], 23),
+            ("2026-10-25", [0, 1, 2, 2, *range(3, 24)], 25),
+        ):
+            profile = interval_profile()
+            profile["content"] = []
+            for index, hour in enumerate(starts):
+                end = (
+                    3
+                    if day == "2026-03-29" and hour == 1
+                    else 2
+                    if day == "2026-10-25" and index == 2
+                    else hour + 1
+                )
+                profile["content"].append(
+                    {
+                        "date": day,
+                        "start": f"{hour:02d}:00:00",
+                        "end": f"{end:02d}:00:00",
+                        "values": [{"v": 10}, {"v": 0}, {"v": -16}, {"v": -6}],
+                    }
+                )
+            hours = calculation.parse_hourly_profile(
+                profile, local_tz=ZoneInfo("Europe/Prague")
+            )
+            self.assertEqual(calculation.profile_resolution(profile), "hour")
+            self.assertEqual(len(hours), expected)
+            self.assertEqual(len({row.start for row in hours}), expected)
+            self.assertTrue(all(row.complete for row in hours))
+            days = calculation.parse_daily_profile(profile)
+            self.assertTrue(days[0].complete)
+            self.assertEqual(float(days[0].shared), expected * 10)
+            profile["content"].pop()
+            self.assertFalse(calculation.parse_daily_profile(profile)[0].complete)
+
     def test_A09_retry_after_seconds_dates_and_invalid_values(self):
         now = datetime(2026, 10, 14, tzinfo=UTC)
         for value in ("90", format_datetime(now + timedelta(seconds=90), usegmt=True)):
@@ -158,6 +195,21 @@ class ContractTests(unittest.TestCase):
                 api.EdcApiClient._validate_login_target(target)
             self.assertNotIn("secret", str(raised.exception))
             self.assertEqual(raised.exception.category, "contract")
+
+    def test_D04_unit_change_and_secret_token_error_are_rejected_safely(self):
+        profile = interval_profile()
+        profile["valueColumns"][0]["unit"] = "Wh"
+        with self.assertRaises(ValueError):
+            calculation.validate_profile_response(profile)
+        client = api.EdcApiClient(_Session([], []), "private-user", "private-password")
+        for lifetime in ("private-secret", True, float("inf"), -1):
+            with self.assertRaises(api.EdcApiError) as raised:
+                client._store_tokens(
+                    {"access_token": "private-token", "expires_in": lifetime}
+                )
+            self.assertEqual(raised.exception.category, "contract")
+            self.assertTrue(raised.exception.__suppress_context__)
+            self.assertNotIn("private", str(raised.exception))
 
 
 class ResilienceTests(unittest.IsolatedAsyncioTestCase):

@@ -346,6 +346,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             resolutions: set[str] = set()
             incomplete_days = 0
             incomplete_hours = 0
+            incomplete_blocks = 0
             for chunk_from, chunk_to in profile_date_ranges(date_from, date_to):
                 # Zachovat kalendářní interval [od, do). API klient převede
                 # poslední den na včetně; UTC patří až k hodinovým statistikám.
@@ -398,6 +399,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                         chunk_to,
                         err,
                     )
+                    incomplete_blocks += 1
 
             if full_history_refresh:
                 self._days = {
@@ -470,11 +472,11 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             self.data_quality.pop("failure_category", None)
             self.data_quality.update(
                 resolution=next(iter(resolutions)) if len(resolutions) == 1 else "mixed",
-                incomplete_days=incomplete_days, incomplete_hours=incomplete_hours,
+                incomplete_days=incomplete_days, incomplete_hours=incomplete_hours, incomplete_blocks=incomplete_blocks,
                 latest_data_day=result.latest_day.isoformat() if result.latest_day else None,
                 hourly_reason=("unknown_resolution" if "unknown" in resolutions else
                                "daily_only" if resolutions == {"daily"} else
-                               "incomplete" if incomplete_hours else "available" if fetched_hours else "empty"),
+                               "incomplete" if incomplete_hours or incomplete_blocks else "available" if fetched_hours else "empty"),
             )
             if history_changed:
                 await self._async_save_history_backfill_state()

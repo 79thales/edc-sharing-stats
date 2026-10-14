@@ -13,8 +13,8 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .api import EdcApiError, EdcAuthenticationError
-from .connection import async_get_api_client
 from .billing import PANEL_PATH as BILLING_PANEL_PATH
+from .connection import async_get_api_client
 from .const import (
     CONF_DAILY_REPORT,
     CONF_EAN_SETTINGS,
@@ -141,13 +141,11 @@ class EdcSharingConfigFlow(ConfigFlow, domain=DOMAIN):
         entry = self._get_reauth_entry()
         errors: dict[str, str] = {}
         if user_input is not None:
-            api = EdcApiClient(
-                async_get_clientsession(self.hass),
-                entry.data[CONF_USERNAME],
-                user_input[CONF_PASSWORD],
-            )
+            api = await async_get_api_client(self.hass, entry.data[CONF_USERNAME], user_input[CONF_PASSWORD])
             try:
-                await api.async_login()
+                # Ověřit přihlášení čtecím voláním přes společný zámek/čekání.
+                # Reauth nesmí obejít omezení účtu přímým přihlašovacím POSTem.
+                await api.async_get_groups()
             except EdcAuthenticationError:
                 errors["base"] = "invalid_auth"
             except EdcApiError:

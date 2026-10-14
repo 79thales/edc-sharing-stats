@@ -3,7 +3,7 @@
 import copy
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -12,13 +12,33 @@ from homeassistant.components.onboarding.const import STEPS
 from homeassistant.setup import async_setup_component
 from playwright.async_api import async_playwright, expect
 
-from custom_components.edc_sharing.dashboard import build_dashboard
-from tests_homeassistant.test_statistics_health import profile, queue
+from custom_components.edc_sharing.dashboard import DashboardTarget, build_dashboard
+from tests_homeassistant.test_statistics_health import dst_profile, profile, queue
 
 pytestmark = pytest.mark.freeze_time("2026-10-14T12:00:00Z")
 
 
+@pytest.mark.parametrize(
+    "data_day,expected",
+    [
+        pytest.param(
+            "2026-10-12", [4, 8], marks=pytest.mark.freeze_time("2026-10-14T12:00:00Z")
+        ),
+        pytest.param(
+            "2026-03-29",
+            [10] * 23,
+            marks=pytest.mark.freeze_time("2026-03-31T12:00:00Z"),
+        ),
+        pytest.param(
+            "2026-10-25",
+            [10] * 25,
+            marks=pytest.mark.freeze_time("2026-10-27T12:00:00Z"),
+        ),
+    ],
+)
 async def test_generated_graph_and_selected_day(
+    data_day,
+    expected,
     hass,
     recorder_mock,
     hass_ws_client,
@@ -34,7 +54,9 @@ async def test_generated_graph_and_selected_day(
     fixture. Není připojen k uživatelovu prohlížeči ani živému EDC/HA.
     Screenshot obsahuje pouze syntetickou skupinu a zadané testovací hodnoty.
     """
-    moment = datetime(2026, 10, 14, 12, tzinfo=UTC)
+    moment = datetime.fromisoformat(data_day).replace(tzinfo=UTC) + timedelta(
+        days=2, hours=12
+    )
     freezer.move_to(moment)
     await hass.config.async_set_time_zone("Europe/Prague")
     # Testovací auth účet už existuje; neinicializovat onboarding nového domu.
@@ -57,6 +79,8 @@ async def test_generated_graph_and_selected_day(
         for value in row["values"]:
             value["v"] *= 2
     raw["content"].extend(additional)
+    if data_day != "2026-10-12":
+        raw = dst_profile(data_day)
     queue(hass, raw)
     await recorder_mock.async_block_till_done()
     config = build_dashboard(
@@ -68,6 +92,16 @@ async def test_generated_graph_and_selected_day(
             f"{metric}_hourly": f"edc_sharing:1_{metric}_hourly"
             for metric in ("shared", "consumption", "grid", "coverage")
         },
+        targets=[
+            DashboardTarget(
+                name="Synthetic target",
+                entities={},
+                statistics={
+                    f"{metric}_hourly": f"edc_sharing:1_target_{metric}_hourly"
+                    for metric in ("shared", "consumption", "grid", "coverage")
+                },
+            )
+        ],
     )
     ws = await hass_ws_client(hass)
     await ws.send_json(
@@ -125,14 +159,33 @@ async def test_generated_graph_and_selected_day(
             await expect(chart).to_be_visible()
             handle = await chart.element_handle()
             await page.wait_for_function(
-                "el => el.statisticsData?.['edc_sharing:1_shared_hourly']?.length === 2",
+                f"el => el.statisticsData?.['edc_sharing:1_shared_hourly']?.length === {len(expected)}",
                 arg=handle,
             )
-            assert await chart.evaluate(
-                "el => el.statisticsData['edc_sharing:1_shared_hourly'].map(row => row.mean)"
-            ) == [4, 8]
+            assert (
+                await chart.evaluate(
+                    "el => el.statisticsData['edc_sharing:1_shared_hourly'].map(row => row.mean)"
+                )
+                == expected
+            )
             await expect(chart.locator("canvas")).to_be_visible()
             await card.screenshot(path=str(tmp_path / "hourly-graph.png"))
+            target_chart = (
+                page.locator("hui-statistics-graph-card")
+                .filter(has_text="Sharing, consumption and grid – Synthetic target")
+                .locator("statistics-chart")
+            )
+            target_handle = await target_chart.element_handle()
+            await page.wait_for_function(
+                f"el => el.statisticsData?.['edc_sharing:1_target_shared_hourly']?.length === {len(expected)}",
+                arg=target_handle,
+            )
+            assert (
+                await target_chart.evaluate(
+                    "el => el.statisticsData['edc_sharing:1_target_shared_hourly'].map(row => row.mean)"
+                )
+                == expected
+            )
             await page.goto(base_url + "/edc-test/hourly-date")
             card = page.locator("hui-statistics-graph-card").filter(
                 has_text="Sharing, consumption and grid – Whole group"
@@ -148,16 +201,18 @@ async def test_generated_graph_and_selected_day(
             await previous.click()
             handle = await chart.element_handle()
             await page.wait_for_function(
-                "el => el.startTime?.getTime() === Date.parse('2026-10-12T22:00:00Z')",
+                "el => el.startTime?.toLocaleDateString('sv-SE', {timeZone: 'Europe/Prague'}) === '"
+                + (moment - timedelta(days=1)).date().isoformat()
+                + "'",
                 arg=handle,
             )
             await previous.click()
             await page.wait_for_function(
-                "el => el.startTime?.getTime() === Date.parse('2026-10-11T22:00:00Z')",
+                f"el => el.startTime?.toLocaleDateString('sv-SE', {{timeZone: 'Europe/Prague'}}) === '{data_day}'",
                 arg=handle,
             )
             await page.wait_for_function(
-                "el => el.statisticsData?.['edc_sharing:1_shared_hourly']?.length === 2",
+                f"el => el.statisticsData?.['edc_sharing:1_shared_hourly']?.length === {len(expected)}",
                 arg=handle,
             )
             await expect(chart.locator("canvas")).to_be_visible()

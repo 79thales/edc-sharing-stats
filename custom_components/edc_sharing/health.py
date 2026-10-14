@@ -13,6 +13,7 @@ from homeassistant.components.recorder.statistics import (
     statistics_during_period,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
 from .const import CONF_SSE_ID, DOMAIN
@@ -123,7 +124,7 @@ async def websocket_statistics_health(hass, connection, msg) -> None:
         )
         return
     try:
-        latest = entry.runtime_data.coordinator.data.latest_day
+        latest = getattr(entry.runtime_data.coordinator.data, "latest_day", None)
         start = (
             date.fromisoformat(msg["date_from"])
             if "date_from" in msg
@@ -142,6 +143,10 @@ async def websocket_statistics_health(hass, connection, msg) -> None:
     except TimeoutError:
         connection.send_error(
             msg["id"], "recorder_timeout", "Čtení statistiky překročilo 30 sekund."
+        )
+    except (HomeAssistantError, KeyError, RuntimeError):
+        connection.send_error(
+            msg["id"], "recorder_unavailable", "Čtecí kontrola Recorderu není dostupná."
         )
     else:
         connection.send_result(msg["id"], result)

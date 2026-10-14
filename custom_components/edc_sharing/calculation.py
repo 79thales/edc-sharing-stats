@@ -291,6 +291,10 @@ def validate_profile_response(response: Any) -> None:
         if not isinstance(column, dict):
             raise ProfileSchemaError("EDC vrátilo neplatný popis sloupce.")
         ean, role, direction = column.get("ean"), column.get("type"), column.get("dir")
+        # Dosavadní kontrakt používá kWh bez explicitního unit. Novou jednotku
+        # neodhadovat ani automaticky převádět bez prověřeného významu hodnot.
+        if "unit" in column and column["unit"] != "kWh":
+            raise ProfileSchemaError("EDC změnilo jednotku profilových hodnot.")
         if (not isinstance(ean, str) or not ean.strip()
                 or role not in ("D", "O") or direction not in ("IN", "OUT")):
             raise ValueError("EDC změnilo identifikaci nebo role sloupců.")
@@ -366,7 +370,7 @@ def profile_resolution(response: dict[str, Any]) -> str:
                 return "unknown"
             end = end_hour * 60 + end_minute
             duration = (end - start) % 1440 or 1440
-            if duration not in (15, 60, 1440):
+            if duration not in (15, 60, 1440) or (start == end and start != 0):
                 # Přechod DST může na hodinách přeskočit/vrátit 60 minut.
                 # Přijmout jen jednoznačně doložitelnou UTC délku, ne odhad.
                 local_tz = ZoneInfo("Europe/Prague")
