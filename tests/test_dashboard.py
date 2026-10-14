@@ -105,6 +105,29 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("energy_edc_test_edc", text)
         self.assertNotIn("energy/save", text)
 
+    def test_hourly_targets_and_selected_period_are_separate_from_energy(self):
+        target = dashboard.DashboardTarget(
+            name="Synthetic target",
+            entities={},
+            statistics={
+                f"{metric}_hourly": f"edc_sharing:example_target_{metric}_hourly"
+                for metric in ("shared", "consumption", "grid", "coverage")
+            },
+        )
+        config = self.build(targets=[target], include_energy=True)
+        self.assertEqual(
+            [view["path"] for view in config["views"]],
+            ["overview", "details", "hourly-date"],
+        )
+        details_text = json.dumps(config["views"][1])
+        selected = config["views"][2]
+        self.assertIn("edc_sharing:example_target_shared_hourly", details_text)
+        self.assertIn('"days_to_show": 3', details_text)
+        self.assertNotIn("energy_edc_test_edc_hours", details_text)
+        self.assertIn("energy_edc_test_edc_hours", json.dumps(selected))
+        self.assertIn("/test-edc/details", json.dumps(selected))
+        self.assertNotIn("energy-sources-table", json.dumps(selected))
+
     def test_generation_is_deterministic_and_does_not_mutate_inputs(self) -> None:
         original = dict(self.entities)
         first = self.build()

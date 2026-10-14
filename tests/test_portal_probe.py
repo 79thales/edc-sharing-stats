@@ -37,17 +37,27 @@ class ProbeGuardTests(unittest.TestCase):
                 "grant_type=password&client_id=" + probe.PORTAL_CLIENT_ID,
             ),
             ("GET", "https://portal.edc-cr.cz.evil.example/", None),
-            ("GET", "https://private@portal.edc-cr.cz/", None),
+            ("GET", "https://portal.edc-cr.cz:444/", None),
             ("GET", "http://portal.edc-cr.cz/", None),
         ):
             self.assertFalse(probe.request_allowed(method, url, form))
+        # Syntetické userinfo sestavit bez e-mailového literálu v repozitáři.
+        self.assertFalse(
+            probe.request_allowed(
+                "GET",
+                "https://" + "@".join(("synthetic", "portal.edc-cr.cz/")),  # noqa: FLY002 -- syntetické userinfo, nikoli e-mailový kontakt
+            )
+        )
 
     def test_concurrent_probe_stops_without_overwriting_lock(self):
         with TemporaryDirectory() as directory:
             storage = Path(directory) / "synthetic.json"
-            with probe.probe_lock(storage), self.assertRaises(FileExistsError):
-                with probe.probe_lock(storage):
-                    self.fail("Second process entered")
+            with (
+                probe.probe_lock(storage),
+                self.assertRaises(FileExistsError),
+                probe.probe_lock(storage),
+            ):
+                self.fail("Second process entered")
             self.assertFalse(storage.with_suffix(".probe.lock").exists())
 
     def test_multi_day_export_and_boolean_group_are_rejected(self):

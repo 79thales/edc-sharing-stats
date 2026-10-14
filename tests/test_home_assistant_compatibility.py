@@ -25,6 +25,12 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
         modules = (
             "custom_components.edc_sharing",
             "custom_components.edc_sharing.api",
+            "custom_components.edc_sharing.api_policy",
+            "custom_components.edc_sharing.connection",
+            "custom_components.edc_sharing.health",
+            "custom_components.edc_sharing.diagnostics",
+            "custom_components.edc_sharing.portal_contract",
+            "custom_components.edc_sharing.calendar_maintenance",
             "custom_components.edc_sharing.billing",
             "custom_components.edc_sharing.billing_api",
             "custom_components.edc_sharing.billing_document",

@@ -4,8 +4,11 @@ import copy
 import json
 import re
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from homeassistant.components.onboarding import OnboardingStorage
+from homeassistant.components.onboarding.const import STEPS
 from homeassistant.setup import async_setup_component
 from playwright.async_api import async_playwright, expect
 
@@ -34,7 +37,14 @@ async def test_generated_graph_and_selected_day(
     moment = datetime(2026, 10, 14, 12, tzinfo=UTC)
     freezer.move_to(moment)
     await hass.config.async_set_time_zone("Europe/Prague")
-    assert await async_setup_component(hass, "frontend", {})
+    # Testovací auth účet už existuje; neinicializovat onboarding nového domu.
+    # Mock pouze instalace HA, nikoli Recorderu, statistiky nebo frontend grafu.
+    with patch.object(
+        OnboardingStorage,
+        "async_load",
+        new=AsyncMock(return_value={"done": list(STEPS)}),
+    ):
+        assert await async_setup_component(hass, "frontend", {})
     assert await async_setup_component(hass, "lovelace", {"lovelace": {}})
     assert await async_setup_component(hass, "energy", {})
     raw = profile()

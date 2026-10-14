@@ -627,10 +627,6 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                         < chunk_to
                     )
                 except IncompleteProfileLayoutError as err:
-                    # Before both EAN roles joined the sharing group, EDC can
-                    # return a valid profile containing only one side. Such a
-                    # block is outside this integration's usable history and
-                    # must not stop the backwards scan.
                     # Známá jednostranná struktura není důkaz počátku skupiny.
                     # Bez potvrzené platnosti neoznačit tento rozsah jako hotový.
                     raise EdcApiError("Historický blok má neověřenou platnost sdílení.", category="contract") from err

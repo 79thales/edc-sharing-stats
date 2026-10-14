@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import re
@@ -72,6 +73,39 @@ def check_calendar(*, opener=None) -> dict:
             )
     except (HTTPError, URLError, TimeoutError, UnicodeError, OSError):
         return {"status": "unavailable", "reason": "calendar_transport"}
+
+
+def observation_event(previous: object, result: dict) -> tuple[dict, str | None]:
+    """Uchovat jen anonymní signaturu a oznámit změnu/zotavení jednou.
+
+    Otisk kalendáře zahrnuje také začátek/konec a aktivní okno. Nová odstávka
+    proto nezmizí jen proto, že status načtení kalendáře zůstal ok. Nevydáváme
+    notifikaci ani issue: vracíme označení události pro existující CI report.
+    """
+    previous = previous if isinstance(previous, dict) else {}
+    cal = result.get("calendar", {})
+    state = {
+        "status": result["status"],
+        "build_hash": result.get("snapshot", {}).get("build_hash"),
+        "calendar_status": cal.get("status"),
+        "calendar_hash": hashlib.sha256(
+            json.dumps(cal.get("events", []), sort_keys=True).encode()
+        ).hexdigest(),
+    }
+    recovery = (
+        previous.get("status") in ("unavailable", "inconclusive")
+        and state["status"] == "ok"
+        or previous.get("calendar_status") in ("unavailable", "inconclusive")
+        and state["calendar_status"] == "ok"
+    )
+    return (
+        state,
+        None
+        if previous == state
+        else "recovered"
+        if recovery
+        else "observation_changed",
+    )
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -155,19 +189,7 @@ def main() -> None:
             if args.state.exists()
             else {}
         )
-        state = {
-            "status": result["status"],
-            "build_hash": result.get("snapshot", {}).get("build_hash"),
-            "calendar_status": result.get("calendar", {}).get("status"),
-        }
-        result["event"] = (
-            None
-            if previous == state
-            else "recovered"
-            if previous.get("status") in ("unavailable", "inconclusive")
-            and state["status"] == "ok"
-            else "observation_changed"
-        )
+        state, result["event"] = observation_event(previous, result)
         args.state.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     text = json.dumps(result, ensure_ascii=False, indent=2)
     if args.output:

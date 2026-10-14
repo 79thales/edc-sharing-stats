@@ -116,6 +116,8 @@ async def probe(config: dict, storage: Path, baseline: dict | None) -> dict:
 
     periods = validate_config(config)
     count = 0
+    token_count = 0
+    total_count = 0
     blocked = False
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch()
@@ -125,19 +127,26 @@ async def probe(config: dict, storage: Path, baseline: dict | None) -> dict:
             )
 
             async def route(request_route):
-                nonlocal count, blocked
+                nonlocal count, blocked, token_count, total_count
                 request = request_route.request
                 parsed = urlparse(request.url)
                 allowed = request_allowed(
                     request.method, request.url, request.post_data
                 )
+                total_count += 1
+                allowed = allowed and total_count <= 80
+                if (
+                    request.method == "POST"
+                    and parsed.hostname == "sso.portal.edc-cr.cz"
+                ):
+                    token_count += 1
+                    allowed = allowed and token_count <= 2
                 if (
                     request.method == "POST"
                     and parsed.hostname == "api.portal.edc-cr.cz"
                     and parsed.path == contract.PROFILE_PATH
                 ):
-                    count += 1
-                    allowed = allowed and count <= 5
+                    allowed = allowed and count < 5
                     try:
                         payload = request.post_data_json
                         allowed = (
@@ -151,6 +160,8 @@ async def probe(config: dict, storage: Path, baseline: dict | None) -> dict:
                         )
                     except (ValueError, AttributeError):
                         allowed = False
+                    if allowed:
+                        count += 1
                 if not allowed:
                     blocked = True
                     await request_route.abort()
@@ -161,6 +172,11 @@ async def probe(config: dict, storage: Path, baseline: dict | None) -> dict:
             page = await context.new_page()
             page.set_default_timeout(20000)
             await page.goto("https://portal.edc-cr.cz/sprava-dat/zobrazeni-dat")
+            if urlparse(page.url).hostname == "sso.portal.edc-cr.cz":
+                return {
+                    "status": "inconclusive",
+                    "reason": "session_needs_manual_renewal",
+                }
             group = page.get_by_role("combobox", name=config["group_label"], exact=True)
             if await group.count() == 0:
                 group = page.locator("#mui-component-select-sseId")
