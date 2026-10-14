@@ -98,6 +98,29 @@ class DashboardTests(unittest.TestCase):
             self.assertIn(name, text)
         self.assertEqual(len(targets), 2)
 
+    def test_value_bindings_do_not_guess_names_or_mix_units(self) -> None:
+        # Regrese: skutečný description.key částky není revenue_*. Vazba musí
+        # být výslovná a generátor musí přidat denní i měsíční hodnotu místa.
+        self.assertEqual(dashboard.TARGET_SOURCE_KEYS["sharing_value_latest_available_day"], "revenue_latest_available_day")
+        self.assertEqual(dashboard.TARGET_SOURCE_KEYS["electricity_sale_price"], "sale_price")
+        target = dashboard.DashboardTarget("Synthetic target", {
+            "shared_latest_available_day": "sensor.renamed_energy",
+            "revenue_latest_available_day": "sensor.renamed_money",
+            "revenue_this_month": "sensor.renamed_month_money",
+            "sale_price": "sensor.renamed_price",
+        })
+        config = self.build(targets=[target])
+        content = json.dumps(config)
+        for entity in target.entities.values():
+            self.assertIn(entity, content)
+        details = dashboard.target_details_card([target])["content"]
+        self.assertIn("actual_unit == unit", details)
+        self.assertNotIn("friendly_name", details)
+        self.assertIn("CZK", details)
+        self.assertIn("kWh", details)
+        self.assertIn("is_number", details)
+        self.assertIsNone(dashboard.period_value_card({}))
+
     def test_energy_is_opt_in_and_does_not_modify_energy_configuration(self) -> None:
         self.assertNotIn("energy-sources-table", json.dumps(self.build()))
         text = json.dumps(self.build(include_energy=True))
@@ -124,6 +147,8 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("edc_sharing:example_target_shared_hourly", details_text)
         self.assertIn('"days_to_show": 3', details_text)
         self.assertNotIn("energy_edc_test_edc_hours", details_text)
+        self.assertNotIn('"energy_date_selection": true', details_text)
+        self.assertNotIn('"type": "energy-date-selection"', details_text)
         self.assertIn("energy_edc_test_edc_hours", json.dumps(selected))
         self.assertIn("/test-edc/details", json.dumps(selected))
         self.assertNotIn("energy-sources-table", json.dumps(selected))

@@ -1,7 +1,8 @@
 """Generate native Lovelace cards in the EDC Share2 sections style.
 
 Pure presentation code: the caller supplies registry-resolved entity IDs and
-existing external statistic IDs. No EDC requests, arithmetic or storage writes.
+existing external statistic IDs. No EDC requests or storage writes; only clearly
+labelled presentation arithmetic for the current-price period estimate.
 """
 
 from __future__ import annotations
@@ -50,6 +51,14 @@ TARGET_KEYS = (
     "revenue_this_month",
     "sale_price",
 )
+# Klíče náhledu jsou prezentační názvy. Registr senzoru používá skutečné
+# description.key; peníze a cenu proto překládáme výslovně, podle unique_id.
+# Překlad nemění ID ani stav senzoru a funguje i po přejmenování entity.
+TARGET_SOURCE_KEYS = {key: key for key in TARGET_KEYS} | {
+    "sharing_value_latest_available_day": "revenue_latest_available_day",
+    "sharing_value_this_month": "revenue_this_month",
+    "electricity_sale_price": "sale_price",
+}
 
 
 @dataclass(frozen=True)
@@ -72,6 +81,96 @@ def validate_dashboard_name(title: str, url_path: str) -> None:
         or url_path == PANEL_PATH
     ):
         raise ValueError("invalid_path")
+
+
+def target_details_card(targets: Sequence[DashboardTarget], language: str = "cs") -> dict[str, Any]:
+    """Zobrazit existující cílové senzory bez odhadování podle friendly_name.
+
+    Vstupem jsou registry-resolved ID a jména; čísla se čtou až v HA.
+    Samostatná vazba kWh, %, CZK a CZK/kWh zabraňuje záměně peněz za
+    nasdílenou energii. Chybějící/neplatný stav nebo jiná jednotka je —,
+    nikoli nula. Cenu ani částku nepočítáme znovu; použijeme původní
+    hodnotový senzor konkrétního místa. Výstup je nativní markdown karta,
+    která nic nezapisuje, nemění entity a neprovádí žádný HTTP požadavek.
+    """
+    points = [{"name": target.name, **dict(target.entities)} for target in targets]
+    cs = language == "cs"
+    fields = [
+        ("shared", "Nasdíleno" if cs else "Shared", "kWh"),
+        ("consumption", "Spotřeba" if cs else "Consumption", "kWh"),
+        ("grid_purchase", "Ze sítě" if cs else "Grid import", "kWh"),
+        ("sharing_coverage", "Pokrytí" if cs else "Coverage", "%"),
+        ("revenue", "Hodnota sdílení" if cs else "Sharing value", "CZK"),
+    ]
+    content = "{% set points = " + json.dumps(points, ensure_ascii=False) + " %}\n"
+    content += "{% set fields = " + json.dumps(fields, ensure_ascii=False) + " %}\n"
+    # Název a lokalita mohou být uživatelsky změněné. Existující device_id
+    # čteme pouze pro popisek, nikdy pro volbu energetického/cenového senzoru.
+    content += "{% for point in points %}\n{% set source = point.get('shared_latest_available_day', '') %}\n"
+    content += "{% set device = device_id(source) if source else none %}\n"
+    content += "## 🏠 {{ (device_attr(device, 'name') if device else none) or point.name }}\n"
+    content += "{% set location = state_attr(source, 'location') if source else none %}\n{% if location %}\n📍 **{{ location }}**\n{% endif %}\n"
+    content += ("\n**Poslední data:** " if cs else "\n**Latest data:** ")
+    content += "{{ state_attr(point.get('shared_latest_available_day', ''), 'data_date') or '—' }}\n"
+    for suffix, title in (("latest_available_day", "Poslední dostupný den" if cs else "Latest available day"),
+                          ("this_month", "Tento měsíc" if cs else "This month")):
+        content += "\n### " + title + "\n{% for key, label, unit in fields %}\n"
+        content += "{% set entity = point.get(key ~ '_" + suffix + "', '') %}\n"
+        content += "{% set raw = states(entity) if entity else '' %}\n"
+        content += "{% set value = raw | float(none) if is_number(raw) else none %}\n"
+        content += "{% set actual_unit = state_attr(entity, 'unit_of_measurement') if entity else none %}\n"
+        content += "- **{{ label }}:** {{ ('%.2f' | format(value)) ~ ' ' ~ unit if value is not none and actual_unit == unit else '—' }}\n{% endfor %}\n"
+    content += "{% set price_entity = point.get('sale_price', '') %}\n"
+    content += "{% set raw_price = states(price_entity) if price_entity else '' %}\n"
+    content += "{% set price = raw_price | float(none) if is_number(raw_price) else none %}\n"
+    content += ("\n**Cena odběrného místa:** " if cs else "\n**Supply-point price:** ")
+    content += "{{ ('%.2f' | format(price)) ~ ' CZK/kWh' if price is not none and state_attr(price_entity, 'unit_of_measurement') == 'CZK/kWh' else '—' }}\n{% if not loop.last %}\n---\n{% endif %}\n{% endfor %}"
+    return {"type": "markdown", "content": content}
+
+
+def period_value_card(entities: Mapping[str, str], language: str = "cs") -> dict[str, Any] | None:
+    """Orientační hodnota období: skutečné kWh × aktuální cena skupiny.
+
+    Vstup jsou existující senzory využití přetoku se shared_kwh a pokrytím
+    dostupných dnů, plus skupinová cena CZK/kWh. Prázdné období, cena nebo
+    chybná jednotka zobrazí —. Výpočet není potvrzení platby, nový doklad
+    ani přepočet vystaveného vyúčtování; neodhaduje historickou cenu a
+    nepoužívá skupinovou cenu pro samostatné částky jednotlivých míst.
+    """
+    cs = language == "cs"
+    periods = [("Den" if cs else "Day", "latest_available_day"),
+               ("Týden" if cs else "Week", "this_week"),
+               ("Měsíc" if cs else "Month", "this_month"),
+               ("Rok" if cs else "Year", "this_year")]
+    bindings = [[label, entities[f"surplus_utilization_{key}"]]
+                for label, key in periods if entities.get(f"surplus_utilization_{key}")]
+    price_entity = entities.get("sale_price")
+    if not price_entity or not bindings:
+        return None
+    content = "{% set periods = " + json.dumps(bindings, ensure_ascii=False) + " %}\n"
+    content += "{% set price_entity = " + json.dumps(price_entity) + " %}\n"
+    content += "{% set raw_price = states(price_entity) %}\n"
+    content += "{% set price = raw_price | float(none) if is_number(raw_price) else none %}\n"
+    content += "{% for label, entity in periods %}\n"
+    content += "{% set raw_shared = state_attr(entity, 'shared_kwh') %}\n"
+    content += "{% set shared = raw_shared | float(none) if is_number(raw_shared) else none %}\n"
+    content += "{% set days = state_attr(entity, 'available_days') | int(0) %}\n"
+    content += "{% set raw_coverage = states(entity) %}\n"
+    content += "\n### {{ label }} – {{ ('%.1f' | format(raw_coverage | float)) ~ ' %' if is_number(raw_coverage) and days > 0 else '—' }}\n"
+    for attribute, label_cs, label_en in (
+        ("shared_kwh", "Nasdíleno", "Shared"),
+        ("production_surplus_kwh", "Přetok výrobny", "Production surplus"),
+        ("unused_surplus_kwh", "Nevyužito", "Unused surplus"),
+    ):
+        content += "{% set raw_value = state_attr(entity, '" + attribute + "') %}\n"
+        content += "- " + (label_cs if cs else label_en) + ": **{{ ('%.2f' | format(raw_value | float)) ~ ' kWh' if is_number(raw_value) and days > 0 else '—' }}**\n"
+    content += ("- Hodnota při aktuální ceně skupiny: **" if cs else "- Value at the current group price: **")
+    content += "{{ ('%.2f' | format(shared * price)) ~ ' CZK' if shared is not none and price is not none and days > 0 and state_attr(price_entity, 'unit_of_measurement') == 'CZK/kWh' else '—' }}**\n"
+    content += "- Data: **"
+    content += "{{ state_attr(entity, 'data_start') or '—' }} → {{ state_attr(entity, 'data_end') or '—' }}**, " + ("dnů" if cs else "days") + " **{{ days }}**\n{% endfor %}\n"
+    content += ("\nOrientační hodnota při aktuální ceně skupiny; vystavená vyúčtování se nemění."
+                if cs else "\nEstimated value at the current group price; issued statements remain unchanged.")
+    return {"type": "markdown", "content": content}
 
 
 def build_dashboard(
@@ -505,6 +604,13 @@ def build_dashboard(
                     "orange",
                 ),
                 (
+                    "revenue_latest_available_day",
+                    "Hodnota sdílení – poslední den",
+                    "Sharing value – latest day",
+                    "mdi:cash",
+                    "green",
+                ),
+                (
                     "shared_this_month",
                     "Nasdíleno – měsíc",
                     "Shared – month",
@@ -600,6 +706,9 @@ def build_dashboard(
         "sections": sections,
     }
     views = [overview]
+    money_summary = period_value_card(entities, language)
+    if money_summary:
+        overview["sections"].append(section([heading("Hodnota sdílení podle období", "Sharing value by period", "mdi:cash"), money_summary]))
     if include_details:
         detail_cards = [
             {
@@ -616,6 +725,10 @@ def build_dashboard(
                     "entities": list(entities.values()),
                 }
             )
+        if money_summary:
+            detail_cards.extend([heading("Hodnota sdílení podle období", "Sharing value by period", "mdi:cash"), money_summary])
+        if targets:
+            detail_cards.extend([heading("Cílová odběrná místa", "Target supply points", "mdi:home-group"), target_details_card(targets, language)])
         detail_cards.append(
             {
                 "type": "markdown",
@@ -667,6 +780,7 @@ def build_dashboard(
             (target.name, target.statistics) for target in targets
         ]
         selected_sections = []
+        hourly_intro_added = False
         collection = "energy_edc_" + url_path.replace("-", "_") + "_hours"
         for name, source in groups:
             cards = graph(
@@ -687,6 +801,22 @@ def build_dashboard(
             )
             if not cards:
                 continue
+            if not hourly_intro_added:
+                # Výběr aktuálního dne nativně přebíjí days_to_show.
+                # Výchozí detaily proto vysvětlují třídenní rozsah bez
+                # vazby na Energy kolekci; výběr zůstává v hourly-date.
+                views[1]["sections"].append(section([
+                    heading("Hodinové průběhy – poslední 3 dny", "Hourly history – last 3 days", "mdi:chart-line"),
+                    {"type": "markdown", "content": text(
+                        "Výchozí grafy zobrazují poslední tři dny, aby zahrnuly zpožděná data EDC. "
+                        "Pro konkrétní den použijte samostatnou volbu období. "
+                        "Jeden bod je energie jedné hodiny v kWh; pokrytí je procento. Chybějící hodina není nula.",
+                        "Default charts show the last three days to include delayed EDC data. "
+                        "Use the separate period selector for a specific day. "
+                        "Each point is one hour of energy in kWh; coverage is percent. Missing hours are not zero.",
+                    )},
+                ]))
+                hourly_intro_added = True
             for card in cards:
                 card["min_y_axis"] = 0
                 if len(card["entities"]) == 1 and card["entities"][0][

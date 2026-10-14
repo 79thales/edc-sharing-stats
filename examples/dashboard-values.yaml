@@ -1,0 +1,102 @@
+# Syntetický výřez stejných detailních karet jako Generate dashboard.
+# ID nahraďte existujícími registrovanými senzory; entity nevytvářejte znovu.
+# Každé místo má vlastní kWh, procenta, CZK a CZK/kWh. Názvy nejsou vazba.
+# Chybějící stav, NaN/Infinity a nesprávná jednotka jsou —, nikdy automaticky 0.
+# Přehled období je skutečné kWh × aktuální skupinová cena (orientační).
+# Nepotvrzuje platbu, nemění cenu historie ani uložené doklady/úhrady.
+# Výchozí hodinové grafy a samostatný výběr dne: dashboard-hourly.yaml.
+# JSON Patch v HA zachová šablony; YAML komentáře jsou v tomto zdroji.
+title: EDC – finanční detaily
+views:
+  - title: Přehled
+    path: overview
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: button
+            name: Detaily
+            tap_action:
+              action: navigate
+              navigation_path: /edc-example/details
+  - title: Detaily
+    path: details
+    subview: true
+    back_path: /edc-example/overview
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Cílová odběrná místa
+            icon: mdi:home-group
+          - type: markdown
+            content: |
+              {% set points = [{"name": "Ukázkové odběrné místo", "shared_latest_available_day": "sensor.example_target_shared_latest_available_day", "consumption_latest_available_day": "sensor.example_target_consumption_latest_available_day", "grid_purchase_latest_available_day": "sensor.example_target_grid_purchase_latest_available_day", "sharing_coverage_latest_available_day": "sensor.example_target_sharing_coverage_latest_available_day", "revenue_latest_available_day": "sensor.example_target_revenue_latest_available_day", "shared_this_month": "sensor.example_target_shared_this_month", "consumption_this_month": "sensor.example_target_consumption_this_month", "grid_purchase_this_month": "sensor.example_target_grid_purchase_this_month", "sharing_coverage_this_month": "sensor.example_target_sharing_coverage_this_month", "revenue_this_month": "sensor.example_target_revenue_this_month", "sale_price": "sensor.example_target_sale_price"}] %}
+              {% set fields = [["shared", "Nasdíleno", "kWh"], ["consumption", "Spotřeba", "kWh"], ["grid_purchase", "Ze sítě", "kWh"], ["sharing_coverage", "Pokrytí", "%"], ["revenue", "Hodnota sdílení", "CZK"]] %}
+              {% for point in points %}
+              {% set source = point.get('shared_latest_available_day', '') %}
+              {% set device = device_id(source) if source else none %}
+              ## 🏠 {{ (device_attr(device, 'name') if device else none) or point.name }}
+              {% set location = state_attr(source, 'location') if source else none %}
+              {% if location %}
+              📍 **{{ location }}**
+              {% endif %}
+              
+              **Poslední data:** {{ state_attr(point.get('shared_latest_available_day', ''), 'data_date') or '—' }}
+              
+              ### Poslední dostupný den
+              {% for key, label, unit in fields %}
+              {% set entity = point.get(key ~ '_latest_available_day', '') %}
+              {% set raw = states(entity) if entity else '' %}
+              {% set value = raw | float(none) if is_number(raw) else none %}
+              {% set actual_unit = state_attr(entity, 'unit_of_measurement') if entity else none %}
+              - **{{ label }}:** {{ ('%.2f' | format(value)) ~ ' ' ~ unit if value is not none and actual_unit == unit else '—' }}
+              {% endfor %}
+              
+              ### Tento měsíc
+              {% for key, label, unit in fields %}
+              {% set entity = point.get(key ~ '_this_month', '') %}
+              {% set raw = states(entity) if entity else '' %}
+              {% set value = raw | float(none) if is_number(raw) else none %}
+              {% set actual_unit = state_attr(entity, 'unit_of_measurement') if entity else none %}
+              - **{{ label }}:** {{ ('%.2f' | format(value)) ~ ' ' ~ unit if value is not none and actual_unit == unit else '—' }}
+              {% endfor %}
+              {% set price_entity = point.get('sale_price', '') %}
+              {% set raw_price = states(price_entity) if price_entity else '' %}
+              {% set price = raw_price | float(none) if is_number(raw_price) else none %}
+              
+              **Cena odběrného místa:** {{ ('%.2f' | format(price)) ~ ' CZK/kWh' if price is not none and state_attr(price_entity, 'unit_of_measurement') == 'CZK/kWh' else '—' }}
+              {% if not loop.last %}
+              ---
+              {% endif %}
+              {% endfor %}
+      - type: grid
+        cards:
+          - type: heading
+            heading: Hodnota sdílení podle období
+            icon: mdi:cash
+          - type: markdown
+            content: |
+              {% set periods = [["Den", "sensor.example_utilization_latest_available_day"], ["Týden", "sensor.example_utilization_this_week"], ["Měsíc", "sensor.example_utilization_this_month"], ["Rok", "sensor.example_utilization_this_year"]] %}
+              {% set price_entity = "sensor.example_group_price" %}
+              {% set raw_price = states(price_entity) %}
+              {% set price = raw_price | float(none) if is_number(raw_price) else none %}
+              {% for label, entity in periods %}
+              {% set raw_shared = state_attr(entity, 'shared_kwh') %}
+              {% set shared = raw_shared | float(none) if is_number(raw_shared) else none %}
+              {% set days = state_attr(entity, 'available_days') | int(0) %}
+              {% set raw_coverage = states(entity) %}
+              
+              ### {{ label }} – {{ ('%.1f' | format(raw_coverage | float)) ~ ' %' if is_number(raw_coverage) and days > 0 else '—' }}
+              {% set raw_value = state_attr(entity, 'shared_kwh') %}
+              - Nasdíleno: **{{ ('%.2f' | format(raw_value | float)) ~ ' kWh' if is_number(raw_value) and days > 0 else '—' }}**
+              {% set raw_value = state_attr(entity, 'production_surplus_kwh') %}
+              - Přetok výrobny: **{{ ('%.2f' | format(raw_value | float)) ~ ' kWh' if is_number(raw_value) and days > 0 else '—' }}**
+              {% set raw_value = state_attr(entity, 'unused_surplus_kwh') %}
+              - Nevyužito: **{{ ('%.2f' | format(raw_value | float)) ~ ' kWh' if is_number(raw_value) and days > 0 else '—' }}**
+              - Hodnota při aktuální ceně skupiny: **{{ ('%.2f' | format(shared * price)) ~ ' CZK' if shared is not none and price is not none and days > 0 and state_attr(price_entity, 'unit_of_measurement') == 'CZK/kWh' else '—' }}**
+              - Data: **{{ state_attr(entity, 'data_start') or '—' }} → {{ state_attr(entity, 'data_end') or '—' }}**, dnů **{{ days }}**
+              {% endfor %}
+              
+              Orientační hodnota při aktuální ceně skupiny; vystavená vyúčtování se nemění.

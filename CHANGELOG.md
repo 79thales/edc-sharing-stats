@@ -4,16 +4,24 @@
 
 ### Čeština
 
+- Oprava peněžních detailů dashboardu: generátor váže cílové senzory podle registru a skutečného `unique_id`, včetně `sharing_value_*` a `electricity_sale_price`. Hodnota sdílení v CZK se již nezamění za nasdílenou energii v kWh. Denní i měsíční částka používá původní senzor příslušného místa; přejmenované entity se zachovávají. Neplatný stav nebo jednotka zobrazí pomlčku, nikoli nulu.
+- Přehled dne, týdne, měsíce a roku doplňuje orientační částku při aktuální ceně skupiny a skutečný rozsah dostupných dnů. Nejde o potvrzení úhrady, historický ceník ani přepočet již vystavených dokladů. Generátor a přibalené šablony obsahují stejné opravené karty. Aktualizace sama nepřepisuje vlastní dashboardy; existující dashboard lze upravit samostatně bez změny entit nebo statistik.
+
 - Trvalá diagnostika časových hranic EDC: při odmítnutí nerozpoznaného rozlišení se do logu `EDC časový kontrakt` zapíše počet řádků, rozlišení jednotlivých řádků a nejvýše šest anonymních vzorků `start/end`. Výpis neobsahuje EANy, hodnoty energie, názvy skupin, hesla, tokeny ani cookies. Nepodporovaný obsah se nahradí značkou typu.
 - Diagnostika používá právě přijatou odpověď běžícího klienta. Nevytváří další přihlášení ani HTTP požadavek; u platného profilu nic navíc neloguje. Zachovává opravy časů a přihlašování z v0.2.9, dosavadní validaci, chování chybějících dat a serverové limity.
-- Aktualizované release notes a návody obsahují aktuální provozní ověření: v živém HA s v0.2.9 bylo 14. října v 19:30 úspěšně načteno datum 13. 10. 2026; všech 16 hodinových statistik mělo po 24 bodech. Kód trvalé diagnostiky prošel 217 unit testy, všemi devíti povinnými CI kontrolami a po 56 skutečných HA testech pro 2026.8.0 i aktuální stabilní 2026.10.1.
+- Hodinový přehled v Detailech používá poslední tři dny, aby zobrazil zpožděná data EDC. Výběr konkrétního dne je oddělený na vlastní podstránce a nepřebíjí výchozí přehled. Generátor a přibalený YAML příklad zachovávají tuto kompozici pro skupinu i cílová místa. Grafy používají původní externí statistiky a hodinové hodnoty `mean` v kWh nebo procentech.
+- Diagnostika je ověřena unit testy a funkčními testy skutečného HA pro minimum 2026.8.0 a aktuální stabilní 2026.10.1 s odpovídajícími testovacími pluginy. Český i anglický návod a poznámky k vydání jsou sjednocené.
 - Aktualizujte přes HACS a restartujte Home Assistant. Není potřeba mazat ani přejmenovávat entity, statistiky či dashboardy. Historie, doklady a potvrzené úhrady se zachovávají. Použití diagnostiky je popsáno v [návodu](docs-profile-time-diagnostics.md).
 
 ### English
 
+- Fix monetary dashboard details by resolving target sensors from the registry and their actual unique IDs, including `sharing_value_*` and `electricity_sale_price`. Never show a CZK sharing value as kWh. Daily and monthly amounts use the existing supply-point sensors, including renamed entities. Invalid states or units display a dash rather than zero.
+- Add an estimated day/week/month/year amount at the current group price and the actual available-day range. This is not payment confirmation, a historical price list or a recalculation of issued statements. The generator and bundled examples contain the same corrected cards. Updating the integration does not overwrite custom dashboards; an existing dashboard may be updated separately without changing entities or statistics.
+
 - Retain permanent EDC time-boundary diagnostics. When an unrecognized resolution is rejected, the `EDC časový kontrakt` log records row counts, per-row resolutions and at most six anonymous start/end samples. Exclude EANs, energy measurements, group names, passwords, tokens and cookies; replace unsupported content with a type marker.
 - Use the response already received by the running client, without another login or HTTP request. Valid profiles produce no additional error log. Preserve v0.2.9 time/login fixes, existing validation, missing-data handling and server restrictions.
-- Update release notes and guides with current operational verification: live HA running v0.2.9 successfully loaded October 13, 2026 at 19:30 Europe/Prague on October 14; all 16 hourly statistics had 24 points each. The diagnostic code passed 217 unit tests, all nine required CI checks and 56 real HA tests per environment (2026.8.0 and current stable 2026.10.1).
+- Default hourly details show the last three days to include delayed EDC data. A separate subview selects a specific day without overriding the default overview. The generator and bundled YAML example preserve this composition for groups and targets, using existing external statistics with hourly means in kWh or percent.
+- Verify diagnostics with unit tests and real HA functional tests for minimum 2026.8.0 and current stable 2026.10.1 with matching test plugins. Align Czech and English documentation and release notes.
 - Update through HACS and restart Home Assistant. Keep existing entities, statistic IDs, dashboards, history, statements and confirmed payments. See [the diagnostic guide](docs-profile-time-diagnostics.md).
 
 ## 0.2.9 – 2026-10-14

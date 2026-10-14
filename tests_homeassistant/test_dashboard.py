@@ -3,19 +3,27 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from homeassistant.components import frontend
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.template import Template
 from homeassistant.loader import async_get_integration
 from homeassistant.setup import async_setup_component
 from homeassistant.util.yaml import parse_yaml
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.edc_sharing.dashboard import PANEL_PATH
+from custom_components.edc_sharing.dashboard import (
+    PANEL_PATH,
+    DashboardTarget,
+    period_value_card,
+    target_details_card,
+)
 from custom_components.edc_sharing.dashboard_api import (
+    _registered_sources,
     async_register_dashboard_commands,
     async_setup_dashboard_generator,
 )
@@ -46,6 +54,100 @@ def preview_message(entry: MockConfigEntry, message_id: int = 1) -> dict:
         "title": "Test EDC",
         "url_path": "edc-test",
     }
+
+
+async def test_target_value_registry_aliases_survive_renames(hass, entity_registry):
+    """Reálné unique_id cen a částek nesmějí vytvořit falešný druhý EAN.
+
+    Test nemění měření ani registraci v produkci. Syntetická přejmenování
+    ověřují, že generator nevybírá peníze podle friendly_name obsahujícího
+    stejná slova jako energetický senzor a nemění konfiguraci integrace.
+    """
+    entry = add_entry(hass)
+    ean = "1111111111111111"
+    keys = {
+        "shared_latest_available_day": "shared_latest_available_day",
+        "sharing_value_latest_available_day": "revenue_latest_available_day",
+        "sharing_value_this_month": "revenue_this_month",
+        "electricity_sale_price": "sale_price",
+    }
+    for raw, expected in keys.items():
+        item = entity_registry.async_get_or_create(
+            "sensor", "edc_sharing", f"example_target_{ean}_{raw}",
+            config_entry=entry, suggested_object_id=f"test_{raw}",
+        )
+        entity_registry.async_update_entity(item.entity_id, new_entity_id=f"sensor.renamed_{expected}")
+    before = dict(entry.options)
+    with patch("custom_components.edc_sharing.api.EdcApiClient.async_login") as login:
+        _, _, targets = _registered_sources(hass, entry)
+        login.assert_not_called()
+    assert len(targets) == 1
+    assert targets[0].entities == {expected: f"sensor.renamed_{expected}" for expected in keys.values()}
+    assert entry.options == before
+
+
+async def test_target_markdown_distinguishes_energy_money_and_missing_values(hass):
+    """HA vykreslí nativní hodnotové senzory, nikoli nový finanční výpočet."""
+    bindings = {
+        "shared_latest_available_day": "sensor.point_shared_day",
+        "revenue_latest_available_day": "sensor.point_money_day",
+        "shared_this_month": "sensor.point_shared_month",
+        "revenue_this_month": "sensor.point_money_month",
+        "sale_price": "sensor.point_price",
+    }
+    for entity, value, unit in (
+        ("sensor.point_shared_day", "2.50", "kWh"),
+        ("sensor.point_money_day", "5.000", "CZK"),
+        ("sensor.point_shared_month", "42.11", "kWh"),
+        ("sensor.point_money_month", "84.220", "CZK"),
+        ("sensor.point_price", "2.0", "CZK/kWh"),
+    ):
+        hass.states.async_set(entity, value, {"unit_of_measurement": unit, "friendly_name": "Shared electricity value"})
+    template = Template(target_details_card([DashboardTarget("Synthetic target", bindings)])["content"], hass)
+    rendered = template.async_render()
+    assert "2.50 kWh" in rendered and "5.00 CZK" in rendered
+    assert "42.11 kWh" in rendered and "84.22 CZK" in rendered
+    assert "2.00 CZK/kWh" in rendered and "5.00 kWh" not in rendered
+    for invalid_state, unit in (("unavailable", "CZK"), ("nan", "CZK"), ("inf", "CZK"), ("5", "kWh")):
+        hass.states.async_set("sensor.point_money_day", invalid_state, {"unit_of_measurement": unit})
+        rendered = template.async_render()
+        assert "**Hodnota sdílení:** —" in rendered
+        assert "5.00 CZK" not in rendered
+
+
+async def test_period_value_marks_current_price_and_does_not_zero_missing_days(hass):
+    """Orientační cena neúplného období není faktura a mezera není nula."""
+    entities = {"sale_price": "sensor.test_price", "surplus_utilization_this_week": "sensor.test_week"}
+    hass.states.async_set("sensor.test_price", "2", {"unit_of_measurement": "CZK/kWh"})
+    hass.states.async_set("sensor.test_week", "50", {"shared_kwh": 7.78, "available_days": 2})
+    template = Template(period_value_card(entities)["content"], hass)
+    rendered = template.async_render()
+    assert "15.56 CZK" in rendered and "7.78 kWh" in rendered
+    assert "aktuální ceně skupiny" in rendered
+    assert "vystavená vyúčtování se nemění" in rendered
+    hass.states.async_set("sensor.test_week", "unavailable", {"shared_kwh": 0, "available_days": 0})
+    rendered = template.async_render()
+    assert "0.00 CZK" not in rendered and "**—**" in rendered
+
+
+async def test_bundled_value_template_uses_the_exact_generator_cards():
+    """Přibalený YAML nesmí postupně zaostat za opravenou funkcí generátoru."""
+    path = Path(__file__).parents[1] / "examples/dashboard-values.yaml"
+    example = parse_yaml(path.read_text(encoding="utf-8"))
+    sections = example["views"][1]["sections"]
+    target_keys = (
+        "shared_latest_available_day", "consumption_latest_available_day",
+        "grid_purchase_latest_available_day", "sharing_coverage_latest_available_day",
+        "revenue_latest_available_day", "shared_this_month", "consumption_this_month",
+        "grid_purchase_this_month", "sharing_coverage_this_month", "revenue_this_month", "sale_price",
+    )
+    target = DashboardTarget("Ukázkové odběrné místo", {key: f"sensor.example_target_{key}" for key in target_keys})
+    entities = {"sale_price": "sensor.example_group_price"} | {
+        f"surplus_utilization_{period}": f"sensor.example_utilization_{period}"
+        for period in ("latest_available_day", "this_week", "this_month", "this_year")
+    }
+    assert sections[0]["cards"][1]["content"].rstrip() == target_details_card([target])["content"].rstrip()
+    assert sections[1]["cards"][1]["content"].rstrip() == period_value_card(entities)["content"].rstrip()
 
 
 async def test_preview_uses_renamed_registry_entities_and_is_read_only(

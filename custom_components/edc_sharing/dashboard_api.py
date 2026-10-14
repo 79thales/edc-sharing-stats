@@ -19,7 +19,7 @@ from .const import CONF_SSE_ID, CONF_SSE_NAME, DOMAIN
 from .dashboard import (
     GROUP_KEYS,
     PANEL_PATH,
-    TARGET_KEYS,
+    TARGET_SOURCE_KEYS,
     DashboardTarget,
     build_dashboard,
 )
@@ -91,13 +91,19 @@ def _registered_sources(
         for key in ("refresh_data", "backfill_history")
         if f"{group_id}_{key}" in registered
     }
+    # Delší koncovka má přednost a EAN je nehladový: electricity_sale_price
+    # nesmí vytvořit falešné odběrné místo s příponou _electricity.
+    source_keys = sorted(TARGET_SOURCE_KEYS, key=len, reverse=True)
     target_pattern = re.compile(
-        rf"^{re.escape(group_id)}_target_(.+)_({'|'.join(TARGET_KEYS)})$"
+        rf"^{re.escape(group_id)}_target_(.+?)_({'|'.join(source_keys)})$"
     )
     target_sensors: dict[str, dict[str, str]] = {}
     for unique_id, entity_id in registered.items():
         if match := target_pattern.fullmatch(unique_id):
-            target_sensors.setdefault(match[1], {})[match[2]] = entity_id
+            sensors = target_sensors.setdefault(match[1], {})
+            key = TARGET_SOURCE_KEYS[match[2]]
+            if key not in sensors or match[2] != key:
+                sensors[key] = entity_id
     targets = []
     for ean, sensors in sorted(target_sensors.items()):
         name = ean_name(ean, entry.options)

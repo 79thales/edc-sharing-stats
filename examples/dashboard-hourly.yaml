@@ -21,6 +21,11 @@ views:
       - type: grid
         cards:
           # Zahrnuje zpožděná data, výchozí denní volba je neomezí.
+          - type: heading
+            heading: Hodinové průběhy – poslední 3 dny
+            icon: mdi:chart-line
+          - type: markdown
+            content: Výchozí grafy zobrazují poslední tři dny. Výběr konkrétního dne je na samostatné podstránce; chybějící hodina není nula.
           - type: statistics-graph
             title: Sdílení, spotřeba a síť – Celá skupina
             chart_type: line
@@ -34,6 +39,18 @@ views:
                 name: Spotřeba
               - entity: edc_sharing:1_grid_hourly
                 name: Ze sítě
+          # Stejné hodinové období, ale procenta patří do samostatného grafu.
+          - type: statistics-graph
+            title: Pokrytí sdílením – Celá skupina
+            chart_type: line
+            period: hour
+            days_to_show: 3
+            stat_types: [mean]
+            min_y_axis: 0
+            max_y_axis: 100
+            entities:
+              - entity: edc_sharing:1_coverage_hourly
+                name: Pokrytí sdílením
           - type: button
             name: Vybrat den hodinových grafů
             tap_action: {action: navigate, navigation_path: /edc-example/hourly-date}
