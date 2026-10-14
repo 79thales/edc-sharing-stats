@@ -286,6 +286,75 @@ async def test_ean_metadata_survives_storage_reload_without_registry(
     await restored.async_shutdown()
 
 
+@pytest.mark.parametrize("pending_day", ("omitted", "null"))
+async def test_pending_final_day_keeps_previous_day_and_existing_sensors_available(
+    hass, recorder_mock, pending_day
+):
+    """Den čekající na zveřejnění neruší předchozí kWh ani jejich skutečné datum.
+
+    Testuje se obvyklé zpoždění EDC dvěma reprezentacemi: poslední den není
+    vůbec v odpovědi, nebo má známé sloupce s null. Žádná varianta nepřidává
+    falešný nulový den ani neposouvá hodnotu 12. října na 13. října.
+    """
+    await hass.config.async_set_time_zone("Europe/Prague")
+    entry, api = make_entry(hass), make_api(hass)
+    await cache_history(hass, entry)
+
+    async def valid_history(_method, _path, payload):
+        raw = profile()
+        raw["content"] = []
+        if payload["dateFrom"] <= "2026-10-12" <= payload["dateTo"]:
+            raw["content"].append(
+                {"date": "2026-10-12", "values": [10, 0, -16, -6]}
+            )
+            if pending_day == "null":
+                raw["content"].append(
+                    {"date": "2026-10-13", "values": [None, None, None, None]}
+                )
+        return raw
+
+    api._request_once.side_effect = valid_history
+    with (
+        patch(
+            "custom_components.edc_sharing.async_setup",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "custom_components.edc_sharing.async_get_api_client",
+            new=AsyncMock(return_value=api),
+        ),
+        patch("custom_components.edc_sharing.report.EdcReportManager.async_start"),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        coordinator = entry.runtime_data.coordinator
+        assert coordinator.last_update_success
+        assert coordinator.has_available_history
+        assert coordinator.data.latest_day == date(2026, 10, 12)
+        assert set(coordinator._history_days) == {date(2026, 10, 12)}
+        registry = er.async_get(hass)
+        from custom_components.edc_sharing.sensor import SENSORS, TARGET_SENSORS
+
+        for description in SENSORS:
+            entity_id = registry.async_get_entity_id(
+                "sensor", "edc_sharing", f"1_{description.key}"
+            )
+            state = hass.states.get(entity_id)
+            assert state is not None and state.state not in ("unavailable", "unknown")
+        for description in TARGET_SENSORS:
+            entity_id = registry.async_get_entity_id(
+                "sensor", "edc_sharing", f"1_target_target_{description.key}"
+            )
+            state = hass.states.get(entity_id)
+            assert state is not None and state.state not in ("unavailable", "unknown")
+        group_id = registry.async_get_entity_id("sensor", "edc_sharing", "1_shared_today")
+        assert float(hass.states.get(group_id).state) == 10
+        assert hass.states.get(group_id).attributes["data_date"] == "2026-10-12"
+        assert coordinator.data_quality["missing_measurement_days"] == (
+            1 if pending_day == "null" else 0
+        )
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
 async def test_empty_history_does_not_create_zero_energy(hass, recorder_mock):
     from decimal import Decimal
     from types import SimpleNamespace
