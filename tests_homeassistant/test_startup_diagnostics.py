@@ -149,21 +149,21 @@ async def test_cached_start_exposes_diagnostics_but_does_not_import_or_send_unti
         "sensor",
         "edc_sharing",
         "1_shared_today",
-        config_entry_id=entry.entry_id,
+        config_entry=entry,
         suggested_object_id="my_saved_group_sharing",
     )
     source_sensor = registry.async_get_or_create(
         "sensor",
         "edc_sharing",
         "1_sharing_ean_producer",
-        config_entry_id=entry.entry_id,
+        config_entry=entry,
         suggested_object_id="my_saved_source_ean",
     )
     target_sensor = registry.async_get_or_create(
         "sensor",
         "edc_sharing",
         "1_target_target_shared_latest_available_day",
-        config_entry_id=entry.entry_id,
+        config_entry=entry,
         suggested_object_id="my_saved_target_sharing",
     )
     registry.async_update_entity(group_sensor.entity_id, name="My retained sharing")
