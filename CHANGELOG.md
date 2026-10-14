@@ -1,5 +1,21 @@
 # Přehled změn / Changelog
 
+## 0.2.10 – 2026-10-14
+
+### Čeština
+
+- Trvalá diagnostika časových hranic EDC: při odmítnutí nerozpoznaného rozlišení se do logu `EDC časový kontrakt` zapíše počet řádků, rozlišení jednotlivých řádků a nejvýše šest anonymních vzorků `start/end`. Výpis neobsahuje EANy, hodnoty energie, názvy skupin, hesla, tokeny ani cookies. Nepodporovaný obsah se nahradí značkou typu.
+- Diagnostika používá právě přijatou odpověď běžícího klienta. Nevytváří další přihlášení ani HTTP požadavek; u platného profilu nic navíc neloguje. Zachovává opravy časů a přihlašování z v0.2.9, dosavadní validaci, chování chybějících dat a serverové limity.
+- Aktualizované release notes a návody obsahují aktuální provozní ověření: v živém HA s v0.2.9 bylo 14. října v 19:30 úspěšně načteno datum 13. 10. 2026; všech 16 hodinových statistik mělo po 24 bodech. Kód trvalé diagnostiky prošel 217 unit testy, všemi devíti povinnými CI kontrolami a po 56 skutečných HA testech pro 2026.8.0 i aktuální stabilní 2026.10.1.
+- Aktualizujte přes HACS a restartujte Home Assistant. Není potřeba mazat ani přejmenovávat entity, statistiky či dashboardy. Historie, doklady a potvrzené úhrady se zachovávají. Použití diagnostiky je popsáno v [návodu](docs-profile-time-diagnostics.md).
+
+### English
+
+- Retain permanent EDC time-boundary diagnostics. When an unrecognized resolution is rejected, the `EDC časový kontrakt` log records row counts, per-row resolutions and at most six anonymous start/end samples. Exclude EANs, energy measurements, group names, passwords, tokens and cookies; replace unsupported content with a type marker.
+- Use the response already received by the running client, without another login or HTTP request. Valid profiles produce no additional error log. Preserve v0.2.9 time/login fixes, existing validation, missing-data handling and server restrictions.
+- Update release notes and guides with current operational verification: live HA running v0.2.9 successfully loaded October 13, 2026 at 19:30 Europe/Prague on October 14; all 16 hourly statistics had 24 points each. The diagnostic code passed 217 unit tests, all nine required CI checks and 56 real HA tests per environment (2026.8.0 and current stable 2026.10.1).
+- Update through HACS and restart Home Assistant. Keep existing entities, statistic IDs, dashboards, history, statements and confirmed payments. See [the diagnostic guide](docs-profile-time-diagnostics.md).
+
 ## 0.2.9 – 2026-10-14
 
 ### Čeština
