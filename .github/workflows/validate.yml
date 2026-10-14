@@ -56,6 +56,13 @@ jobs:
           python -m pip install "playwright==1.64.0"
           python -m playwright install --with-deps chromium
           pytest tests_homeassistant -q --basetemp=test-output
+      # Pouze syntetické grafy testovacího HA, žádný browser profil/HAR/token.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hourly-native-graphs-minimum
+          path: test-output/**/hourly-graph.png
+          retention-days: 7
 
   dashboard-home-assistant:
     name: Dashboard and billing tests – HA ${{ matrix.homeassistant }}
@@ -91,6 +98,12 @@ jobs:
           python -m pip install "playwright==1.64.0"
           python -m playwright install --with-deps chromium
           pytest tests_homeassistant -q --basetemp=test-output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hourly-native-graphs-${{ matrix.homeassistant }}
+          path: test-output/**/hourly-graph.png
+          retention-days: 7
 
   latest-home-assistant:
     name: Latest stable Home Assistant compatibility

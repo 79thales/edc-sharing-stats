@@ -51,6 +51,8 @@ Nově vygenerované Detaily mají hodinové grafy posledních tří dnů pro sku
 
 Nástroje pro vývojáře, postup ověření a přejímací matice jsou v [návodu kontroly API](docs-api-resilience.md). Veřejný otisk je reference zachycená 14. 10. 2026 a ověřuje pouze veřejný build. Přihlášená kontrola portálu je výchozím stavem vypnutá; její neprovedení není úspěšná kontrola API. Playwright není závislost produkční integrace.
 
+Kontrola podporuje také oficiální ICS kalendář EDC jako časový kontext, ne automatické vysvětlení chyby. Soukromý test má jeden souběžný běh, pevný timeout a limit čtecích požadavků; neznámé API ani změny alokace/příjemců nepovolí. Správcovská diagnostika umí výslovně vyžádaný nový read připojení (`fresh`), ale sama nic neimportuje ani nefakturuje. Regrese zahrnují skutečné vykreslení skupinových a individuálních hodinových dat i v 23/25hodinových dnech.
+
 ### Per-target hourly history (v0.2.0)
 
 Each target now has group-scoped external statistics for shared electricity, consumption, grid import (kWh) and sharing coverage (%): `edc_sharing:<group>_<EAN>_<metric>_hourly`, where the metric is `shared`, `consumption`, `grid` or `coverage`. The corresponding latest-day sensor exposes its exact `hourly_statistic_id`. Select hourly periods and `mean` for hourly charts: these are interval values, not cumulative `sum` counters or live power. Coverage is calculated from hourly energy totals, not averaged quarter-hour percentages. Use existing daily aggregates for daily totals and coverage. EDC's usual reporting delay still applies.

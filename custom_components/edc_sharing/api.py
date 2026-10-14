@@ -331,9 +331,20 @@ class EdcApiClient:
     async def async_get_groups(self) -> list[dict[str, Any]]:
         data = await self._request("GET", "/profiles-data/get-sse")
         if not isinstance(data, list) or not all(
-            isinstance(item, dict) for item in data
+            isinstance(item, dict)
+            and type(item.get("sseId")) is int
+            and item["sseId"] > 0
+            for item in data
         ):
-            raise EdcApiError("EDC vrátilo neplatný seznam skupin.")
+            error = EdcApiError(
+                "EDC vrátilo neplatný seznam skupin.", category="contract"
+            )
+            self.last_failure_category = error.category
+            async with self._request_lock:
+                await self.account_state.block(
+                    self.account_state.scope("/profiles-data/get-sse", None), error
+                )
+            raise error
         return data
 
     async def async_get_daily_profile(

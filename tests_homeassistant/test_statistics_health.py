@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -18,6 +19,7 @@ from custom_components.edc_sharing.calculation import (
     parse_hourly_profile,
     parse_hourly_target_profiles,
 )
+from custom_components.edc_sharing.diagnostics import async_get_config_entry_diagnostics
 from custom_components.edc_sharing.health import (
     async_register_health_commands,
     inspect_statistics_health,
@@ -143,6 +145,8 @@ async def test_real_recorder_read_correction_and_empty_period(
     statistics = result["result"]["statistics"]
     assert statistics["edc_sharing:1_shared_hourly"]["points"] == 1
     assert statistics["edc_sharing:1_target_shared_hourly"]["points"] == 1
+    assert statistics["edc_sharing:1_target_shared_hourly"]["unit"] == "kWh"
+    assert statistics["edc_sharing:1_target_coverage_hourly"]["unit"] == "%"
     assert (
         statistics["edc_sharing:1_shared_hourly"]["first"]
         == "2026-10-12T10:00:00+00:00"
@@ -154,13 +158,21 @@ async def test_real_recorder_read_correction_and_empty_period(
             "start_time": "2026-10-11T22:00:00Z",
             "end_time": "2026-10-12T22:00:00Z",
             "period": "hour",
-            "statistic_ids": ["edc_sharing:1_target_shared_hourly"],
+            "statistic_ids": [
+                f"edc_sharing:1_target_{metric}_hourly"
+                for metric in ("shared", "consumption", "grid", "coverage")
+            ],
             "types": ["mean"],
         }
     )
     response = await client.receive_json()
     assert response["success"]
     assert response["result"]["edc_sharing:1_target_shared_hourly"][0]["mean"] == 4
+    assert (
+        response["result"]["edc_sharing:1_target_consumption_hourly"][0]["mean"] == 10
+    )
+    assert response["result"]["edc_sharing:1_target_grid_hourly"][0]["mean"] == 6
+    assert response["result"]["edc_sharing:1_target_coverage_hourly"][0]["mean"] == 40
     queue(hass, raw)
     raw["content"][0]["values"][3]["v"] = -1
     queue(hass, raw)
@@ -197,10 +209,71 @@ async def test_health_requires_admin(
     async_register_health_commands(hass)
     client = await hass_ws_client(hass, access_token=hass_read_only_access_token)
     await client.send_json(
-        {"id": 1, "type": "edc_sharing/statistics/health", "entry_id": entry.entry_id}
+        {
+            "id": 1,
+            "type": "edc_sharing/statistics/health",
+            "entry_id": entry.entry_id,
+            "fresh": True,
+        }
     )
     response = await client.receive_json()
     assert not response["success"]
+
+
+async def test_shareable_diagnostics_omit_secrets_and_arbitrary_new_fields(hass):
+    """A14: standardní export neobsahuje konfiguraci ani nové interní atributy."""
+    entry = make_entry(hass)
+    entry.runtime_data.api = SimpleNamespace(
+        last_status=400, last_failure_category="validation", password="private-secret"
+    )
+    coordinator = entry.runtime_data.coordinator
+    coordinator.last_success_at = None
+    coordinator.next_attempt_at = None
+    coordinator.data_quality["unapproved_new_field"] = "private-secret"
+    coordinator.bank_account = "private-secret"
+    result = await async_get_config_entry_diagnostics(hass, entry)
+    assert result["failure_category"] == "validation"
+    assert "private-secret" not in str(result)
+    assert "Synthetic" not in str(result)
+    assert "edc_sharing:" not in str(result)
+
+
+async def test_fresh_probe_is_explicit_and_never_imports(
+    hass, recorder_mock, hass_ws_client
+):
+    """Admin musí výslovně požádat o nový EDC read; žádný zápis ani jiná akce."""
+    entry = make_entry(hass)
+    api = SimpleNamespace(
+        async_get_groups=AsyncMock(return_value=[{"sseId": 1}]),
+        async_get_daily_profile=AsyncMock(return_value=profile()),
+    )
+    entry.runtime_data.api = api
+    async_register_health_commands(hass)
+    client = await hass_ws_client(hass)
+    await client.send_json(
+        {"id": 1, "type": "edc_sharing/statistics/health", "entry_id": entry.entry_id}
+    )
+    assert (await client.receive_json())["success"]
+    api.async_get_groups.assert_not_awaited()
+    await client.send_json(
+        {
+            "id": 2,
+            "type": "edc_sharing/statistics/health",
+            "entry_id": entry.entry_id,
+            "fresh": True,
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"]
+    assert response["result"]["connection_probe"]["complete_hours"] == 1
+    api.async_get_daily_profile.assert_awaited_once_with(
+        1, date(2026, 10, 12), date(2026, 10, 13)
+    )
+    await recorder_mock.async_block_till_done()
+    result = await inspect_statistics_health(
+        hass, entry, date(2026, 10, 12), date(2026, 10, 13)
+    )
+    assert all(item["points"] == 0 for item in result["statistics"].values())
 
 
 async def test_partial_hours_are_not_queued(hass, recorder_mock):

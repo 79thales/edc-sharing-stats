@@ -10,6 +10,9 @@
 - Generátor zachovává Přehled a Detaily, do detailů přidává skupinové a individuální hodinové průběhy posledních tří dnů. Samostatná podstránka nabízí nativní výběr dne bez ovlivnění výchozího přehledu. Aktualizován distribuovaný příklad; existující dashboard se automaticky nepřepisuje.
 - Veřejný monitor rozpoznává nový build portálu jako podnět ke kontrole, nikoli důkaz nekompatibility API. Soukromý průchod kontroluje aktivní prvky a skutečný požadavek po zobrazení tabulky; je vypnutý do spuštění s testovací session. Disabled/inconclusive/unavailable nejsou ověření živého API.
 - Nové regresní scénáře a skutečné testy Recorderu, čtení bodů přes frontendové API, opakovaného importu, korekce, restartu a vykreslení nativního grafu. CI zachovává přesné minimum a nejnovější stabilní HA. Konkrétní provedené kontroly jsou v dokumentaci implementace; unit testy samotné nepotvrzují funkčnost živého EDC.
+- Doložené hodinové grafy skupiny i cíle pro 23/25hodinové změny času; jednotky kWh/% se ověřují proti skutečnému Recorderu. Ověření MFA/CAPTCHA vyžaduje člověka a nezamění se za špatné heslo; reauth neobchází sdílené čekání. Technické chyby tokenové služby se neopakují odesíláním hesla.
+- Výslovný správcovský `fresh` probe odděluje přihlášení, seznam skupin, jednodenní profil a parser od importu a čtení statistik. Výchozí kontrola je pouze cache/Recorder. Probe je čtecí, bez ukládání profilu, odeslání e-mailu či vystavení dokladu.
+- Veřejný monitor čte oficiální ICS, rozlišuje EDC-SAKU/SEBI/AFLEX, aktivitu okna a nepodporovaný formát. Volitelný lokální stav deduplikuje změnu/zotavení. Soukromý browser probe má timeout 120 s, zámek a rozpočet nejvýše pěti profilových čtení. Přihlášený živý test bez oddělené testovací session zůstává neprovedený; veřejná dostupnost jej nenahrazuje.
 
 ### English
 

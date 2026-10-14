@@ -370,6 +370,9 @@ class ResilienceTests(unittest.IsolatedAsyncioTestCase):
         await state.block("scope", error)
         self.assertTrue(state.persistence_failed)
         state.restore({"account": {"category": [], "until": "private-invalid"}})
+        # Simulovat posun wall clock vpřed: uložený UTC termín již vypršel,
+        # monotónní zbývající čas ale musí dále zakazovat požadavek.
+        state.blocks["account"] = (datetime.now(UTC) - timedelta(hours=1), "rate_limit")
         with (
             patch.object(
                 api.time, "monotonic", return_value=state.deadlines["account"] - 60
@@ -377,6 +380,39 @@ class ResilienceTests(unittest.IsolatedAsyncioTestCase):
             self.assertRaises(api.EdcApiError),
         ):
             state.check("other")
+        self.assertFalse(state.lock.locked())
+
+    async def test_A11_concurrent_group_waits_and_obeys_first_failure(self):
+        """Druhá skupina už čeká: nově uložený 429 zabrání jejímu HTTP volání."""
+        state = api.ApiAccountState()
+        first, _ = self.client([], state)
+        second, _ = self.client([], state)
+        started, queued, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+        async def first_read(*_args):
+            started.set()
+            await release.wait()
+            raise api.EdcApiError("safe", category="rate_limit", status=429)
+
+        async def second_read():
+            queued.set()
+            return await second.async_get_daily_profile(
+                2, date(2026, 10, 12), date(2026, 10, 13)
+            )
+
+        first._request_once = AsyncMock(side_effect=first_read)
+        second._request_once = AsyncMock()
+        task1 = asyncio.create_task(first.async_get_groups())
+        await started.wait()
+        task2 = asyncio.create_task(second_read())
+        await queued.wait()
+        try:
+            second._request_once.assert_not_awaited()
+        finally:
+            release.set()
+        results = await asyncio.gather(task1, task2, return_exceptions=True)
+        self.assertTrue(all(isinstance(item, api.EdcApiError) for item in results))
+        second._request_once.assert_not_awaited()
         self.assertFalse(state.lock.locked())
 
 

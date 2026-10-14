@@ -16,6 +16,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
+from .api import EdcApiError
+from .calculation import parse_hourly_profile, profile_resolution
 from .const import CONF_SSE_ID, DOMAIN
 from .energy import target_hourly_statistic_id
 
@@ -93,7 +95,67 @@ async def inspect_statistics_health(
         "quality": coordinator.data_quality,
         "last_attempt_result": coordinator.last_attempt_result,
         "statistics": result,
+        "checks": {
+            "authentication": "not_probed",
+            "groups": "not_probed",
+            "profile": "cached_only",
+            "parser": coordinator.data_quality.get("resolution", "unknown"),
+            "import": "queue_count_only",
+            "recorder": "read_completed",
+        },
     }
+
+
+async def inspect_connection_health(entry, start: date) -> dict:
+    """Výslovná čtecí kontrola skupin a jediného dne bez importu nebo změny cache.
+
+    Používá runtime API a jeho společné limity. Nepotvrzuje, že je zaplaceno,
+    nezapisuje žádné hodnoty ani neodesílá e-mail. Stupně nejsou zaměnitelné:
+    platné přihlášení může fungovat a profil přesto chybět. Zrušení zachováváme.
+    """
+    api = entry.runtime_data.api
+    result = {
+        "authentication": "not_probed",
+        "groups": "not_probed",
+        "profile": "not_probed",
+        "parser": "not_probed",
+        "profile_day": start.isoformat(),
+    }
+    try:
+        async with asyncio.timeout(120):
+            groups = await api.async_get_groups()
+            result.update(authentication="verified_by_read", groups="read_completed")
+            if not any(
+                item.get("sseId") == int(entry.data[CONF_SSE_ID]) for item in groups
+            ):
+                result["groups"] = "configured_group_not_listed"
+                result["status"] = "inconclusive"
+                return result
+            raw = await api.async_get_daily_profile(
+                int(entry.data[CONF_SSE_ID]), start, start + timedelta(days=1)
+            )
+            result["profile"] = "read_completed"
+            resolution = profile_resolution(raw)
+            hours = parse_hourly_profile(raw, local_tz=dt_util.get_default_time_zone())
+            result.update(
+                parser=resolution,
+                complete_hours=sum(row.complete for row in hours),
+                incomplete_hours=sum(not row.complete for row in hours),
+            )
+    except EdcApiError as error:
+        result.update(
+            status="unavailable",
+            failure_category=error.category,
+            http_status=error.status,
+            retry_at=error.retry_at.isoformat() if error.retry_at else None,
+        )
+    except ValueError:
+        result.update(status="inconclusive", failure_category="contract")
+    except TimeoutError:
+        result.update(status="unavailable", failure_category="timeout")
+    else:
+        result["status"] = "ok" if resolution != "empty" else "inconclusive"
+    return result
 
 
 def async_register_health_commands(hass: HomeAssistant) -> None:
@@ -108,6 +170,7 @@ def async_register_health_commands(hass: HomeAssistant) -> None:
         vol.Required("entry_id"): str,
         vol.Optional("date_from"): str,
         vol.Optional("date_to"): str,
+        vol.Optional("fresh", default=False): bool,
     }
 )
 @websocket_api.async_response
@@ -136,6 +199,8 @@ async def websocket_statistics_health(hass, connection, msg) -> None:
             else start + timedelta(days=1)
         )
         result = await inspect_statistics_health(hass, entry, start, end)
+        if msg.get("fresh", False):
+            result["connection_probe"] = await inspect_connection_health(entry, start)
     except (ValueError, OverflowError):
         connection.send_error(
             msg["id"], "invalid_range", "Zadejte platné období do 31 dnů."
