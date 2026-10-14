@@ -7,6 +7,7 @@ import base64
 import hashlib
 import html
 import json
+import logging
 import math
 import os
 import random
@@ -34,6 +35,7 @@ from .calculation import MAX_PROFILE_DAYS, profile_resolution, validate_profile_
 from .const import API_BASE_URL, AUTHORITY_URL, CLIENT_ID, REDIRECT_URI
 
 REQUEST_TIMEOUT = ClientTimeout(total=30)
+LOGGER = logging.getLogger(__name__)
 ERROR_BODY_LIMIT = 16 * 1024
 # Diagnostika smí zobrazit jen pevně známé kódy a názvy polí. Volné zprávy,
 # hodnoty, identifikátory skupin/EANů ani přihlašovací údaje se nikdy nevypisují.
@@ -43,6 +45,48 @@ SAFE_API_PATHS = frozenset(
         "/profiles-data/standard/overview",
     }
 )
+
+
+def _safe_profile_time_summary(data: dict[str, Any]) -> dict[str, Any]:
+    """Zachytit příčinu neznámého rozlišení bez obsahu měření a identit.
+
+    Volá se pouze po ověření schématu a při odmítnutí časového rozlišení.
+    Nejvýše 4096 řádků rozdělí podle samostatného rozlišení; šest vzorků
+    obsahuje jen pořadí a start/end. Přesný text je dovolen výhradně pro
+    syntaktický čas, případně ISO datum s časem. Jiný obsah se nahradí
+    pevnou značkou typu. Čísla energie, sloupce, EANy, hlavičky, účet,
+    přihlášení a celé odpovědi se nelogují. Jednotkou hranic je místní
+    čas EDC; diagnostika ho nepřevádí ani nezaokrouhluje. Neprovádí síť,
+    neobchází kontrolu a nemění odpověď, cache ani čekací lhůtu.
+    """
+    content = data["content"]
+    counts: dict[str, int] = {}
+    indices = [0, len(content) - 1] if content else []
+    for index, row in enumerate(content[:4096]):
+        resolution = profile_resolution({"content": [row]})
+        counts[resolution] = counts.get(resolution, 0) + 1
+        if resolution == "unknown" and len(indices) < 6 and index not in indices:
+            indices.append(index)
+
+    def clock(value: Any) -> str:
+        if isinstance(value, str) and re.fullmatch(
+            r"(?:[0-9]{4}-[0-9]{2}-[0-9]{2}[T ])?[0-9]{1,2}:[0-9]{2}"
+            r"(?::[0-9]{2}(?:[.,][0-9]{1,9})?)?(?:Z|[+-][0-9]{2}:[0-9]{2})?",
+            value,
+        ):
+            return value
+        kind = {str: "str", int: "int", float: "float", bool: "bool",
+                list: "list", dict: "dict", type(None): "missing"}.get(type(value), "unsupported")
+        return f"<{kind}>"
+
+    return {
+        "rows": len(content),
+        "inspected_rows": min(len(content), 4096),
+        "row_resolutions": counts,
+        "samples": [{"row_index": index, "start": clock(content[index].get("start")),
+                     "end": clock(content[index].get("end"))}
+                    for index in dict.fromkeys(indices)],
+    }
 
 
 def build_profile_request(
@@ -377,6 +421,9 @@ class EdcApiClient:
         try:
             validate_profile_response(data)
             if profile_resolution(data) == "unknown":
+                # Využít právě přijatou odpověď stejného klienta: druhé
+                # přihlášení by mohlo skončit 403 a zakrýt chybu profilu.
+                LOGGER.error("EDC časový kontrakt: %s", _safe_profile_time_summary(data))
                 raise ValueError("EDC vrátilo nerozpoznané časové rozlišení.")
             if any(
                 not date_from <= date.fromisoformat(row["date"][:10]) < date_to
