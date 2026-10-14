@@ -370,7 +370,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         """Při opakované chybě aktualizovat diagnostiku i dostupné atributy.
 
         Základní koordinátor při dvou selháních za sebou listenery potlačuje.
-        Zde dostupnost historie nesmí zaležet na výsledku HTTP; chybový stav
+        Zde dostupnost historie nesmí záviset na výsledku HTTP; chybový stav
         a termín musí být aktuální. Aktivační listener reportů nadále vyžaduje
         last_update_success, takže toto oznámení nic neposílá ani neimportuje.
         """

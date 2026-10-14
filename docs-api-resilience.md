@@ -95,7 +95,7 @@ Výsledky `disabled`, `inconclusive` nebo `unavailable` se nikdy nezapočítáva
 
 Povinné testy se provádějí v přesném minimálním a aktuálním stabilním HA prostředí s odpovídajícím pytest pluginem a frontendem. Chybějící prostředí se nesmí nahradit beta/starší verzí ani tiše přeskočit. Skutečný živý přihlášený EDC průchod je samostatná kontrola; bez testovací session jeho kompatibilita zůstává neověřená. Konkrétní výsledky CI jsou součástí předání změny.
 
-## Důkazy a známé meze – 14. 10. 2026
+## Důkazy a známé meze v0.2.5 – 14. 10. 2026
 
 Na finálním kódovém commitu `608fce64a04782859b2c830f08e8f68eefe1c17e` proběhl [Linuxový Validate běh 38522438041](https://github.com/79thales/edc-sharing-stats/actions/runs/38522438041): všech deset kontrol úspěšných, včetně spuštění veřejného monitoru při ručním běhu. Obě skutečná HA prostředí měla po 38 úspěšných testech, včetně 23/25hodinových vykreslených grafů, jednotek kWh/%, odděleného fresh probe, oprávnění a diagnostické redakce. Test neúplného backfillu zachoval kurzor i dobrou historii a obnovil je v nové HA instanci přes standardní JSON storage fixture. Samostatný restart Recorderu používá skutečnou SQLite databázi. Tyto dvě persistence kontroly nejsou zaměňovány.
 
@@ -122,3 +122,11 @@ Sanitizovaný příklad exportu (nikoli reálné osobní údaje):
 ```
 
 `queued_hours: 24` znamená frontu, nikoli 24 ověřených bodů. Potvrzení je až čtení `statistics/health`. Existující vyúčtování, potvrzené úhrady a identifikátory statistik se nemigrují ani nemažou. Selhání backfill bloku se uloží jako obnovitelné; kurzor zůstane před neověřeným blokem. Vývoj zde neopravuje neznámý kontrakt z jedné vzdálené odpovědi automaticky.
+
+## Ověření dostupnosti historie v0.2.7 – 14. 10. 2026
+
+[Validate 38541682766](https://github.com/79thales/edc-sharing-stats/actions/runs/38541682766) úspěšně dokončil všech devět povinných kontrol na kódovém commitu `7671b7d8fa0e5951e24eb709986fd4cd69531c6e`. Každá přesná dvojice HA/plugin 2026.8.0/0.13.354 a aktuální stabilní 2026.10.1/0.13.372 provedla 47 skutečných funkčních testů. Vedle toho prošlo 193 unit testů, samostatné kompatibilitní kontroly HA 2026.8.0/2026.9.0/latest, oba JavaScriptové frontendy, HACS, Hassfest a lint. Veřejný advisory monitor se při push očekávaně nespouští; není součástí tvrzení o dostupnosti přihlášeného EDC.
+
+Nové testy používají skutečný setup HA, registr s vlastními původními názvy a ID, Store fixture, entity, koordinátor a Recorder. Ověřují dostupnost posledních 10 kWh s původním datem a souhrnovými atributy po selhání, obnovení výrobního EANu, zachování skutečně uloženého hodinového bodu a zákaz importu/reportu během čekání. Dále ověřují všechny skupinové i cílové senzory při chybějícím/null posledním dni, žádný falešný nulový den, opakované selhání, jeden návrat plánovače po obnově a reauth bez opakovaného odeslání odmítnutého hesla. Hodnoty a identity v testech jsou syntetické, nikoli zákaznické údaje.
+
+Tyto výsledky dokládají opravu dostupnosti uložené historie a kompatibilitu kódu, nikoli původní příčinu živé chyby API. Starší verze její konkrétní důvod neuložila; nový release jej zpětně nemůže rekonstruovat. Nasazení vyžaduje aktualizaci a restart vlastního HA. Po něm zkontrolujte stejná entity ID/názvy, skutečný poslední datový den, počty pokrytých dnů a čtené body Recorderu; žádné z těchto ověření nenahrazujte pouhou existencí integrace nebo zeleným výsledkem CI.
