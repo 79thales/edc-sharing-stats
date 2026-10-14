@@ -13,6 +13,7 @@
 - Doložené hodinové grafy skupiny i cíle pro 23/25hodinové změny času; jednotky kWh/% se ověřují proti skutečnému Recorderu. Ověření MFA/CAPTCHA vyžaduje člověka a nezamění se za špatné heslo; reauth neobchází sdílené čekání. Technické chyby tokenové služby se neopakují odesíláním hesla.
 - Výslovný správcovský `fresh` probe odděluje přihlášení, seznam skupin, jednodenní profil a parser od importu a čtení statistik. Výchozí kontrola je pouze cache/Recorder. Probe je čtecí, bez ukládání profilu, odeslání e-mailu či vystavení dokladu.
 - Veřejný monitor čte oficiální ICS, rozlišuje EDC-SAKU/SEBI/AFLEX, aktivitu okna a nepodporovaný formát. Volitelný lokální stav deduplikuje změnu/zotavení. Soukromý browser probe má timeout 120 s, zámek a rozpočet nejvýše pěti profilových čtení. Přihlášený živý test bez oddělené testovací session zůstává neprovedený; veřejná dostupnost jej nenahrazuje.
+- Ověření kódové změny: [Validate 38522438041](https://github.com/79thales/edc-sharing-stats/actions/runs/38522438041), všech deset kontrol úspěšných; po 38 skutečných HA testech na 2026.8.0/0.13.354 a 2026.10.1/0.13.372, 182 lokálních unit testů a oba frontendové testy. Neúplný backfill nepostoupí přes chybný blok a stav se obnoví v nové HA instanci; Recorder restart je ověřen se skutečnou SQLite. Veřejný build fungoval lokálně, ale GitHub report zaznamenal transportní nedostupnost; ICS fungoval v obou prostředích. Úspěch advisory jobu není tvrzení o dostupnosti API. Živý zákaznický HA ani již vydaná verze se při těchto kontrolách nemění.
 
 ### English
 

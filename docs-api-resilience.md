@@ -75,7 +75,9 @@ Povinné testy se provádějí v přesném minimálním a aktuálním stabilním
 
 ## Důkazy a známé meze – 14. 10. 2026
 
-Na commitu `b4b3179` proběhl [Linuxový Validate běh 38521063237](https://github.com/79thales/edc-sharing-stats/actions/runs/38521063237): devět povinných kontrol úspěšných, veřejný plánovaný monitor se u push očekávaně nespouští. Obě skutečná HA prostředí měla po 35 úspěšných testech, včetně 23/25hodinových vykreslených grafů. Pozdější rozšíření čtecí diagnostiky má vlastní následný CI běh; tento starší výsledek je nepotvrzuje.
+Na finálním kódovém commitu `608fce64a04782859b2c830f08e8f68eefe1c17e` proběhl [Linuxový Validate běh 38522438041](https://github.com/79thales/edc-sharing-stats/actions/runs/38522438041): všech deset kontrol úspěšných, včetně spuštění veřejného monitoru při ručním běhu. Obě skutečná HA prostředí měla po 38 úspěšných testech, včetně 23/25hodinových vykreslených grafů, jednotek kWh/%, odděleného fresh probe, oprávnění a diagnostické redakce. Test neúplného backfillu zachoval kurzor i dobrou historii a obnovil je v nové HA instanci přes standardní JSON storage fixture. Samostatný restart Recorderu používá skutečnou SQLite databázi. Tyto dvě persistence kontroly nejsou zaměňovány.
+
+Lokální jednotková sada: 204 nalezených testů, 182 úspěšných a 22 HA-specifických kontrol provedených samostatně v Linuxových kompatibilitních bězích. Oba JavaScriptové frontendové testy prošly. Nativní Windows HA test není započítán jako úspěch: runtime dříve narazil na OpenSSL Applink, proto skutečné HA testy proběhly v přesných Linuxových prostředích. Screenshoty v CI artefaktech jsou pouze syntetické grafy, bez reálných účtů či session; podzimní graf byl rovněž vizuálně zkontrolován.
 
 | Kontrola | Verze / výsledek / omezení |
 | --- | --- |
@@ -83,7 +85,9 @@ Na commitu `b4b3179` proběhl [Linuxový Validate běh 38521063237](https://gith
 | Nejnovější stabilní HA | Resolver při ověření vybral 2026.10.1 + plugin 0.13.372, bez beta nebo náhrady starší verzí. |
 | Doplňková kompatibilita | HA 2026.9.0 a importy všech nových modulů. |
 | Veřejný portál, živě | `ok`, 13 build assetů, otisk shodný s referencí; nejde o test přihlášeného API. |
+| Veřejný portál z GitHub runneru | Report `unavailable/transport`; úspěch CI jobu znamená korektní provedení monitoru, nikoli dostupnost webu. Lokální výsledek výše a tento vzdálený výsledek nejsou zaměňovány. |
 | Oficiální ICS, živě | `ok`; potvrzeno okno EDC-SAKU 13. 10. 2026 14–15 UTC = 16–17 Europe/Prague; 14. 10. již neaktivní. |
+| Oficiální ICS z GitHub runneru | `ok`; samostatná kontrola strojového zdroje, nikoli přihlášení EDC. |
 | Přihlášený EDC, živě | Neprovedeno: není předána čerstvá oddělená testovací session. Bez ní není potvrzena aktuální produkční kompatibilita. |
 | Živý HA / zákaznický dashboard | Nezměněn, neupgradován; průchod grafem je izolovaný syntetický Linux test. |
 
