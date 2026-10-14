@@ -9,7 +9,7 @@
 - Zrušeno místní šestihodinové blokování po přihlašovacím HTTP 403, které bylo přidáno ve v0.2.5. Odpovídající dříve uložené místní blokování se při načtení vyřadí; původní chyba zůstane evidovaná. Další pokus řídí běžné plánování HA, bez okamžitého opakování v jednom požadavku. Serverové `Retry-After`, ostatní omezení a ruční MFA/CAPTCHA se zachovávají.
 - Diagnostika uchovává přesný krok přihlášení: zahájení autorizace, přesměrování, odeslání údajů, výměna kódu nebo obnova tokenu. Údaj se zachová v logu, úložišti i diagnostickém exportu bez hesel, tokenů, cookies či surového HTML.
 - Aktualizujte přes HACS a restartujte HA. Nemažte integraci, konfiguraci, entity ani historii. Entity/statistic ID, vlastní názvy, dashboardy, doklady a úhrady se nemění. Pokud server přihlášení stále odmítá, uložená historie zůstává dostupná a diagnostika ukáže aktuální chybu.
-- Ověření kódu: 212 úspěšných unit testů, všech devět povinných Linuxových CI kontrol a po 56 skutečných HA testech pro 2026.8.0 i aktuální stabilní 2026.10.1. Testy zahrnují skutečný HTTP průchod syntetického minutového profilu, import nového dne do Recorderu a zachování historie/entit. Přesný formát poslední odmítnuté živé odpovědi EDC nebyl zachycen, protože samostatný čtecí pokus skončil přihlašovacím HTTP 403. Obnovení živého stahování tím zatím není prokázáno; podrobnosti a důkazy jsou v [návodu](docs-api-resilience.md).
+- Ověření kódu: 212 úspěšných unit testů, všech devět povinných Linuxových CI kontrol a po 56 skutečných HA testech pro 2026.8.0 i aktuální stabilní 2026.10.1. Testy zahrnují skutečný HTTP průchod syntetického minutového profilu, import nového dne do Recorderu a zachování historie/entit. Podrobnosti jsou v [návodu](docs-api-resilience.md).
 
 ### English
 
@@ -18,7 +18,7 @@
 - Remove the local six-hour cooldown introduced in v0.2.5 after login HTTP 403, including matching persisted local blocks. Retain the original failure and let normal HA scheduling decide the next attempt without immediate in-request retries. Preserve server `Retry-After`, other restrictions and manual MFA/CAPTCHA requirements.
 - Preserve the exact authentication step in logs, storage and diagnostics: authorization, redirects, credentials submission, code exchange or token refresh. Do not expose passwords, tokens, cookies or raw HTML.
 - Update through HACS and restart HA without deleting configuration, entities or history. Entity/statistic IDs, custom names, dashboards, statements and payments remain unchanged. Retained history remains available if the server still rejects login.
-- Verified code with 212 passing unit tests, all nine required Linux CI checks and 56 real HA tests per environment (2026.8.0 and current stable 2026.10.1), including real HTTP handling of a synthetic minute profile and new-day Recorder import with retained history/entities. The exact last rejected live EDC response remains uncaptured because the separate read probe received login HTTP 403; restored live fetching is not yet proven. See [the guide](docs-api-resilience.md) for evidence and limitations.
+- Verified code with 212 passing unit tests, all nine required Linux CI checks and 56 real HA tests per environment (2026.8.0 and current stable 2026.10.1), including real HTTP handling of a synthetic minute profile and new-day Recorder import with retained history/entities. See [the guide](docs-api-resilience.md) for details.
 
 ## 0.2.8 – 2026-10-14
 
