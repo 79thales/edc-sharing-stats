@@ -30,6 +30,12 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict:
         "ready": runtime is not None,
         "cached_startup": getattr(coordinator, "cached_startup", False),
         "history_available": bool(getattr(coordinator, "has_available_history", False)),
+        # Pouze stav a místní kalendářní rozsahy s pevnými důvody. Mezery
+        # nejsou důkaz nulových kWh ani počátku platnosti sdílecí skupiny.
+        "history_backfill": {
+            "status": getattr(coordinator, "history_backfill_status", "not_started"),
+            "pending_ranges": getattr(coordinator, "history_backfill_pending_ranges", []),
+        },
         "original_failure": failure,
         "wait_persistence_failed": state.persistence_failed
         if state is not None

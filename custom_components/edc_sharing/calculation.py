@@ -544,6 +544,37 @@ def missing_measurement_counts(response: dict[str, Any]) -> tuple[int, int]:
     return len({row["date"][:10] for row in rows}), len(rows)
 
 
+def history_profile_gaps(
+    response: dict[str, Any], date_from: date, date_to: date,
+    days: tuple[DailySharing, ...],
+) -> dict[date, str]:
+    """Klasifikovat neověřené kalendářní dny historického bloku [od, do).
+
+    Vstup již prošel validátorem a denním parserem; úplnost tedy respektuje
+    kWh, null i 23/25hodinové dny Europe/Prague. Výstup obsahuje jen datum
+    a pevný důvod, nikdy měření ani identity. Kontrolujeme každý požadovaný
+    den: zcela chybějící/null den parser nemusí vrátit. Prázdná odpověď ani
+    nejstarší uložený den nedokazují platnost skupiny; žádnou mezeru nenulovat.
+    """
+    complete = {row.day for row in days if row.complete}
+    present = {date.fromisoformat(row["date"][:10]) for row in response["content"]}
+    missing = {
+        date.fromisoformat(row["date"][:10])
+        for row in response["content"] if _row_missing_measurement(row)
+    }
+    result = {}
+    day = date_from
+    while day < date_to:
+        if day in missing:
+            result[day] = "missing_measurements"
+        elif day not in present:
+            result[day] = "missing_day"
+        elif day not in complete:
+            result[day] = "incomplete_day"
+        day += timedelta(days=1)
+    return result
+
+
 def extract_eans(response: dict[str, Any]) -> tuple[EanInfo, ...]:
     """Return every distinct sharing and target EAN in an EDC profile."""
     found: set[EanInfo] = set()

@@ -1,5 +1,21 @@
 # Přehled změn / Changelog
 
+## 0.2.11 – 2026-10-16
+
+### Čeština
+
+- Oprava #8: neúplný či null den nezastaví import ostatních úplných dnů a hodin historického bloku. Neověřené dny, včetně prázdných a jednostranných profilů, zůstávají uložené jako mezery; neodvozujeme z nich datum vzniku skupiny ani nulovou energii.
+- Nový stav `Dokončeno s mezerami` rozlišuje dokončené prohledání od úplného pokrytí. Další ruční spuštění opakuje jen mezery; restart obnoví přerušený běh bez opakování již dokončeného varování. Uložené klíče dnů a UTC hodin brání zdvojení počítadel při opakování. Starší cache zůstává kompatibilní, skutečné chyby API nadále zastavují běh.
+- Diagnostika obsahuje nevyřešené kalendářní rozsahy a pevné důvody bez identit či naměřených hodnot. Regresní testy pokrývají částečný první den, chybějící/null dny, jednostranný profil, opakování po Store reload, souběh, přerušení a oba přechody letního času.
+- Ověřeno 243 unit testy a po 71 funkčních testech skutečného HA pro minimum 2026.8.0 a aktuální stabilní 2026.10.1. Aktualizujte přes HACS, restartujte HA a znovu spusťte doplnění historie. Integraci ani její uloženou historii nemažte. Dokončení s mezerami samo nepotvrzuje úplnost dat ani datum vzniku skupiny.
+
+### English
+
+- Fix #8: partial/null days no longer block valid daily/hourly history in the same block. Absent and one-sided profiles remain recorded as unresolved gaps rather than fabricated zero energy or inferred sharing validity.
+- Add `Completed with gaps`, persisted pending ranges and explicit retries of only those ranges. Resume interrupted work after restart without automatically retrying a finished warning. Persist unique day/UTC-hour keys to prevent duplicate counters; preserve legacy caches and blocking API failures.
+- Add regression coverage for boundary and absent/null days, one-sided profiles, Store reload and targeted retry, concurrent starts, cancellation and both DST transitions. Diagnostics expose only calendar ranges and fixed reason codes.
+- Verified with 243 unit tests and 71 real HA functional tests each for minimum 2026.8.0 and current stable 2026.10.1. Update through HACS, restart HA and run history backfill again. Keep the integration and retained history. Completion with gaps does not confirm complete data or the sharing group's validity start.
+
 ## 0.2.10 – 2026-10-14
 
 ### Čeština
