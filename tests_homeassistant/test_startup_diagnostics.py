@@ -472,7 +472,8 @@ async def test_old_local_schema_failure_does_not_discard_valid_recent_day(
 
 
 @pytest.mark.parametrize("marker", (None, "NaN", "Infinity"))
-async def test_all_null_historical_day_cannot_advance_cursor(hass, recorder_mock, marker):
+async def test_all_null_historical_day_remains_pending_without_zero(hass, recorder_mock, marker):
+    """Celý null den smí posunout prohledání jen s uloženou nevyřešenou mezerou."""
     entry, api = make_entry(hass), make_api(hass)
     raw = profile()
     raw["content"] = [{"date": "2026-10-12", "values": [marker] * 4}]
@@ -481,10 +482,14 @@ async def test_all_null_historical_day_cannot_advance_cursor(hass, recorder_mock
     coordinator.history_backfill_scan_start = date(2026, 10, 12)
     coordinator.history_backfill_cursor = date(2026, 10, 13)
     coordinator.history_backfill_status = "running"
+    coordinator.history_backfill_total_chunks = 1
     await coordinator._async_backfill_history()
-    assert coordinator.history_backfill_status == "failed"
-    assert coordinator.history_backfill_cursor == date(2026, 10, 13)
-    assert coordinator.history_backfill_processed_chunks == 0
+    assert coordinator.history_backfill_status == "completed_with_gaps"
+    assert coordinator.history_backfill_cursor == date(2026, 10, 12)
+    assert coordinator.history_backfill_processed_chunks == 1
+    assert coordinator.history_backfill_pending_ranges == [{
+        "start": "2026-10-12", "end": "2026-10-13", "reason": "missing_measurements",
+    }]
     assert coordinator.history_backfill_imported_days == 0
     assert coordinator.history_backfill_imported_hours == 0
     await coordinator.async_shutdown()

@@ -235,6 +235,9 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
         coordinator.history_backfill_imported_days = 0
         coordinator.history_backfill_imported_hours = 0
         coordinator.history_backfill_processed_chunks = 0
+        coordinator._history_backfill_gaps = {}
+        coordinator._history_backfill_day_keys = set()
+        coordinator._history_backfill_hour_keys = set()
         coordinator._history_import_enabled = False
         coordinator._history_days = {}
         coordinator._history_target_days = {}
@@ -258,6 +261,9 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
         coordinator._async_fail_history_backfill.assert_not_awaited()
         self.assertEqual(coordinator.history_backfill_cursor, date(2026, 9, 1))
         self.assertEqual(coordinator.history_backfill_processed_chunks, 1)
+        self.assertEqual(coordinator.history_backfill_pending_ranges, [{
+            "start": "2026-09-01", "end": "2026-10-02", "reason": "missing_day",
+        }])
 
     def test_target_hourly_export_passes_real_recorder_validation(self) -> None:
         from custom_components.edc_sharing.calculation import TargetHourlySharing

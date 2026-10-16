@@ -309,7 +309,8 @@
           "running": "Running",
           "paused": "Paused",
           "failed": "Failed",
-          "completed": "Completed"
+          "completed": "Completed",
+          "completed_with_gaps": "Completed with gaps"
         }
       },
       "history_earliest_date": {

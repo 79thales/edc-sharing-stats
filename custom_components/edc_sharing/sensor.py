@@ -585,8 +585,8 @@ class EdcTargetSensor(
 
 
 def _history_backfill_progress(coordinator: EdcSharingCoordinator) -> int:
-    """Return persisted backfill progress as a whole percentage."""
-    if coordinator.history_backfill_status == "completed":
+    """Procenta znamenají prohledaný rozsah; úplnost určují stav a mezery."""
+    if coordinator.history_backfill_status in {"completed", "completed_with_gaps"}:
         return 100
     total = coordinator.history_backfill_total_chunks
     if not total:
@@ -596,8 +596,8 @@ def _history_backfill_progress(coordinator: EdcSharingCoordinator) -> int:
 
 def _history_backfill_attributes(
     coordinator: EdcSharingCoordinator,
-) -> dict[str, str | int | None]:
-    """Return detailed progress shared by the diagnostic entities."""
+) -> dict[str, Any]:
+    """Sdílet prohledaný rozsah i neověřené mezery bez naměřených hodnot."""
     return {
         "history_backfill_status": coordinator.history_backfill_status,
         "history_backfill_progress": _history_backfill_progress(coordinator),
@@ -633,6 +633,11 @@ def _history_backfill_attributes(
             else None
         ),
         "history_backfill_error": coordinator.history_backfill_error,
+        "history_backfill_pending_ranges": coordinator.history_backfill_pending_ranges,
+        "history_backfill_pending_days": sum(
+            (date.fromisoformat(item["end"]) - date.fromisoformat(item["start"])).days
+            for item in coordinator.history_backfill_pending_ranges
+        ),
     }
 
 
@@ -704,7 +709,9 @@ class EdcHistoryBackfillStatusSensor(
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_has_entity_name = True
     _attr_translation_key = "history_backfill_status"
-    _attr_options: ClassVar[list[str]] = ["not_started", "running", "paused", "failed", "completed"]
+    _attr_options: ClassVar[list[str]] = [
+        "not_started", "running", "paused", "failed", "completed", "completed_with_gaps",
+    ]
 
     def __init__(self, entry: EdcConfigEntry) -> None:
         super().__init__(entry.runtime_data.coordinator)
@@ -735,11 +742,12 @@ class EdcHistoryBackfillStatusSensor(
             "paused": "mdi:database-clock-outline",
             "failed": "mdi:database-alert-outline",
             "completed": "mdi:database-check-outline",
+            "completed_with_gaps": "mdi:database-alert-outline",
         }.get(self.coordinator.history_backfill_status, "mdi:database-outline")
 
     @property
-    def extra_state_attributes(self) -> dict[str, str | int | None]:
-        """Expose percentage, covered range, counters, and errors."""
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Zpřístupnit prohledání, neověřené rozsahy, počítadla a chyby."""
         return _history_backfill_attributes(self.coordinator)
 
 

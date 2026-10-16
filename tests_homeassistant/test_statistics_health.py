@@ -290,10 +290,10 @@ async def test_partial_hours_are_not_queued(hass, recorder_mock):
     assert all(item["points"] == 0 for item in result["statistics"].values())
 
 
-async def test_failed_backfill_preserves_cursor_history_and_restore(
+async def test_partial_backfill_preserves_gap_history_and_restore(
     hass, recorder_mock, hass_storage
 ):
-    """Neúplný blok nesmí posunout kurzor, přepsat dobrou historii ani Recorder.
+    """Neúplný blok uloží mezeru, uchová dobrou historii i existující Recorder.
 
     JSON persistence používá standardní HA storage fixture, nikoli nový vlastní
     serializér. Obnovení probíhá v nové instanci HA; Recorder zápis/čtení zůstává
@@ -310,6 +310,7 @@ async def test_failed_backfill_preserves_cursor_history_and_restore(
     coordinator.history_backfill_scan_start = date(2026, 10, 12)
     coordinator.history_backfill_cursor = date(2026, 10, 13)
     coordinator.history_backfill_status = "running"
+    coordinator.history_backfill_total_chunks = 1
     prior = profile()
     prior["content"] = [
         {"date": "2026-10-10", "values": [{"v": 10}, {"v": 0}, {"v": -16}, {"v": -6}]}
@@ -317,14 +318,17 @@ async def test_failed_backfill_preserves_cursor_history_and_restore(
     coordinator._history_days = {row.day: row for row in parse_daily_profile(prior)}
     entry.runtime_data.coordinator = coordinator
     await coordinator._async_backfill_history()
-    assert coordinator.history_backfill_status == "failed"
-    assert coordinator.history_backfill_cursor == date(2026, 10, 13)
-    assert coordinator.history_backfill_processed_chunks == 0
+    assert coordinator.history_backfill_status == "completed_with_gaps"
+    assert coordinator.history_backfill_cursor == date(2026, 10, 12)
+    assert coordinator.history_backfill_processed_chunks == 1
     assert coordinator.history_backfill_imported_hours == 0
     assert float(coordinator._history_days[date(2026, 10, 10)].shared) == 10
     assert (
-        hass_storage[coordinator._history_store.key]["data"]["cursor"] == "2026-10-13"
+        hass_storage[coordinator._history_store.key]["data"]["cursor"] == "2026-10-12"
     )
+    assert hass_storage[coordinator._history_store.key]["data"]["pending_ranges"] == [{
+        "start": "2026-10-12", "end": "2026-10-13", "reason": "incomplete_day",
+    }]
     await recorder_mock.async_block_till_done()
     result = await inspect_statistics_health(
         hass, entry, date(2026, 10, 12), date(2026, 10, 13)
@@ -336,8 +340,9 @@ async def test_failed_backfill_preserves_cursor_history_and_restore(
         try:
             restored = EdcSharingCoordinator(restarted, entry, api)
             await restored.async_initialize()
-            assert restored.history_backfill_status == "failed"
-            assert restored.history_backfill_cursor == date(2026, 10, 13)
+            assert restored.history_backfill_status == "completed_with_gaps"
+            assert restored.history_backfill_cursor == date(2026, 10, 12)
+            assert restored.history_backfill_pending_ranges == coordinator.history_backfill_pending_ranges
             assert float(restored._history_days[date(2026, 10, 10)].shared) == 10
         finally:
             await restarted.async_stop(force=True)

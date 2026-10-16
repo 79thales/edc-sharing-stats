@@ -1,5 +1,19 @@
 # Přehled změn / Changelog
 
+## Unreleased
+
+### Čeština
+
+- Oprava #8: neúplný či null den nezastaví import ostatních úplných dnů a hodin historického bloku. Neověřené dny, včetně prázdných a jednostranných profilů, zůstávají uložené jako mezery; neodvozujeme z nich datum vzniku skupiny ani nulovou energii.
+- Nový stav `Dokončeno s mezerami` rozlišuje dokončené prohledání od úplného pokrytí. Další ruční spuštění opakuje jen mezery; restart obnoví přerušený běh bez opakování již dokončeného varování. Uložené klíče dnů a UTC hodin brání zdvojení počítadel při opakování. Starší cache zůstává kompatibilní, skutečné chyby API nadále zastavují běh.
+- Diagnostika obsahuje nevyřešené kalendářní rozsahy a pevné důvody bez identit či naměřených hodnot. Regresní testy pokrývají částečný první den, chybějící/null dny, jednostranný profil, opakování po Store reload, souběh, přerušení a oba přechody letního času.
+
+### English
+
+- Fix #8: partial/null days no longer block valid daily/hourly history in the same block. Absent and one-sided profiles remain recorded as unresolved gaps rather than fabricated zero energy or inferred sharing validity.
+- Add `Completed with gaps`, persisted pending ranges and explicit retries of only those ranges. Resume interrupted work after restart without automatically retrying a finished warning. Persist unique day/UTC-hour keys to prevent duplicate counters; preserve legacy caches and blocking API failures.
+- Add regression coverage for boundary and absent/null days, one-sided profiles, Store reload and targeted retry, concurrent starts, cancellation and both DST transitions. Diagnostics expose only calendar ranges and fixed reason codes.
+
 ## 0.2.10 – 2026-10-14
 
 ### Čeština

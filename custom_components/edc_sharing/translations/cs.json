@@ -309,7 +309,8 @@
           "running": "Probíhá",
           "paused": "Pozastaveno",
           "failed": "Selhalo",
-          "completed": "Dokončeno"
+          "completed": "Dokončeno",
+          "completed_with_gaps": "Dokončeno s mezerami"
         }
       },
       "history_earliest_date": {

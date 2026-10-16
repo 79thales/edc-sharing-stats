@@ -27,6 +27,7 @@ from .calculation import (
     TargetHourlySharing,
     calculate_statistics,
     extract_eans,
+    history_profile_gaps,
     missing_measurement_counts,
     one_calendar_year_ago,
     parse_daily_profile,
@@ -59,6 +60,49 @@ _LOGGER = logging.getLogger(__name__)
 
 _HISTORY_STORE_VERSION = 1
 _BACKFILL_REQUEST_DELAY = 0.25
+_HISTORY_GAP_REASONS = {
+    "missing_measurements", "missing_day", "incomplete_day", "unverified_validity",
+}
+
+
+def _history_gap_ranges(gaps: dict[date, str]) -> list[dict[str, str]]:
+    """Sloučit sousední neověřené dny stejného důvodu do rozsahů [od, do).
+
+    Rozsahy používá Store i diagnostika. Neobsahují EANy ani naměřené kWh;
+    jejich existence znamená nevyřešené pokrytí, nikoli nulovou energii.
+    """
+    result: list[dict[str, str]] = []
+    for day, reason in sorted(gaps.items()):
+        end = (day + timedelta(days=1)).isoformat()
+        if result and result[-1]["end"] == day.isoformat() and result[-1]["reason"] == reason:
+            result[-1]["end"] = end
+        else:
+            result.append({"start": day.isoformat(), "end": end, "reason": reason})
+    return result
+
+
+def _stored_history_gaps(value: object) -> dict[date, str]:
+    """Obnovit přídavnou evidenci mezer; starší Store bez pole je kompatibilní.
+
+    Jeden rozsah může mít nejvýše 366 kalendářních dnů ročního backfillu.
+    Poškozené datum či neznámý důvod neinterpretovat jako měření/platnost.
+    """
+    result: dict[date, str] = {}
+    if value is None:
+        return result
+    if not isinstance(value, list):
+        raise TypeError("Uložená evidence mezer historie je neplatná.")
+    for item in value:
+        if not isinstance(item, dict):
+            raise TypeError("Uložená evidence mezer historie je neplatná.")
+        start, end = _stored_date(item.get("start")), _stored_date(item.get("end"))
+        reason = item.get("reason")
+        if (start is None or end is None or not isinstance(reason, str)
+                or reason not in _HISTORY_GAP_REASONS or not 0 < (end - start).days <= 366):
+            raise ValueError("Uložená evidence mezer historie je neplatná.")
+        for offset in range((end - start).days):
+            result[start + timedelta(days=offset)] = reason
+    return result
 
 
 def _stored_date(value: object) -> date | None:
@@ -242,6 +286,11 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self.history_backfill_imported_days = 0
         self.history_backfill_imported_hours = 0
         self.history_backfill_error: str | None = None
+        # Kurzor vyjadřuje prohledání, mezery neověřené pokrytí. Sady klíčů
+        # deduplikují počítadla i částečné hodiny při opakování po restartu.
+        self._history_backfill_gaps: dict[date, str] = {}
+        self._history_backfill_day_keys: set[date] = set()
+        self._history_backfill_hour_keys: set[datetime] = set()
         self._history_backfill_task: asyncio.Task[None] | None = None
         self._history_store: Store[dict[str, Any]] = Store(
             hass,
@@ -261,7 +310,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self.history_backfill_status = (
             stored_status
             if stored_status
-            in {"not_started", "running", "paused", "failed", "completed"}
+            in {"not_started", "running", "paused", "failed", "completed", "completed_with_gaps"}
             else "not_started"
         )
         self.history_backfill_started_at = _stored_datetime(stored.get("started_at"))
@@ -285,6 +334,27 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         )
         error = stored.get("error")
         self.history_backfill_error = str(error) if error else None
+        try:
+            self._history_backfill_gaps = _stored_history_gaps(stored.get("pending_ranges"))
+        except (TypeError, ValueError) as err:
+            # Poškozená evidence nesmí vést k falešnému čistému dokončení.
+            # Platnou denní cache níže přesto obnovíme; nový průchod vyžádá
+            # znovu celý uchovaný vyhledávací rozsah.
+            self.history_backfill_status = "failed"
+            self.history_backfill_error = str(err)
+            self.history_backfill_cursor = _stored_date(stored.get("scan_end")) or (
+                two_calendar_month_start(self.history_backfill_started_at.date())
+                if self.history_backfill_started_at else None
+            )
+            self.history_backfill_processed_chunks = 0
+        self._history_backfill_day_keys = {
+            day for value in stored.get("imported_day_keys", [])
+            if (day := _stored_date(value)) is not None
+        }
+        self._history_backfill_hour_keys = {
+            dt_util.as_utc(hour) for value in stored.get("imported_hour_keys", [])
+            if (hour := _stored_datetime(value)) is not None and hour.tzinfo is not None
+        }
         self._history_days = _stored_daily_rows(stored.get("daily_rows"))
         self._history_target_days = _stored_target_daily_rows(
             stored.get("target_daily_rows")
@@ -633,7 +703,13 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
 
     @callback
     def async_start_history_backfill(self, *, resume_only: bool = False) -> bool:
-        """Start or resume a background scan of all possible EDC history."""
+        """Spustit jeden roční průchod nebo ruční opakování uložených mezer.
+
+        Tlačítko po dokončení s mezerami opakuje jen mezery. Automatický
+        start po úspěšné obnově API obnovuje pouze přerušený/selhaný běh,
+        nikoli terminální varování: restart nesmí opakovaně zatěžovat EDC.
+        Souběžný start odmítnout; zrušení uloží paused a zachová další práci.
+        """
         if (
             self._history_backfill_task is not None
             and not self._history_backfill_task.done()
@@ -648,7 +724,10 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             return False
 
         now = dt_util.now()
-        if not can_resume:
+        retry_gaps = self.history_backfill_status == "completed_with_gaps" and bool(
+            self._history_backfill_gaps
+        )
+        if not can_resume and not retry_gaps:
             scan_end = two_calendar_month_start(now.date())
             self.history_backfill_scan_start = one_calendar_year_ago(now.date())
             ranges = profile_date_ranges_backwards(
@@ -665,6 +744,9 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             self.history_backfill_total_chunks = len(ranges)
             self.history_backfill_imported_days = 0
             self.history_backfill_imported_hours = 0
+            self._history_backfill_gaps.clear()
+            self._history_backfill_day_keys.clear()
+            self._history_backfill_hour_keys.clear()
         else:
             scan_start = self.history_backfill_scan_start or one_calendar_year_ago(
                 now.date()
@@ -682,6 +764,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             )
 
         self.history_backfill_status = "running"
+        self.history_backfill_completed_at = None
         self.history_backfill_error = None
         self.async_update_listeners()
         task = self.config_entry.async_create_background_task(
@@ -700,7 +783,14 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             self._history_backfill_task = None
 
     async def _async_backfill_history(self) -> None:
-        """Scan backwards and import every available EDC history block."""
+        """Importovat úplná data, neověřené úseky uchovat a pokračovat zpět.
+
+        Denní hranice zůstávají místní [od, do), hodinové klíče jsou UTC.
+        Mezery existující na začátku běhu se zkusí jednou po zbývajícím
+        průchodu; nově nalezené čekají na další ruční spuštění. Mezi čteními
+        platí stejná prodleva i politika API jako dosud. Chyba transportu,
+        přihlášení nebo neznámého schématu zastaví běh bez ztráty další práce.
+        """
         try:
             await self._async_save_history_backfill_state()
             cursor = self.history_backfill_cursor
@@ -708,13 +798,23 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             if scan_start is None:
                 scan_start = one_calendar_year_ago(dt_util.now().date())
                 self.history_backfill_scan_start = scan_start
-            if cursor is None or cursor <= scan_start:
-                await self._async_finish_history_backfill()
-                return
-
-            ranges = profile_date_ranges_backwards(
-                scan_start,
-                cursor,
+            # Snímek zabrání nekonečnému opakování nově nalezené mezery.
+            # Dny pod kurzorem patří zbývajícímu průchodu, nesmějí se číst
+            # podruhé. Při opakování po dokončení je kurzor na scan_start.
+            pending = _history_gap_ranges({
+                day: reason for day, reason in self._history_backfill_gaps.items()
+                if cursor is not None and day >= cursor
+            })
+            ranges = [
+                (start, end, True)
+                for start, end in profile_date_ranges_backwards(scan_start, cursor)
+            ] if cursor is not None and cursor > scan_start else []
+            ranges.extend(
+                (start, end, False)
+                for item in reversed(pending)
+                for start, end in profile_date_ranges_backwards(
+                    date.fromisoformat(item["start"]), date.fromisoformat(item["end"])
+                )
             )
             local_tz = dt_util.now().tzinfo or dt_util.get_default_time_zone()
             price = Decimal(
@@ -727,28 +827,19 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     )
                 )
             )
-            for chunk_from, chunk_to in ranges:
-                # Backfill používá stejné hranice jako běžná obnova. Kurzor
-                # zůstává bez koncového dne, takže restart žádný den nepřeskočí.
+            for chunk_from, chunk_to, scanning in ranges:
                 raw = await self.api.async_get_daily_profile(
                     int(self.config_entry.data[CONF_SSE_ID]),
                     chunk_from,
                     chunk_to,
                 )
                 try:
-                    # Neúplný uzavřený den se nesmí označit jako prohledaný.
-                    # Zachovat kurzor a umožnit pozdější opravu odpovědi EDC.
                     parsed_days = parse_daily_profile(raw)
-                    if missing_measurement_counts(raw)[1]:
-                        # Celý null den nemusí mít žádný parsed row, takže
-                        # kontrola complete níže by sama chybně posunula kurzor.
-                        raise EdcApiError("Historický blok obsahuje neúplné intervaly.", category="contract")
-                    if any(not row.complete and row.day < dt_util.now().date() for row in parsed_days):
-                        raise EdcApiError("Historický blok obsahuje neúplné intervaly.", category="contract")
+                    gaps = history_profile_gaps(raw, chunk_from, chunk_to, parsed_days)
                     days = tuple(
                         row
                         for row in parsed_days
-                        if row.complete and chunk_from <= row.day < chunk_to
+                        if row.complete and row.day not in gaps and chunk_from <= row.day < chunk_to
                     )
                     hours = tuple(
                         row
@@ -760,7 +851,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     target_days = tuple(
                         row
                         for row in parse_daily_target_profiles(raw)
-                        if row.complete and chunk_from <= row.day < chunk_to
+                        if row.complete and row.day not in gaps and chunk_from <= row.day < chunk_to
                     )
                     target_hours = tuple(
                         row
@@ -769,12 +860,16 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                         <= _hour_local_date(row.start, local_tz)
                         < chunk_to
                     )
-                except IncompleteProfileLayoutError as err:
-                    # Známá jednostranná struktura není důkaz počátku skupiny.
-                    # Bez potvrzené platnosti neoznačit tento rozsah jako hotový.
-                    raise EdcApiError("Historický blok má neověřenou platnost sdílení.", category="contract") from err
+                except IncompleteProfileLayoutError:
+                    # Známá jednostranná odpověď je neověřená platnost, nikoli
+                    # důkaz počátku sdílení. Neimportovat nuly ani ji nezahodit.
+                    days, hours, target_days, target_hours = (), (), (), ()
+                    gaps = {
+                        chunk_from + timedelta(days=offset): "unverified_validity"
+                        for offset in range((chunk_to - chunk_from).days)
+                    }
                 now = dt_util.now()
-                self.history_backfill_imported_days += async_import_daily_history(
+                async_import_daily_history(
                     self.hass,
                     sse_id=int(self.config_entry.data[CONF_SSE_ID]),
                     sse_name=str(self.config_entry.data[CONF_SSE_NAME]),
@@ -783,7 +878,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     today=now.date(),
                     local_tz=local_tz,
                 )
-                self.history_backfill_imported_hours += async_import_hourly_history(
+                async_import_hourly_history(
                     self.hass,
                     sse_id=int(self.config_entry.data[CONF_SSE_ID]),
                     sse_name=str(self.config_entry.data[CONF_SSE_NAME]),
@@ -817,8 +912,28 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     self._history_target_days.setdefault(row.ean, {})[row.day] = row
                 if self._history_import_enabled:
                     self._async_import_energy_history(now)
-                self.history_backfill_cursor = chunk_from
-                self.history_backfill_processed_chunks += 1
+                # Import nahrazuje stejné časové body. Počítadla počítají
+                # jedinečné zařazené dny/hodiny tohoto průchodu, i po restartu;
+                # historická počítadla starého Store ponecháváme jako základ.
+                day_keys = {row.day for row in days if row.day < now.date()}
+                hour_keys = {
+                    _hour_start_utc(row.start, local_tz) for row in hours
+                    if _hour_start_utc(row.start, local_tz) < dt_util.as_utc(
+                        now.replace(minute=0, second=0, microsecond=0)
+                    )
+                }
+                self.history_backfill_imported_days += len(day_keys - self._history_backfill_day_keys)
+                self.history_backfill_imported_hours += len(hour_keys - self._history_backfill_hour_keys)
+                self._history_backfill_day_keys.update(day_keys)
+                self._history_backfill_hour_keys.update(hour_keys)
+                self._history_backfill_gaps = {
+                    day: reason for day, reason in self._history_backfill_gaps.items()
+                    if not chunk_from <= day < chunk_to
+                } | gaps
+                if scanning:
+                    self.history_backfill_cursor = chunk_from
+                    self.history_backfill_processed_chunks += 1
+                # Kurzor, mezery, klíče i cache patří do jednoho Store zápisu.
                 await self._async_save_history_backfill_state()
                 self.async_set_updated_data(self._calculate_statistics(price, now.date()))
                 await asyncio.sleep(_BACKFILL_REQUEST_DELAY)
@@ -841,8 +956,10 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             )
 
     async def _async_finish_history_backfill(self) -> None:
-        """Persist successful completion and notify diagnostic entities."""
-        self.history_backfill_status = "completed"
+        """Ukončit prohledání; úplný import deklarovat jen bez uložených mezer."""
+        self.history_backfill_status = (
+            "completed_with_gaps" if self._history_backfill_gaps else "completed"
+        )
         self.history_backfill_cursor = self.history_backfill_scan_start
         self.history_backfill_processed_chunks = self.history_backfill_total_chunks
         self.history_backfill_completed_at = dt_util.now()
@@ -859,7 +976,11 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         _LOGGER.warning("Could not backfill all EDC history: %s", error)
 
     async def _async_save_history_backfill_state(self) -> None:
-        """Persist progress so an interrupted scan can resume."""
+        """Uložit pokrytí i kurzor společně; přídavná pole zachovají Store v1.
+
+        Klíče UTC zabraňují zdvojení počítadel při opakování částečných dnů.
+        Nejstarší agregace zůstává skutečný nalezený den, nikoli platnost SSE.
+        """
         await self._history_store.async_save(
             {
                 "status": self.history_backfill_status,
@@ -872,6 +993,12 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 "scan_start": self.history_backfill_scan_start.isoformat()
                 if self.history_backfill_scan_start is not None
                 else None,
+                "scan_end": two_calendar_month_start(
+                    self.history_backfill_started_at.date()
+                ).isoformat() if self.history_backfill_started_at else None,
+                "pending_ranges": self.history_backfill_pending_ranges,
+                "imported_day_keys": [day.isoformat() for day in sorted(self._history_backfill_day_keys)],
+                "imported_hour_keys": [hour.isoformat() for hour in sorted(self._history_backfill_hour_keys)],
                 "cursor": self.history_backfill_cursor.isoformat()
                 if self.history_backfill_cursor is not None
                 else None,
@@ -900,6 +1027,11 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 ],
             }
         )
+
+    @property
+    def history_backfill_pending_ranges(self) -> list[dict[str, str]]:
+        """Vrátit kopii neověřených rozsahů pro uložení a diagnostické entity."""
+        return _history_gap_ranges(self._history_backfill_gaps)
 
     @callback
     def async_enable_history_import(self) -> None:
