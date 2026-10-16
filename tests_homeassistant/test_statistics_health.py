@@ -291,7 +291,7 @@ async def test_partial_hours_are_not_queued(hass, recorder_mock):
 
 
 async def test_partial_backfill_preserves_gap_history_and_restore(
-    hass, recorder_mock, hass_storage
+    hass, recorder_mock, hass_storage, monkeypatch,
 ):
     """Neúplný blok uloží mezeru, uchová dobrou historii i existující Recorder.
 
@@ -299,6 +299,8 @@ async def test_partial_backfill_preserves_gap_history_and_restore(
     serializér. Obnovení probíhá v nové instanci HA; Recorder zápis/čtení zůstává
     skutečné, bez mocku. Tento test neprohlašuje fixture za test fyzického disku.
     """
+    # Se zmrazeným časem nečekat na nově dosaženou produkční prodlevu.
+    monkeypatch.setattr("custom_components.edc_sharing.coordinator._BACKFILL_REQUEST_DELAY", 0)
     await hass.config.async_set_time_zone("Europe/Prague")
     entry = make_entry(hass)
     queue(hass, profile())

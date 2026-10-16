@@ -472,8 +472,13 @@ async def test_old_local_schema_failure_does_not_discard_valid_recent_day(
 
 
 @pytest.mark.parametrize("marker", (None, "NaN", "Infinity"))
-async def test_all_null_historical_day_remains_pending_without_zero(hass, recorder_mock, marker):
+async def test_all_null_historical_day_remains_pending_without_zero(
+    hass, recorder_mock, monkeypatch, marker,
+):
     """Celý null den smí posunout prohledání jen s uloženou nevyřešenou mezerou."""
+    # Nově úspěšný průchod dojde k prodlevě; zmrazený čas testu neposouvat
+    # kvůli síťovému tempu, produkční 0,25 s zůstává zachováno.
+    monkeypatch.setattr("custom_components.edc_sharing.coordinator._BACKFILL_REQUEST_DELAY", 0)
     entry, api = make_entry(hass), make_api(hass)
     raw = profile()
     raw["content"] = [{"date": "2026-10-12", "values": [marker] * 4}]
