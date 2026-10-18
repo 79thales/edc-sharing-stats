@@ -1,6 +1,6 @@
 # Přehled změn / Changelog
 
-## Unreleased
+## 0.2.12 – 2026-10-18
 
 ### Čeština
 
@@ -8,11 +8,15 @@
 - Automatická obnovitelná kontrola kompletních uložených měsíců opraví denní/hodinové statistiky skupiny a EANů i navazující kumulativní Energy. Neúplná odpověď zachová původní data; pozdější revize se znovu prověřují. Souběh obnovy a backfillu je serializovaný.
 - Diagnostika rozlišuje požadovaný CURRENT od neověřeného skutečného typu výpočtu a uvádí kvalitu buněk. Vystavené částky a úhrady se zachovávají; nesoulad aktuálních kWh nebo neověřená migrace pozastaví nové vystavení, QR a odeslání dotčených dokladů. Podrobnosti a omezení finanční opravy: [aktuální výpočet](docs-current-calculation.md).
 
+- Ověřeno 249 unit testy a po 81 funkčních testech v Linux CI na HA 2026.8.0 a 2026.10.2, včetně browserových grafů. Po aktualizaci restartujte HA a sledujte automatické ověření historie; entity, statistiky ani integraci nemažte.
+
 ### English
 
 - Fix #10: use the portal current-selection payload and UTC revision timestamp for all profile reads instead of forcing provisional DAILY results. Preserve calendar boundaries and validation.
 - Reconcile complete retained months with resumable, serialized refreshes of group/target daily and hourly statistics and subsequent cumulative Energy values. Keep cached data on incomplete responses and periodically recheck later revisions.
 - Expose requested selection and cell-quality diagnostics without asserting finality. Preserve issued amounts and receipts; source discrepancies or pending legacy verification suspend new issue, QR and sending for affected settlements. Automatic financial corrections are outside this change.
+
+- Verified with 249 local unit tests and 81 Linux functional tests each on HA 2026.8.0 and 2026.10.2, including browser graphs. Restart HA after updating and monitor automatic history reconciliation; retain entities, statistics and the integration.
 
 ## 0.2.11 – 2026-10-16
 
