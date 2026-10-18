@@ -33,6 +33,7 @@ from .api_policy import (
 )
 from .calculation import MAX_PROFILE_DAYS, profile_resolution, validate_profile_response
 from .const import API_BASE_URL, AUTHORITY_URL, CLIENT_ID, REDIRECT_URI
+from .profile_selection import profile_as_of
 
 REQUEST_TIMEOUT = ClientTimeout(total=30)
 LOGGER = logging.getLogger(__name__)
@@ -90,18 +91,28 @@ def _safe_profile_time_summary(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_profile_request(
-    sse_id: int, date_from: date, date_to: date
+    sse_id: int, date_from: date, date_to: date, *, as_of: datetime | None = None
 ) -> dict[str, Any]:
-    """Jediný builder pro místní [od, do); bez přihlášení a vedlejších účinků."""
+    """Sestavit místní [od, do) pro portálový aktuální výpočet k UTC snímku.
+
+    calculationType záměrně chybí: DAILY vynucoval předběžné výsledky také
+    po měsíční uzávěrce (#10). Portál CURRENT serializuje Date.toISOString(),
+    tedy UTC čas s milisekundami a Z. as_of slouží opakovatelnému snímku;
+    bez něj se použije kontext průchodu. Datum [od, do) se přes UTC neposouvá.
+    Neplatné vstupy odmítáme ještě před přihlášením nebo HTTP požadavkem.
+    """
     if type(sse_id) is not int or sse_id <= 0:
         raise ValueError("Profil EDC vyžaduje kladné celočíselné ID skupiny.")
     if type(date_from) is not date or type(date_to) is not date:
         raise ValueError("Profil EDC vyžaduje kalendářní data bez času.")
     if not 1 <= (date_to - date_from).days <= MAX_PROFILE_DAYS:
         raise ValueError("Profil EDC vyžaduje rozsah 1 až 31 kalendářních dnů.")
+    snapshot = as_of if as_of is not None else profile_as_of()
+    if not isinstance(snapshot, datetime) or snapshot.tzinfo is None or snapshot.utcoffset() is None:
+        raise ValueError("Snímek revize EDC vyžaduje čas s časovým pásmem.")
     return {
         "sseId": sse_id,
-        "calculationType": "DAILY",
+        "currentEnteredDateTime": snapshot.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         "inputData": True,
         "outputData": True,
         "dateFrom": date_from.isoformat(),
@@ -414,7 +425,8 @@ class EdcApiClient:
         používá YYYY-MM-DD a oba krajní dny včetně; koncovou mez proto snížíme
         o jeden den právě zde, společně pro obnovu, historii i reporty. Převod
         přes UTC by v létě posunul datum na předchozí den. Neplatný interval
-        odmítneme před přihlášením/HTTP, odpověď profilu vracíme beze změny.
+        odmítneme před přihlášením/HTTP, odpověď profilu vracíme beze změny. Typ výpočtu nefixujeme na DAILY;
+        společný builder vybírá aktuální revizi stejně jako portál.
         """
         payload = build_profile_request(sse_id, date_from, date_to)
         data = await self._request("POST", "/profiles-data/standard/overview", payload)

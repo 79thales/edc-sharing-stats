@@ -263,8 +263,11 @@ class ApiRequestTest(unittest.IsolatedAsyncioTestCase):
         method, url, options = session.request_calls[0]
         self.assertEqual(method, "POST")
         self.assertTrue(url.endswith("/profiles-data/standard/overview"))
+        snapshot = options["json"].pop("currentEnteredDateTime")
+        self.assertEqual(datetime.fromisoformat(snapshot).utcoffset(), timedelta(0))
+        self.assertTrue(snapshot.endswith("Z"))
         self.assertEqual(options["json"], {
-            "sseId": 1, "calculationType": "DAILY", "inputData": True,
+            "sseId": 1, "inputData": True,
             "outputData": True, "dateFrom": "2026-09-01",
             "dateTo": "2026-10-01", "fileName": "_",
         })

@@ -36,6 +36,7 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict:
             "status": getattr(coordinator, "history_backfill_status", "not_started"),
             "pending_ranges": getattr(coordinator, "history_backfill_pending_ranges", []),
         },
+        "profile_revision": getattr(coordinator, "profile_revision_diagnostics", {}),
         "original_failure": failure,
         "wait_persistence_failed": state.persistence_failed
         if state is not None
@@ -52,6 +53,15 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict:
         "data_quality": {
             key: quality.get(key)
             for key in (
+                "requested_selection",
+                "actual_calculation_type",
+                "profile_as_of",
+                "profile_date_from",
+                "profile_date_to_exclusive",
+                "quality_basis",
+                "quality_counts",
+                "quality_cells",
+                "provisional_quality_percent",
                 "resolution",
                 "incomplete_days",
                 "incomplete_hours",

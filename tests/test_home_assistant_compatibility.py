@@ -157,6 +157,15 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
             options={},
         )
         coordinator = object.__new__(EdcSharingCoordinator)
+        # Tyto úzké importní testy obcházejí __init__; připravit i nový
+        # transakční zámek a provenienci stejně jako skutečný konstruktor.
+        coordinator._profile_read_lock = asyncio.Lock()
+        coordinator._current_profile_days = {}
+        coordinator._profile_revision_checks = {}
+        coordinator._profile_revision_attempts = {}
+        coordinator._profile_revision_pending_imports = set()
+        coordinator._profile_revision_task = None
+        coordinator.data_quality = {}
         coordinator.data_quality = {}
         coordinator.api = api
         coordinator.config_entry = entry
@@ -222,6 +231,15 @@ class HomeAssistantCompatibilityTest(unittest.TestCase):
         from custom_components.edc_sharing.coordinator import EdcSharingCoordinator
 
         coordinator = object.__new__(EdcSharingCoordinator)
+        # Tyto úzké importní testy obcházejí __init__; připravit i nový
+        # transakční zámek a provenienci stejně jako skutečný konstruktor.
+        coordinator._profile_read_lock = asyncio.Lock()
+        coordinator._current_profile_days = {}
+        coordinator._profile_revision_checks = {}
+        coordinator._profile_revision_attempts = {}
+        coordinator._profile_revision_pending_imports = set()
+        coordinator._profile_revision_task = None
+        coordinator.data_quality = {}
         coordinator.api = SimpleNamespace(
             async_get_daily_profile=AsyncMock(return_value={"content": []})
         )

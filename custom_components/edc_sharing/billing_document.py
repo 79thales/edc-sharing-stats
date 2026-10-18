@@ -18,6 +18,10 @@ from .payment import (
 
 def settlement_payment_payload(document: dict, *, preview: bool = False) -> str | None:
     """A QR is an offer to pay the remaining balance, not payment confirmation."""
+    # Opravená historie neautorizuje automatický přepočet vystavené částky.
+    # Dokud je nutná revize podkladů, nevyzývat k úhradě starým QR.
+    if document.get("data_review", {}).get("required"):
+        return None
     if preview and not document.get("can_issue"):
         return None
     balance = document["balance"]
@@ -110,6 +114,17 @@ def render_settlement(
         if cs
         else "Completeness means cached daily totals are present, not that every EDC interval has been verified. Payments are an internal manual record only; no bank connection is used."
     )
+    review = document.get("data_review", {})
+    if review.get("required"):
+        data_note += (
+            " POZOR: podklady vyžadují revizi. Aktuální historie se liší od vystavených kWh nebo dosud nebyla znovu ověřena. Původní částky a úhrady jsou zachované. QR a odeslání jsou pozastavené; před další výzvou k platbě je nutná samostatná oprava vyúčtování."
+            if cs else
+            " WARNING: source data requires review. Current history differs from issued kWh or has not yet been rechecked. Original amounts and receipts are preserved. QR and sending are suspended; review the settlement separately before requesting payment."
+        )
+        for row in review.get("changed", []):
+            data_note += (f" {row['day']} / EAN {row['ean']}: "
+                          f"{row['issued_shared_kwh']} → {row['current_shared_kwh']} kWh "
+                          f"({row['difference_kwh']} kWh).")
     account = (
         CzechBankAccount(**document["account"]).domestic
         if document.get("account")
@@ -179,7 +194,7 @@ def render_settlement(
     qr_html = (
         (f'<p class="warning">{escape(preview_note)}</p>' if preview_note else "")
         + f'<p><img alt="QR payment" width="260" height="260" src="{escape(qr, quote=True)}"></p>'
-        if qr and not uncertain
+        if qr and not uncertain and not review.get("required")
         else ""
     )
     html = (

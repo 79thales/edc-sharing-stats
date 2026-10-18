@@ -74,11 +74,12 @@ async def test_serialized_wire_request_and_rejected_contract(
             str(server.make_url("/")).rstrip("/"),
         ):
             await client.async_get_daily_profile(1, date(2026, 9, 1), date(2026, 10, 2))
+            snapshot = requests[0][0].pop("currentEnteredDateTime")
+            assert snapshot.endswith("Z")
             assert requests[0][0] == {
                 "sseId": 1,
                 "dateFrom": "2026-09-01",
                 "dateTo": "2026-10-01",
-                "calculationType": "DAILY",
                 "inputData": True,
                 "outputData": True,
                 "fileName": "_",

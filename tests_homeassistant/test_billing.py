@@ -533,3 +533,24 @@ async def test_occupied_billing_panel_and_setup_failure_do_not_affect_edc(
         ),
     ):
         assert await async_setup(hass, {})
+
+
+async def test_revised_history_keeps_issued_amounts_but_blocks_smtp_and_qr(hass):
+    """Skutečný manager odhalí změnu kWh při otevření, náhledu i odeslání."""
+    manager, entry, document = await prepared_manager(hass)
+    before = deepcopy(manager.ledger.state)
+    changed = tuple(TargetDailySharing("EAN-A", date(2026, 1, day), Decimal(8),
+                                      Decimal(0), Decimal(8), Decimal(100))
+                    for day in (1, 2, 3))
+    entry.runtime_data.coordinator.target_days_for_range = lambda start, end: {"EAN-A": changed}
+    viewed = await manager.action("document", {"document_id": document["id"]}, None)
+    assert viewed["total"] == document["total"]
+    assert viewed["data_review"]["required"]
+    assert "10 → 8 kWh" in viewed["text"]
+    quote = await manager.action("preview", parameters(), None)
+    assert not quote["can_issue"]
+    assert quote["data_review"]["required"]
+    with pytest.raises(BillingError, match="data_revision_required"):
+        await manager.action("send", {"document_id": document["id"], "request_id": "review-send-001"},
+                             manager.ledger.state["revision"])
+    assert manager.ledger.state == before

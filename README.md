@@ -416,3 +416,22 @@ Tento projekt je licencován pod GNU General Public License v3.0, pouze verze 3 
 Copyright (c) 2026 Jiří Dvořák (79thales).
 
 Dříve zveřejněné verze pod MIT zůstávají pod původní licencí. Změna platí pro toto a následující vydání.
+
+
+### Oprava předběžných výpočtů / Current calculation correction (#10)
+
+Profilová data nově používají režim portálu „aktuální“. Po aktualizaci a
+restartu se uložené uzavřené měsíce automaticky znovu ověří po obnovení
+připojení. Integraci ani statistiky nemažte. Sledujte `profile_revision` v
+diagnostice; čekající období nejsou potvrzená oprava a CURRENT neznamená
+zaručeně konečný měsíční výsledek. Již vystavené doklady se automaticky
+nepřepočítávají; nesoulad je uveden v archivu a pozastaví QR/odeslání.
+Podrobný postup, časování a finanční omezení: [aktuální výpočet](docs-current-calculation.md).
+
+Profile reads now use the portal current-selection mode. Retained closed
+months are automatically rechecked after restart and a verified connection;
+keep the integration and its statistics. Diagnostics distinguish pending
+work from a completed recheck and never equate CURRENT with finality. Issued
+amounts and receipts remain frozen; detected differences suspend QR/sending
+until the settlement is separately reviewed. No automatic financial adjustment
+is made.
