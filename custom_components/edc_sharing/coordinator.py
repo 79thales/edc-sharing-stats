@@ -55,6 +55,7 @@ from .history import (
     async_import_hourly_history,
     async_import_target_hourly_history,
 )
+from .profile_selection import profile_as_of, profile_quality, profile_read_snapshot
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -255,6 +256,15 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             update_interval=DEFAULT_SCAN_INTERVAL,
         )
         self.api = api
+        # Jediný zámek celé transakce čtení/výpočtu/zápisu brání tomu, aby
+        # pomalejší odpověď backfillu přepsala novější revizi běžné obnovy.
+        # Account lock klienta nadále samostatně řídí HTTP limity účtu.
+        self._profile_read_lock = asyncio.Lock()
+        self._profile_revision_task: asyncio.Task[None] | None = None
+        self._current_profile_days: dict[date, str] = {}
+        self._profile_revision_checks: dict[date, date] = {}
+        self._profile_revision_attempts: dict[date, date] = {}
+        self._profile_revision_pending_imports: set[date] = set()
         self.eans: tuple[EanInfo, ...] = ()
         self._days: dict[date, DailySharing] = {}
         self._history_days: dict[date, DailySharing] = {}
@@ -359,6 +369,30 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self._history_target_days = _stored_target_daily_rows(
             stored.get("target_daily_rows")
         )
+        # Starý Store nemá provenienci: jeho hodnoty zachováme, ale kompletní
+        # dny musíme znovu přečíst v CURRENT. Chybějící pole není důkaz opravy.
+        revision = stored.get("current_profile", {})
+        if isinstance(revision, dict) and revision.get("selection") == "CURRENT":
+            queued = revision.get("pending_imports", [])
+            if isinstance(queued, list):
+                self._profile_revision_pending_imports = {
+                    month for key in queued if (month := _stored_date(key)) is not None and month.day == 1}
+            stamps = revision.get("days", {})
+            if isinstance(stamps, dict):
+                self._current_profile_days = {
+                    day: stamp for key, stamp in stamps.items()
+                    if (day := _stored_date(key)) in self._history_days
+                    and (instant := _stored_datetime(stamp)) is not None
+                    and instant.tzinfo is not None
+                }
+            for field, destination in (("checks", self._profile_revision_checks),
+                                       ("attempts", self._profile_revision_attempts)):
+                values = revision.get(field, {})
+                if isinstance(values, dict):
+                    for key, value in values.items():
+                        month, checked = _stored_date(key), _stored_date(value)
+                        if month is not None and month.day == 1 and checked is not None and checked <= dt_util.now().date():
+                            destination[month] = checked
         # Metadata EAN nejsou živá měření. Po výpadku je obnovit z vlastní
         # cache a ze stávajícího registru stejné config entry, bez vytváření
         # nebo přejmenování entit. Starší soubory výrobní EAN neukládaly.
@@ -484,6 +518,12 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         }
 
     async def _async_update_data(self) -> SharingStatistics:
+        """Serializovat běžnou obnovu proti opravám revizí a starému backfillu."""
+        async with self._profile_read_lock:
+            return await self._async_update_profile_data()
+
+    @profile_read_snapshot
+    async def _async_update_profile_data(self) -> SharingStatistics:
         if getattr(self, "_awaiting_reauth", False):
             # Potvrzeně odmítnuté heslo neopakovat jen kvůli obnovení karty.
             # Nové credentials používají standardní reauth a nový koordinátor.
@@ -530,6 +570,10 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                     profile_failures.append(error)
                     incomplete_blocks += 1
                     continue
+                self.data_quality.update(profile_quality(raw))
+                self.data_quality["profile_as_of"] = profile_as_of().isoformat()
+                self.data_quality.update(profile_date_from=chunk_from.isoformat(),
+                                         profile_date_to_exclusive=chunk_to.isoformat())
                 resolutions.add(profile_resolution(raw))
                 block_missing_days, block_missing_intervals = missing_measurement_counts(raw)
                 missing_days += block_missing_days
@@ -629,6 +673,9 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             self._history_days.update(fetched)
             for ean, rows in fetched_target_days.items():
                 self._history_target_days.setdefault(ean, {}).update(rows)
+            hourly_days = {_hour_local_date(row.start, local_tz) for row in fetched_hours.values()}
+            self._record_current_profile(
+                {day: row for day, row in fetched.items() if day in hourly_days}, fetched_target_days)
             if self._history_days:
                 earliest_known = min(self._history_days)
                 if (
@@ -669,8 +716,9 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                                "daily_only" if resolutions == {"daily"} else
                                "incomplete" if incomplete_hours or incomplete_blocks or missing_intervals else "available" if fetched_hours else "empty"),
             )
-            if history_changed or eans_changed:
+            if history_changed or eans_changed or fetched:
                 await self._async_save_history_backfill_state()
+            self.async_start_profile_revisions()
             return result
         except EdcAuthenticationError as err:
             self._refresh_retained_statistics()
@@ -700,6 +748,218 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 self.api.last_status = failure.status
             retry_seconds = max(0, (self.next_attempt_at - dt_util.now()).total_seconds())
             raise UpdateFailed(str(err), retry_after=retry_seconds) from err
+
+    def _profile_cached_days(self) -> set[date]:
+        """Sjednotit dny skupiny i cílových EANů, včetně jednostranné staré cache."""
+        return set(self._history_days) | {
+            day for rows in self._history_target_days.values() for day in rows}
+
+    @property
+    def profile_revision_pending_days(self) -> set[date]:
+        """Dny původní cache bez potvrzeného úplného CURRENT čtení.
+
+        Nejde o chybějící energii. Množina odděleně brání vydávání starých
+        DAILY podkladů za opravené při náhledu vyúčtování.
+        """
+        return {day for day in self._profile_cached_days() if day not in self._current_profile_days}
+
+    def _record_current_profile(
+        self, days: dict[date, DailySharing],
+        targets: dict[str, dict[date, TargetDailySharing]], *,
+        mark_month_checked: bool = True,
+    ) -> None:
+        """Označit pouze konzistentní den skupiny i všech známých cílových EANů.
+
+        Vstupy jsou úplné denní kWh ze stejné odpovědi, výstup je UTC čas
+        načtení, nikoli příznak konečné kalkulace. Chybějící cíl nebo nesoulad
+        nesmí certifikovat starou smíšenou cache. Ceny ani doklady neměníme.
+        """
+        for day, row in days.items():
+            expected = {ean for ean, rows in self._history_target_days.items() if day in rows}
+            actual = {ean: rows[day] for ean, rows in targets.items() if day in rows}
+            if (not expected <= actual.keys() or not actual
+                    or abs(sum((item.shared for item in actual.values()), Decimal(0))
+                           - row.shared) > Decimal("0.000001")):
+                continue
+            self._current_profile_days[day] = profile_as_of().isoformat()
+        today = dt_util.now().date()
+        pending = self.profile_revision_pending_days
+        # Běžná obnova už načítá celý předchozí měsíc. Zbytečný druhý request
+        # nevytvářet, pokud byly všechny jeho uchované dny právě ověřené.
+        touched = {day.replace(day=1) for day in days}
+        for month in touched:
+            known = {day for day in self._profile_cached_days() if day.replace(day=1) == month}
+            if (mark_month_checked and known and known <= days.keys()
+                    and not known & pending and month < today.replace(day=1)):
+                self._profile_revision_checks[month] = today
+
+    def _profile_revision_due_months(self) -> list[date]:
+        """Opravit legacy měsíce a po sedmi dnech prověřit i pozdější korekce.
+
+        Jeden měsíc se zkusí nejvýše jednou za místní den. Chybějící data
+        zůstávají pending i při timeoutu/HTTP chybě; server Retry-After má
+        stále přednost. Sedm dní je interval našeho ověřování, ne lhůta EDC.
+        """
+        today = dt_util.now().date()
+        pending = self.profile_revision_pending_days
+        months = {day.replace(day=1) for day in self._profile_cached_days()
+                  if day < today.replace(day=1)}
+        return sorted((month for month in months
+                       if self._profile_revision_attempts.get(month) != today
+                       and (month in self._profile_revision_pending_imports
+                            or any(day.replace(day=1) == month for day in pending)
+                            or self._profile_revision_checks.get(month, date.min)
+                            <= today - timedelta(days=7))), reverse=True)
+
+    @property
+    def profile_revision_diagnostics(self) -> dict:
+        """Veřejný stav bez EANů, kWh nebo textu vzdálené chyby."""
+        pending = self.profile_revision_pending_days
+        today = dt_util.now().date()
+        months = {day.replace(day=1) for day in self._profile_cached_days() if day < today.replace(day=1)}
+        stale = {month for month in months
+                 if self._profile_revision_checks.get(month, date.min) <= today - timedelta(days=7)
+                 or month in self._profile_revision_pending_imports
+                 or any(day.replace(day=1) == month for day in pending)}
+        return {"selection": "CURRENT", "actual_calculation_type": "unknown",
+                "pending_months": [month.isoformat() for month in sorted(stale)],
+                "last_checked": {month.isoformat(): checked.isoformat()
+                                 for month, checked in self._profile_revision_checks.items()},
+                "pending_days": len(pending),
+                "pending_import_months": [month.isoformat() for month in sorted(self._profile_revision_pending_imports)],
+                "running": self._profile_revision_task is not None
+                and not self._profile_revision_task.done(),
+                "due_months": [month.isoformat() for month in self._profile_revision_due_months()],
+                "statistics_write": "queued_not_read_verified"}
+
+    @callback
+    def async_start_profile_revisions(self) -> bool:
+        """Spustit jednu frontu až po ověřeném připojení a povolení importů.
+
+        Běžná hodinová obnova je spouštěč; nevzniká nový časovač ani účet.
+        Entry spravuje background task a jeho zrušení při unloadu. Druhý
+        start nic nevytváří; po restartu se stav obnoví ze stejného Store.
+        """
+        if (not self._history_import_enabled or self.cached_startup or self._awaiting_reauth
+                or (self._profile_revision_task is not None and not self._profile_revision_task.done())
+                or not self._profile_revision_due_months()):
+            return False
+        task = self.config_entry.async_create_background_task(
+            self.hass, self._async_refresh_profile_revisions(),
+            f"{DOMAIN} current profile revisions {self.config_entry.entry_id}")
+        self._profile_revision_task = task
+        task.add_done_callback(self._profile_revisions_done)
+        return True
+
+    @callback
+    def _profile_revisions_done(self, task: asyncio.Task[None]) -> None:
+        """Uvolnit referenci dokončené či zrušené úlohy."""
+        if self._profile_revision_task is task:
+            self._profile_revision_task = None
+
+    async def _async_refresh_profile_revisions(self) -> None:
+        """Zpracovat snímek fronty, mezi měsíci pustit běžnou aktualizaci.
+
+        Pokus i úspěch ukládáme odděleně. Při zrušení právě rozpracovaného
+        měsíce dovolíme pokračování po restartu; dokončené měsíce neopakujeme.
+        Neúplný profil nesmaže původní hodnoty a není nahrazen nulou.
+        """
+        for month in self._profile_revision_due_months():
+            try:
+                async with self._profile_read_lock:
+                    self._profile_revision_attempts[month] = dt_util.now().date()
+                    await self._async_save_history_backfill_state()
+                    await self._async_refresh_profile_month(month)
+            except asyncio.CancelledError:
+                self._profile_revision_attempts.pop(month, None)
+                await self._async_save_history_backfill_state()
+                raise
+            except (EdcApiError, ValueError, KeyError, HomeAssistantError, OSError):
+                # Chyba účtu/transportu nemá vyvolat další požadavky téže fronty.
+                # Podrobnosti již sanitizuje klient; log neobsahuje měření.
+                _LOGGER.warning("EDC: obnova aktuálních revizí nedokončena; uložená data zachována")
+                return
+            await asyncio.sleep(_BACKFILL_REQUEST_DELAY)
+
+    @profile_read_snapshot
+    async def _async_refresh_profile_month(self, month: date) -> None:
+        """Nahradit konzistentní úplné dny a jejich reálné hodinové profily.
+
+        Jeden požadavek má nejvýše 31 dnů. Po kontrole jednotek, úplnosti
+        a shody EANů připravíme celé dny; staré hodinové body téhož dne
+        nahradíme, nikoli přičteme. Cumulative Energy se obnoví z celé cache.
+        Záznam o opravě ukládáme se stejnými denními podklady. Recorder zápis
+        je fronta; skutečný výsledek ověřují funkční testy a health čtení.
+        """
+        end = (month.replace(day=28) + timedelta(days=4)).replace(day=1)
+        raw = await self.api.async_get_daily_profile(
+            int(self.config_entry.data[CONF_SSE_ID]), month, end)
+        tz = dt_util.get_default_time_zone()
+        days = {row.day: row for row in parse_daily_profile(raw)
+                if row.complete and month <= row.day < end}
+        targets: dict[str, dict[date, TargetDailySharing]] = {}
+        for row in parse_daily_target_profiles(raw):
+            if row.complete:
+                targets.setdefault(row.ean, {})[row.day] = row
+        hours = tuple(row for row in parse_hourly_profile(raw, local_tz=tz) if row.complete)
+        target_hours = tuple(row for row in parse_hourly_target_profiles(raw, local_tz=tz) if row.complete)
+        valid = set()
+        response_targets = {column["ean"] for column in raw.get("valueColumns", [])
+                            if column.get("type") == "O"}
+        for day, row in days.items():
+            expected = response_targets | {ean for ean, rows in self._history_target_days.items()
+                                           if day in rows}
+            actual = {ean: rows[day] for ean, rows in targets.items() if day in rows}
+            # U legacy měsíců musíme opravit i existující hodinové řady.
+            # Denní odpověď nemůže jejich profil rekonstruovat.
+            if (expected and expected <= actual.keys()
+                    and any(_hour_local_date(hour.start, tz) == day for hour in hours)
+                    and abs(sum((item.shared for item in actual.values()), Decimal(0))
+                            - row.shared) <= Decimal("0.000001")):
+                valid.add(day)
+        accepted = {day: row for day, row in days.items() if day in valid}
+        accepted_targets = {ean: {day: row for day, row in rows.items() if day in valid}
+                            for ean, rows in targets.items()}
+        self._history_days.update(accepted)
+        self._days.update(accepted)
+        for ean, rows in accepted_targets.items():
+            self._history_target_days.setdefault(ean, {}).update(rows)
+            self._target_days.setdefault(ean, {}).update(rows)
+        # Ověřený úplný den je jedinou jednotkou náhrady; neponechat směs
+        # jeho starých a nových hodin ani cílových EANů.
+        self._hours = {start: row for start, row in self._hours.items()
+                       if _hour_local_date(start, tz) not in valid}
+        self._hours.update({row.start: row for row in hours if _hour_local_date(row.start, tz) in valid})
+        for ean in set(self._target_hours) | set(accepted_targets):
+            retained = {start: row for start, row in self._target_hours.get(ean, {}).items()
+                        if _hour_local_date(start, tz) not in valid}
+            retained.update({row.start: row for row in target_hours
+                             if row.ean == ean and _hour_local_date(row.start, tz) in valid})
+            self._target_hours[ean] = retained
+        self._record_current_profile(accepted, accepted_targets, mark_month_checked=False)
+        self.data_quality.update(profile_quality(raw))
+        self.data_quality["profile_as_of"] = profile_as_of().isoformat()
+        self.data_quality.update(profile_date_from=month.isoformat(),
+                                 profile_date_to_exclusive=end.isoformat())
+        now = dt_util.now()
+        price = Decimal(str(self.config_entry.options.get(
+            CONF_SALE_PRICE, self.config_entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE))))
+        result = self._calculate_statistics(price, now.date())
+        energy_queued = self._async_import_energy_history(now)
+        history_queued = self._async_import_history_if_changed(result, tuple(self._hours.values()), now)
+        if energy_queued and history_queued:
+            self._profile_revision_pending_imports.discard(month)
+        else:
+            # Platná cache již může obsahovat CURRENT, ale neúspěšné zařazení
+            # Recorderu je samostatná trvalá práce, nikoli dokončená oprava.
+            self._profile_revision_pending_imports.add(month)
+        # Periodická kontrola čeká další týden jen po pokrytí všech dříve
+        # uchovaných dnů, nikoli po libovolné HTTP 200 nebo prázdném profilu.
+        expected_days = {day for day in self._profile_cached_days() if month <= day < end}
+        if expected_days and expected_days <= valid and energy_queued and history_queued:
+            self._profile_revision_checks[month] = now.date()
+        await self._async_save_history_backfill_state()
+        self.async_set_updated_data(result)
 
     @callback
     def async_start_history_backfill(self, *, resume_only: bool = False) -> bool:
@@ -783,6 +1043,21 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             self._history_backfill_task = None
 
     async def _async_backfill_history(self) -> None:
+        """Backfill a běžnou obnovu neprovádět nad stejnou cache současně.
+
+        Zrušení čekající úlohy mění stav stejně jako zrušení běžícího importu.
+        Zámek se uvolní také při výjimce; HTTP account policy zůstává aktivní.
+        """
+        try:
+            async with self._profile_read_lock:
+                await self._async_backfill_profile_data()
+        except asyncio.CancelledError:
+            self.history_backfill_status = "paused"
+            await self._async_save_history_backfill_state()
+            raise
+
+    @profile_read_snapshot
+    async def _async_backfill_profile_data(self) -> None:
         """Importovat úplná data, neověřené úseky uchovat a pokračovat zpět.
 
         Denní hranice zůstávají místní [od, do), hodinové klíče jsou UTC.
@@ -910,6 +1185,16 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                         self.history_earliest_date = earliest
                 for row in target_days:
                     self._history_target_days.setdefault(row.ean, {})[row.day] = row
+                self._record_current_profile(
+                    {row.day: row for row in days
+                     if any(_hour_local_date(hour.start, local_tz) == row.day for hour in hours)},
+                    {ean: {row.day: row for row in target_days if row.ean == ean}
+                     for ean in {row.ean for row in target_days}},
+                )
+                self.data_quality.update(profile_quality(raw))
+                self.data_quality["profile_as_of"] = profile_as_of().isoformat()
+                self.data_quality.update(profile_date_from=chunk_from.isoformat(),
+                                         profile_date_to_exclusive=chunk_to.isoformat())
                 if self._history_import_enabled:
                     self._async_import_energy_history(now)
                 # Import nahrazuje stejné časové body. Počítadla počítají
@@ -983,6 +1268,15 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         """
         await self._history_store.async_save(
             {
+                "current_profile": {
+                    "selection": "CURRENT",
+                    "pending_imports": [month.isoformat() for month in sorted(self._profile_revision_pending_imports)],
+                    "days": {day.isoformat(): stamp for day, stamp in self._current_profile_days.items()},
+                    "checks": {day.isoformat(): checked.isoformat()
+                               for day, checked in self._profile_revision_checks.items()},
+                    "attempts": {day.isoformat(): attempted.isoformat()
+                                 for day, attempted in self._profile_revision_attempts.items()},
+                },
                 "status": self.history_backfill_status,
                 "started_at": self.history_backfill_started_at.isoformat()
                 if self.history_backfill_started_at is not None
@@ -1041,13 +1335,18 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
         self._async_import_history_if_changed(
             self.data, tuple(self._hours.values()), dt_util.now()
         )
+        self.async_start_profile_revisions()
 
     @callback
-    def _async_import_energy_history(self, now: datetime) -> None:
-        """Import selected income using the full cache, including older backfill."""
+    def _async_import_energy_history(self, now: datetime) -> bool:
+        """Zařadit celé kumulativní Energy; bool potvrzuje frontu, nikoli DB zápis.
+
+        Prázdný výběr nebo totožný otisk není chyba. Při odmítnutí zařazení
+        vracíme False, aby migrace revize zůstala uložená k opakování.
+        """
         selected = energy_targets(self.config_entry.options)
         if not selected:
-            return
+            return True
         price = Decimal(str(self.config_entry.options.get(
             CONF_SALE_PRICE, self.config_entry.data.get(CONF_SALE_PRICE, DEFAULT_SALE_PRICE)
         )))
@@ -1059,7 +1358,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                   for ean in selected),
         )
         if signature == self._energy_import_signature:
-            return
+            return True
         try:
             async_import_energy_history(
                 self.hass,
@@ -1073,15 +1372,21 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             )
         except HomeAssistantError:
             _LOGGER.warning("Could not queue EDC Energy statistics")
-            return
+            return False
         self._energy_import_signature = signature
+        return True
 
     def _async_import_history_if_changed(
         self,
         statistics: SharingStatistics,
         hours: tuple[HourlySharing, ...],
         now: datetime,
-    ) -> None:
+    ) -> bool:
+        """Zařadit změněné denní/hodinové řady; bool je úspěch fronty.
+
+        Stejný otisk se neopakuje. Chyba zařazení otisk neposune, takže
+        další obnova může opravit i již kompletní CURRENT denní cache.
+        """
         finalized = tuple(row for row in statistics.days if row.day < now.date())
         local_tz = now.tzinfo or dt_util.get_default_time_zone()
         current_hour = dt_util.as_utc(
@@ -1110,7 +1415,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
             statistics.sale_price,
         )
         if signature == self._history_import_signature:
-            return
+            return True
         try:
             imported_days = async_import_daily_history(
                 self.hass,
@@ -1145,7 +1450,7 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 )
         except HomeAssistantError as err:
             _LOGGER.warning("Could not import EDC history: %s", err)
-            return
+            return False
         self._history_import_signature = signature
         self.data_quality["queued_hours"] = imported_hours
         self.data_quality["queued_target_hours"] = imported_target_hours
@@ -1164,3 +1469,4 @@ class EdcSharingCoordinator(DataUpdateCoordinator[SharingStatistics]):
                 "Queued %s finalized EDC target hours for long-term statistics",
                 imported_target_hours,
             )
+        return True

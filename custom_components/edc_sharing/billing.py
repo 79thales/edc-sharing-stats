@@ -95,6 +95,40 @@ def _label(value: object, *, required: bool = False, limit: int = 300) -> str:
     return text
 
 
+def review_charge_data(charges: dict, rows: dict, unverified_days=()) -> dict:
+    """Porovnat zmrazené kWh s dostupnou aktuální historií bez změny evidence.
+
+    Ceny zůstávají původní: změna ceníku není oprava měření. Rozdíl kWh je
+    aktuální minus vystavená hodnota; nepočítáme automatický dluh/dobropis.
+    Nepřítomná historie není nula. Explicitně neověřené legacy dny brání
+    novému vystavení/QR, archivní doklad a ruční úhrady zůstávají zachované.
+    """
+    lookup = {(ean, row.day): row for ean, items in rows.items() for row in items}
+    changed, pending, unavailable = [], set(), set()
+    for row in charges.values():
+        day = date.fromisoformat(row["day"])
+        if day in unverified_days:
+            pending.add(row["day"])
+            continue
+        current = lookup.get((row["ean"], day))
+        if current is None:
+            unavailable.add(row["day"])
+            continue
+        try:
+            measured = decimal_value(current.shared)
+            previous = decimal_value(row["shared"])
+        except BillingError:
+            unavailable.add(row["day"])
+            continue
+        if measured != previous:
+            changed.append({"ean": row["ean"], "day": row["day"],
+                            "issued_shared_kwh": str(previous),
+                            "current_shared_kwh": str(measured),
+                            "difference_kwh": str(measured - previous)})
+    return {"required": bool(changed or pending), "changed": changed,
+            "pending_days": sorted(pending), "unavailable_days": sorted(unavailable)}
+
+
 class BillingLedger:
     """No polling, bank access, automatic billing or writes to existing schemas."""
 
@@ -256,6 +290,7 @@ class BillingLedger:
         recipient_address: str,
         due: date,
         allow_missing: bool = False,
+        unverified_days=(),
     ) -> dict:
         """Use cached daily aggregates only; end dates are inclusive in the UI."""
         try:
@@ -398,6 +433,8 @@ class BillingLedger:
             and not inconsistent
             and not balance["ambiguous"],
         }
+        quote["data_review"] = review_charge_data(charges, rows, unverified_days)
+        quote["can_issue"] = quote["can_issue"] and not quote["data_review"]["required"]
         quote["preview_id"] = fingerprint(quote)
         return quote
 
@@ -485,6 +522,7 @@ class BillingLedger:
                 "balance",
                 "can_issue",
                 "inconsistent_days",
+                "data_review",
                 "charges",
             }
         }

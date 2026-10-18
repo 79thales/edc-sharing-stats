@@ -11,6 +11,7 @@ PROFILE_PATH = "/api/v0/profiles-data/standard/overview"
 FIELDS = {
     "sseId",
     "calculationType",
+    "currentEnteredDateTime",
     "inputData",
     "outputData",
     "dateFrom",
@@ -48,7 +49,8 @@ def profile_contract(payload: dict, response: dict) -> dict:
         )
     enum = payload.get("calculationType")
     request["calculation"] = (
-        enum if enum in ("DAILY", "HOURLY", "QUARTER_HOURLY") else "unknown"
+        "CURRENT" if "calculationType" not in payload and isinstance(payload.get("currentEnteredDateTime"), str)
+        else enum if enum in ("DAILY", "MONTHLY", "CORRECTION", "HOURLY", "QUARTER_HOURLY") else "unknown"
     )
     for key in ("dateFrom", "dateTo"):
         value = payload.get(key)

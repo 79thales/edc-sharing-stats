@@ -42,6 +42,7 @@ from .const import (
     DEFAULT_REPORT_TIME,
     DEFAULT_SALE_PRICE,
 )
+from .profile_selection import profile_read_snapshot
 
 if TYPE_CHECKING:
     from . import EdcConfigEntry
@@ -170,6 +171,7 @@ class EdcReportManager:
         message = await self._async_build_report(period)
         await self._async_send_message(message, self._report_title(period))
 
+    @profile_read_snapshot
     async def async_send_summary(self) -> None:
         """Send all supported periods together in one email."""
         if not self.targets:
@@ -261,6 +263,7 @@ class EdcReportManager:
             end = max(row.day for row in days) + timedelta(days=1)
         return start, end, days
 
+    @profile_read_snapshot
     async def _async_fetch_days(
         self, date_from: date, date_to: date
     ) -> tuple[DailySharing, ...]:
@@ -303,6 +306,7 @@ class EdcReportManager:
             raise HomeAssistantError(str(err)) from err
         return tuple(fetched[day] for day in sorted(fetched))
 
+    @profile_read_snapshot
     async def _async_fetch_target_days(
         self, date_from: date, date_to: date
     ) -> dict[str, tuple[TargetDailySharing, ...]]:

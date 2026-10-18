@@ -25,6 +25,7 @@ from .billing import (
     BillingLedger,
     fingerprint,
     profile_routing,
+    review_charge_data,
 )
 from .billing_document import render_settlement, settlement_payment_payload
 from .const import CONF_SSE_ID, CONF_SSE_NAME, DOMAIN
@@ -152,6 +153,7 @@ class BillingManager:
                 recipient_address=payload.get("recipient_address", ""),
                 due=due,
                 allow_missing=payload.get("allow_missing") is True,
+                unverified_days=getattr(coordinator, "profile_revision_pending_days", set()),
             )
             quote["smtp_ready"] = self._smtp_ready(profile)
             return quote
@@ -160,8 +162,22 @@ class BillingManager:
                 raise
             raise BillingError("invalid_request") from err
 
+    def _data_review(self, document: dict) -> dict:
+        """Připojit živé porovnání pouze k odpovědi, nikdy nepřepsat Store.
+
+        Archiv může zůstat otevřený během migrace. Výsledek nemění číslo,
+        původní cenu, podklady ani ruční úhrady; slouží kontrole před platbou.
+        """
+        runtime = getattr(self.entry, "runtime_data", None)
+        coordinator = getattr(runtime, "coordinator", None)
+        start, end = date.fromisoformat(document["start"]), date.fromisoformat(document["end"])
+        rows = coordinator.target_days_for_range(start, end + timedelta(days=1)) if coordinator else {}
+        return review_charge_data(document["charges"], rows,
+                                  getattr(coordinator, "profile_revision_pending_days", set()))
+
     async def _document(self, ledger: BillingLedger, document_id: str) -> dict:
         document = ledger.document(document_id)
+        document["data_review"] = self._data_review(document)
         payload = settlement_payment_payload(document)
         qr = (
             await self.hass.async_add_executor_job(payment_qr_data_uri, payload)
@@ -184,6 +200,7 @@ class BillingManager:
                 documents = []
                 for item in reversed(ledger.state["documents"]):
                     document = ledger.document(item["id"])
+                    document["data_review"] = self._data_review(document)
                     documents.append(
                         {
                             key: value
@@ -354,6 +371,8 @@ class BillingManager:
         self, ledger: BillingLedger, document_id: str, request_id: str, now: str
     ) -> dict:
         document = ledger.document(document_id)
+        if self._data_review(document)["required"]:
+            raise BillingError("data_revision_required")
         profile = self._profile(document["profile_id"])
         if profile_routing(profile) != document["routing"]:
             raise BillingError("profile_changed")

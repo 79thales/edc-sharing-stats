@@ -120,7 +120,7 @@ async function controllerTest(language) {
       if (message.type === "edc_sharing/billing/groups") return [{ entry_id: "entry-1", name: "Example group" }];
       if (message.action === "overview") return normalize(overview);
       if (message.action === "settings") { overview.settings = { issuer: message.payload.issuer, issuer_address: message.payload.issuer_address, tracking: message.payload.tracking }; overview.revision++; return { revision: overview.revision }; }
-      if (message.action === "preview") return { ...message.payload, preview_id: "server-preview", can_issue: true, smtp_ready: true, balance: doc.balance, missing_days: {}, inconsistent_days: [], html };
+      if (message.action === "preview") return { ...message.payload, preview_id: "server-preview", can_issue: !doc.data_review?.required, data_review: doc.data_review, smtp_ready: true, balance: doc.balance, missing_days: {}, inconsistent_days: [], html };
       if (message.action === "issue") { overview.documents = [doc]; overview.balance = doc.balance; overview.revision++; return normalize(doc); }
       if (message.action === "send") { doc.deliveries.push({ request_id: message.payload.request_id, status: "handed_to_smtp", successful: 1, failed_or_uncertain: 0 }); overview.revision++; return normalize(doc); }
       if (message.action === "payment") { doc.balance = { total: "60.00", confirmed: "20.00", remaining: "40.00", ambiguous: [] }; doc.payment_status = "partial"; overview.balance = doc.balance; overview.revision++; return { revision: overview.revision }; }
@@ -166,6 +166,19 @@ async function controllerTest(language) {
   await el("record").trigger("click");
   assert.equal(calls.find(call => call.action === "payment").payload.amount, "20.00");
   assert.equal(component._doc.balance.remaining, "40.00");
+  // Zjištěná revize nesmí po změně checkboxu ani po finally znovu povolit odeslání.
+  doc.data_review = { required: true, changed: [], pending_days: ["2026-01-01"] };
+  await el("refresh").trigger("click");
+  el("send-confirm").checked = true; await el("send-confirm").trigger("change");
+  assert.equal(el("send").disabled, true);
+  const sentBeforeReview = calls.filter(call => call.action === "send").length;
+  await el("send").trigger("click");
+  assert.equal(calls.filter(call => call.action === "send").length, sentBeforeReview);
+  assert.equal(el("send").disabled, true);
+  await el("preview").trigger("click");
+  assert.equal(component._quote.can_issue, false);
+  assert.ok(el("availability").textContent.includes(language === "cs" ? "revizi" : "review"));
+  assert.equal(component._error({ code: "data_revision_required" }), component._t.revisionRequired);
   // Retrying a lost response keeps the exact mutation ID and revision.
   let attempts = 0; const retries = [];
   component._hass.callWS = async message => { retries.push(message); if (++attempts === 1) throw new Error("lost response"); return {}; };

@@ -35,6 +35,7 @@ const EDC_BILLING_TEXT = {
     previewTitle: "Náhled před vystavením", issue: "Potvrdit vystavení a uložit doklad", issueConfirm: "Potvrzuji rozsah a údaje. Vystavení doklad uloží, ale nic neodešle ani nepotvrdí úhradu.",
     routing: "Příjemci profilu", routingNote: "Všichni příjemci tohoto profilu dostanou stejný doklad se všemi uvedenými EANy. Pro oddělená vyúčtování používejte samostatné profily. Pozastavený profil lze ručně použít; jeho rozvrh se nezmění.",
     complete: "Všechny požadované denní součty jsou dostupné. Toto neověřuje každý interval uvnitř dne.", incomplete: "Chybějící nebo nekonzistentní denní data: konečné vystavení je zablokované. Nula a chybějící data nejsou totéž.",
+    revisionRequired: "Podklady vyžadují revizi: aktuální kWh se liší od vystavených nebo ještě nebyla dokončena obnova historie. Původní částky a úhrady jsou zachované. Před novým vystavením či odesláním zkontrolujte rozdíly v dokladu; automatická oprava částek se neprovádí.",
     ambiguous: "Částečná úhrada zasahuje přes hranici tohoto období nebo výběru EANů. Její přiřazení nelze odhadnout; vystavení a QR jsou zablokované. Upravte ruční přiřazení úhrady.",
     noSmtp: "Profil nyní nemá všechny dostupné SMTP příjemce. Doklad lze uložit a tisknout, ale e-mail není dostupný.",
     history: "Archiv vyúčtování", empty: "Zatím není vystaven žádný doklad.", number: "Doklad", customer: "Odběratel", value: "Hodnota sdílení", confirmed: "Potvrzené úhrady", remaining: "K úhradě", status: "Stav úhrady", open: "Otevřít",
@@ -57,6 +58,7 @@ const EDC_BILLING_TEXT = {
     intro: "A private-person electricity-sharing settlement, not an automatically generated tax invoice. Issuing and sending do not confirm payment. Only manually confirmed receipts are deducted. Without confirmation, the actual payment status is unknown and the amount remains offered for payment.",
     draft: "Issue a settlement", recipient: "Customer / document recipient name", recipientAddress: "Customer address (optional)", period: "Period", month: "Previous calendar month", year: "Current year through available data", custom: "Custom range", start: "From (inclusive)", end: "To (inclusive)", due: "Due date", preview: "Check and preview",
     previewTitle: "Preview before issuing", issue: "Confirm issue and save document", issueConfirm: "I confirm the scope and details. Issuing saves the document but does not send it or confirm payment.", routing: "Profile recipients", routingNote: "Every recipient in this profile receives the same document with all listed EANs. Use separate profiles for private per-customer settlements. Paused profiles can be used manually without changing their schedule.",
+    revisionRequired: "Source data requires review: current kWh differs from issued data or history refresh is pending. Original amounts and receipts are preserved. Review differences before issuing or sending; amounts are not automatically corrected.",
     complete: "All requested daily totals are available. This does not verify every intraday interval.", incomplete: "Missing or inconsistent daily data blocks final issue. Missing data is not zero.", ambiguous: "A partial receipt extends beyond this period or EAN selection. Its allocation cannot be inferred; issue and QR are blocked. Review manual receipt allocation.", noSmtp: "Not all profile recipients are currently available SMTP entities. You can save and print the document, but email is unavailable.",
     history: "Settlement archive", empty: "No documents have been issued yet.", number: "Document", customer: "Customer", value: "Sharing value", confirmed: "Confirmed payments", remaining: "Remaining to pay", status: "Payment status", open: "Open", overview: "Balance of unique sharing charges, not the sum of overlapping documents", document: "Saved settlement", download: "Download printable HTML", print: "Print / save as PDF", send: "Send / remind through profile", sendConfirm: "I confirm sending the displayed document and current balance to all recipients of its original profile.",
     sendNote: "Repeated reminders do not add debt. SMTP handoff does not confirm inbox delivery or payment. Check the inbox before resending an uncertain attempt. Changed or removed profiles block sending old documents.", delivery: "Latest SMTP handoff", handoff_in_progress: "In progress / outcome unconfirmed", handed_to_smtp: "Handed to SMTP, inbox delivery unconfirmed", partial_or_uncertain: "Partial or uncertain outcome", failed_or_uncertain: "Failed or uncertain outcome",
@@ -98,6 +100,7 @@ class EdcSharingBilling extends HTMLElement {
   connectedCallback() { if (this._hass && !this._initialized) this._initialize(); }
   _el(id) { return this.shadowRoot.getElementById(id); }
   _error(err) {
+    if (err?.code === "data_revision_required" || err?.message === "data_revision_required") return this._t.revisionRequired;
     const index = this._cs ? 0 : 1;
     return EDC_BILLING_ERRORS[err?.code]?.[index] || (this._cs ? "Akci se nepodařilo dokončit. Obnovte přehled; při nejistém odeslání nejprve ověřte schránku." : "The action could not complete. Refresh the ledger; check the inbox before retrying an uncertain send.");
   }
@@ -138,7 +141,7 @@ class EdcSharingBilling extends HTMLElement {
     this._el("allow-missing").addEventListener("input", () => this._invalidate());
     ["issuer", "issuer-address", "tracking"].forEach(id => this._el(id).addEventListener("input", () => this._invalidate()));
     this._el("issue-confirm").addEventListener("change", () => this._el("issue").disabled = this._busy || !this._quote?.can_issue || !this._el("issue-confirm").checked);
-    this._el("send-confirm").addEventListener("change", () => this._el("send").disabled = this._busy || !this._doc || !this._el("send-confirm").checked);
+    this._el("send-confirm").addEventListener("change", () => this._el("send").disabled = this._busy || !this._doc || this._doc.data_review?.required || !this._el("send-confirm").checked);
     this._el("payment-confirm").addEventListener("change", () => this._el("record").disabled = this._busy || !this._el("payment-confirm").checked);
     this._el("save").addEventListener("click", () => this._run(async () => { await this._mutate("settings", { issuer: this._el("issuer").value, issuer_address: this._el("issuer-address").value, tracking: this._el("tracking").checked }); await this._overview(); this._status(this._t.refreshed); }));
     this._el("preview").addEventListener("click", () => this._run(async () => {
@@ -148,7 +151,7 @@ class EdcSharingBilling extends HTMLElement {
       const b = this._quote.balance;
       this._el("preview-summary").textContent = `${this._quote.start} – ${this._quote.end}: ${this._t.value} ${b.total} CZK; ${this._t.confirmed} ${b.confirmed} CZK; ${this._t.remaining} ${b.ambiguous.length ? "—" : b.remaining} CZK`;
       const missing = Object.values(this._quote.missing_days).flat();
-      this._el("availability").textContent = b.ambiguous.length ? this._t.ambiguous : this._quote.can_issue && !missing.length ? this._t.complete : this._quote.can_issue ? `${this._el("allow-missing-label").textContent} ${[...new Set(missing)].slice(0, 16).join(", ")}` : `${this._t.incomplete} ${[...new Set([...missing, ...this._quote.inconsistent_days])].slice(0, 16).join(", ")}`;
+      this._el("availability").textContent = this._quote.data_review?.required ? this._t.revisionRequired : b.ambiguous.length ? this._t.ambiguous : this._quote.can_issue && !missing.length ? this._t.complete : this._quote.can_issue ? `${this._el("allow-missing-label").textContent} ${[...new Set(missing)].slice(0, 16).join(", ")}` : `${this._t.incomplete} ${[...new Set([...missing, ...this._quote.inconsistent_days])].slice(0, 16).join(", ")}`;
       this._el("smtp-warning").hidden = this._quote.smtp_ready;
     }));
     this._el("issue").addEventListener("click", () => this._run(async () => {
@@ -157,7 +160,7 @@ class EdcSharingBilling extends HTMLElement {
       await this._overview(); this._showDocument(doc); this._status(this._t.issued);
     }));
     this._el("send").addEventListener("click", () => this._run(async () => {
-      if (!this._doc || !this._el("send-confirm").checked) return;
+      if (!this._doc || this._doc.data_review?.required || !this._el("send-confirm").checked) return;
       const doc = await this._mutate("send", { document_id: this._doc.id }); await this._overview(); this._showDocument(doc);
     }));
     this._el("record").addEventListener("click", () => this._run(async () => {
@@ -196,7 +199,7 @@ class EdcSharingBilling extends HTMLElement {
     finally {
       this._busy = false; this.shadowRoot.querySelectorAll("button,input,select").forEach(element => { element.disabled = false; });
       this._el("issue").disabled = !this._quote?.can_issue || !this._el("issue-confirm").checked;
-      this._el("send").disabled = !this._doc || !this._el("send-confirm").checked;
+      this._el("send").disabled = !this._doc || this._doc.data_review?.required || !this._el("send-confirm").checked;
       this._el("record").disabled = !this._el("payment-confirm").checked;
     }
   }
@@ -223,7 +226,7 @@ class EdcSharingBilling extends HTMLElement {
     if (!this._el("due").value) this._el("due").value = new Date(new Date(`${this._data.today}T00:00:00Z`).getTime() + 14 * 86400000).toISOString().slice(0, 10);
     const b = this._data.balance; this._el("balance").textContent = `${this._t.overview}: ${b.remaining} CZK (${this._t.confirmed}: ${b.confirmed} CZK)`;
     const esc = edcBillingEscape;
-    this._el("archive").innerHTML = this._data.documents.length ? `<table><thead><tr>${["number", "customer", "period", "value", "remaining", "status"].map(k => `<th>${esc(this._t[k])}</th>`).join("")}<th></th></tr></thead><tbody>${this._data.documents.map(d => `<tr><td>${esc(d.number)}</td><td>${esc(d.recipient)}</td><td>${esc(d.start)} – ${esc(d.end)}</td><td>${esc(d.total)} CZK</td><td>${d.balance.ambiguous.length ? "—" : esc(d.balance.remaining)} CZK</td><td>${esc(this._paymentStatus(d.payment_status))}</td><td><button data-document="${esc(d.id)}">${esc(this._t.open)}</button></td></tr>`).join("")}</tbody></table>` : `<p>${esc(this._t.empty)}</p>`;
+    this._el("archive").innerHTML = this._data.documents.length ? `<table><thead><tr>${["number", "customer", "period", "value", "remaining", "status"].map(k => `<th>${esc(this._t[k])}</th>`).join("")}<th></th></tr></thead><tbody>${this._data.documents.map(d => `<tr><td>${esc(d.number)}</td><td>${esc(d.recipient)}</td><td>${esc(d.start)} – ${esc(d.end)}</td><td>${esc(d.total)} CZK</td><td>${d.balance.ambiguous.length ? "—" : esc(d.balance.remaining)} CZK</td><td>${esc(this._paymentStatus(d.payment_status))}${d.data_review?.required ? `<br>${esc(this._t.revisionRequired)}` : ""}</td><td><button data-document="${esc(d.id)}">${esc(this._t.open)}</button></td></tr>`).join("")}</tbody></table>` : `<p>${esc(this._t.empty)}</p>`;
     this._el("archive").querySelectorAll("[data-document]").forEach(button => button.addEventListener("click", () => this._run(async () => this._showDocument(await this._call("document", { document_id: button.dataset.document })))));
   }
   _paymentStatus(status) { return status === "confirmed" ? this._t.confirmedStatus : this._t[status] || status; }
@@ -231,6 +234,7 @@ class EdcSharingBilling extends HTMLElement {
     this._doc = doc; this._el("document-card").hidden = false; this._el("document-frame").srcdoc = doc.html;
     this._el("send-confirm").checked = false; this._el("payment-confirm").checked = false;
     const last = doc.deliveries.at(-1); this._el("delivery").textContent = last ? `${this._t.delivery}: ${this._t[last.status] || last.status} (${last.successful} / ${last.failed_or_uncertain})` : "";
+    if (doc.data_review?.required) this._el("delivery").textContent = this._t.revisionRequired;
     this._el("payment-box").hidden = !this._data.settings.tracking;
     this._el("amount").value = doc.balance.ambiguous.length ? "" : doc.balance.remaining;
     this._el("paid-on").value = this._data.today; this._el("paid-on").max = this._data.today;

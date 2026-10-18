@@ -5,15 +5,19 @@ from __future__ import annotations
 import asyncio
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from html import escape
 from hashlib import sha256
+from html import escape
 
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .calculation import TargetDailySharing, calculate_period_summary, calculate_target_period_summary
+from .calculation import (
+    TargetDailySharing,
+    calculate_period_summary,
+    calculate_target_period_summary,
+)
 from .const import (
     CONF_PAYMENT_ACCOUNT_NUMBER,
     CONF_PAYMENT_BANK_CODE,
@@ -31,6 +35,7 @@ from .payment import (
     payment_message,
     payment_qr_data_uri,
 )
+from .profile_selection import profile_read_snapshot
 from .report import EdcReportManager, ReportPeriod
 from .report_profiles import configured_profiles, due_on, next_run, period_range
 
@@ -431,6 +436,7 @@ class ProfileRenderer(EdcReportManager):
             )
         return lines, (tuple(evidence), complete, total)
 
+    @profile_read_snapshot
     async def render(self) -> list[tuple[str, str]]:
         """Build selected sections once, then reuse them for all recipients."""
         if self.profile.get("report_scope") == "target":

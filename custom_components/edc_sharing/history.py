@@ -1,4 +1,8 @@
-"""Import EDC daily and hourly history into long-term statistics."""
+"""Import denních a hodinových profilů EDC do dlouhodobých statistik.
+
+Úplný minulý den zde znamená úplnost měření, nikoli konečný měsíční výpočet.
+Aktuální revizi vybírá API; další úplný profil nahrazuje stejný časový bod.
+"""
 
 from __future__ import annotations
 

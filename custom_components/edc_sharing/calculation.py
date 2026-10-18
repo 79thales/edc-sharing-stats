@@ -664,10 +664,9 @@ def parse_daily_profile(response: dict[str, Any]) -> tuple[DailySharing, ...]:
     if not content:
         return ()
 
-    # The overview endpoint may return quarter-hour rows even when DAILY is
-    # requested. Aggregate every value column by calendar day before deriving
-    # sharing totals; otherwise the coordinator would retain only the final
-    # interval of each day.
+    # CURRENT vybírá revizi výpočtu, nikoli rozlišení. Endpoint může vrátit
+    # čtvrthodinové řádky. Nejprve sečíst každý sloupec za kalendářní den,
+    # potom odvodit sdílení; jinak by koordinátor uchoval jen poslední interval.
     values_by_day = _daily_value_totals(columns, content)
     complete_profile = {**response, "content": content}
     complete_hours = _profile_complete_hours(response)

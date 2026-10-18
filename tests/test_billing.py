@@ -160,6 +160,33 @@ class BillingTest(unittest.TestCase):
         self.assertEqual("60.00", self.preview()["balance"]["remaining"])
         self.assertEqual(1, len(self.ledger.state["payments"]))
 
+    def test_corrected_history_flags_frozen_charges_without_rewriting_receipts(self):
+        """Korekce měření vyžaduje revizi, ale není automatická finanční operace."""
+        doc = self.issue()
+        self.pay(doc, "20.00")
+        before = deepcopy(self.ledger.state)
+        quote = self.preview(rows={"EAN-A": target_rows(shared="8")})
+        self.assertFalse(quote["can_issue"])
+        self.assertEqual(3, len(quote["data_review"]["changed"]))
+        self.assertEqual("-2", quote["data_review"]["changed"][0]["difference_kwh"])
+        self.assertEqual("40.00", quote["balance"]["remaining"])
+        self.assertEqual(before, self.ledger.state)
+        render = importlib.import_module(package.__name__ + ".billing_document")
+        document = self.ledger.document(doc["id"]) | {"data_review": quote["data_review"]}
+        self.assertIsNone(render.settlement_payment_payload(document))
+        html, text = render.render_settlement(document, "data:image/png;base64,synthetic")
+        self.assertIn("podklady vyžadují revizi", text)
+        self.assertIn("10 → 8 kWh", html)
+        self.assertNotIn('<img', html)
+
+    def test_pending_current_migration_blocks_new_issue_even_with_allow_missing(self):
+        quote = self.preview(unverified_days={date(2026, 1, 2)}, allow_missing=True)
+        self.assertFalse(quote["can_issue"])
+        self.assertEqual(["2026-01-02"], quote["data_review"]["pending_days"])
+        # Pouhá změna ceny neoznačuje měření za změněné.
+        self.issue()
+        self.assertFalse(self.preview(options={"sale_price": 9})["data_review"]["required"])
+
     def test_snapshot_survives_price_and_data_corrections_and_restart(self):
         document = self.issue()
         self.ledger = BillingLedger(deepcopy(self.ledger.state))
