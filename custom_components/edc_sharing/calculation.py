@@ -14,6 +14,15 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 ZERO = Decimal(0)
 MAX_PROFILE_DAYS = 31
 
+# První načtení ZoneInfo může číst tzdata z disku. HA importuje modul mimo
+# event loop; všechny výpočty pak sdílejí již načtená pravidla CET/CEST.
+# Bez tzdata zůstane rozlišení DST neznámé a intervalový den neúplný;
+# nepoužívat náhradní UTC ani pevný offset, které by změnily EDC výsledky.
+try:
+    PRAGUE_TZ = ZoneInfo("Europe/Prague")
+except ZoneInfoNotFoundError:
+    PRAGUE_TZ = None
+
 
 class IncompleteProfileLayoutError(ValueError):
     """EDC profile data does not contain both sides of electricity sharing."""
@@ -393,7 +402,9 @@ def profile_resolution(response: dict[str, Any]) -> str:
             if duration not in (15, 60, 1440) or (start == end and start != 0):
                 # Přechod DST může na hodinách přeskočit/vrátit 60 minut.
                 # Přijmout jen jednoznačně doložitelnou UTC délku, ne odhad.
-                local_tz = ZoneInfo("Europe/Prague")
+                local_tz = PRAGUE_TZ
+                if local_tz is None:
+                    return "unknown"
                 day = date.fromisoformat(row["date"][:10])
                 local_start = datetime.combine(day, datetime.min.time()) + timedelta(minutes=start)
                 local_end = datetime.combine(day, datetime.min.time()) + timedelta(minutes=end)
@@ -411,7 +422,7 @@ def profile_resolution(response: dict[str, Any]) -> str:
                     return "unknown"
                 duration = possible.pop()
             durations.add(duration)
-        except (TypeError, ValueError, ZoneInfoNotFoundError):
+        except (TypeError, ValueError):
             return "unknown"
     if missing_end:
         if any(start % 60 for start in starts) and all(start % 15 == 0 for start in starts):
@@ -451,9 +462,8 @@ def _day_completeness(response: dict[str, Any], day: date,
     rows = [row for row in response["content"] if row["date"][:10] == day.isoformat()]
     if resolution == "daily":
         return len(rows) == 1
-    try:
-        local_tz = ZoneInfo("Europe/Prague")
-    except ZoneInfoNotFoundError:
+    local_tz = PRAGUE_TZ
+    if local_tz is None:
         return False
     start = datetime.combine(day, datetime.min.time(), tzinfo=local_tz).astimezone(UTC)
     stop = datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=local_tz).astimezone(UTC)
@@ -467,9 +477,8 @@ def _profile_complete_hours(response: dict[str, Any]) -> tuple[HourlySharing, ..
     """Jednou na celý blok ověřit UTC hodiny, včetně oddělených DST foldů."""
     if profile_resolution(response) not in ("quarter_hour", "hour"):
         return ()
-    try:
-        local_tz = ZoneInfo("Europe/Prague")
-    except ZoneInfoNotFoundError:
+    local_tz = PRAGUE_TZ
+    if local_tz is None:
         return ()
     return parse_hourly_profile(response, local_tz=local_tz)
 

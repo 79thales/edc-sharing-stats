@@ -1,5 +1,19 @@
 # Přehled změn / Changelog
 
+## 0.2.13 – 2026-10-19
+
+### Čeština
+
+- Oprava blokující připomínky HACS #10586: časové pásmo Europe/Prague se načte jednou při importu výpočtového modulu. Rozpoznání intervalů a ověřování úplnosti již nevytváří ZoneInfo při výpočtu v event loopu Home Assistantu.
+- Zachována pravidla CET/CEST, 23/25hodinové dny, čtvrthodinové intervaly a bezpečné chování při nedostupných tzdata. Nové regrese kontrolují sdílení instance a shodu výsledků s původním kódem pro úplné, chybějící a null intervaly.
+- Beze změny výpočtů sdílení, entit, unique ID, konfigurace a uložené historie. Po aktualizaci restartujte Home Assistant; integraci ani historii nemažte.
+
+### English
+
+- Fix the blocking HACS #10586 review issue: load Europe/Prague once when the calculation module is imported. Profile resolution and completeness checks reuse the shared timezone instead of constructing ZoneInfo during calculations on the Home Assistant event loop.
+- Preserve CET/CEST transitions, 23/25-hour days, quarter-hour intervals and the existing safe behavior when timezone data is unavailable. Add regressions for instance reuse and identical pre-fix results with complete, missing and null intervals.
+- No changes to sharing calculations, entities, unique IDs, user configuration or stored history. Restart Home Assistant after updating; keep the integration and its history.
+
 ## 0.2.12 – 2026-10-18
 
 ### Čeština
